@@ -1,0 +1,4 @@
+mplsoccer
+pandas
+statsbombpy
+streamlit
