@@ -1,4 +1,7 @@
+kloppy
 mplsoccer
 pandas
+scikit-learn
 statsbombpy
 streamlit
+streamlit-profiler
