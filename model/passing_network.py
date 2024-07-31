@@ -365,6 +365,7 @@ def plot_passing_network(
     arrow_width_multiplier: float = 1,  # fixed width of the arrows
 
     label_col: str = None,  # column to use for labels, None for no labels
+    label_format_string: str = "{:.2f}",  # format string for labels
     threshold_col: str = "num_passes",  # column to use for threshold
     threshold: float = 0.0,  # minimum value to show an edge
     alternative_threshold_col: str = None,  # column to use for alternative threshold
@@ -373,6 +374,7 @@ def plot_passing_network(
     fixed_node_color: str = "black",  # fixed color of the nodes
     fixed_arrow_width: float = 1,  # fixed width of the arrows
     fixed_arrow_color: str = "black",  # fixed color of the arrows
+    annotate_top_n_edges: int = 5,  # annotate the top n edges
 
     colorbar_label: str = "",  # label for the colorbar (e.g. "Expected Threat per Pass")
     max_color_value_edges: float = None,  # maximum value for color scale
@@ -491,7 +493,8 @@ def plot_passing_network(
     #         label=df_nodes.loc[node, name_col],
     #     )
 
-    for (from_entity, to_entity), row in df_edges.sort_values(by=arrow_color_col, ascending=True).iterrows():
+    df_edges["sort_value"] = df_edges[arrow_color_col].abs()
+    for edge_nr, ((from_entity, to_entity), row) in enumerate(df_edges.sort_values(by="sort_value", ascending=True).iterrows()):
         # if row[threshold_col] < threshold:
         #     continue
         if (alternative_threshold_col is not None and row[alternative_threshold_col] < alternative_threshold) and (threshold_col is not None and row[threshold_col] < threshold):
@@ -501,11 +504,36 @@ def plot_passing_network(
         x2_avg = df_nodes.loc[str(to_entity), x_col]
         y2_avg = df_nodes.loc[str(to_entity), y_col]
 
+        formatted_label_str = label_format_string.format(row[arrow_color_col]) if label_col is not None and edge_nr >= len(df_edges) - annotate_top_n_edges else None
+
+        # import streamlit as st
+        # st.write(df_edges[arrow_color_col])
+        # st.write(df_edges[arrow_color_col].max())
+        # st.stop()
+
+        # st.write("row[arrow_color_col]")
+        # st.write(row[arrow_color_col])
+        # st.write("df_edges[arrow_color_col].max()")
+        # st.write(df_edges[arrow_color_col].max())
+
+        if row[arrow_color_col] >= 0:
+            label_color = df_edges[df_edges[arrow_color_col] == df_edges[arrow_color_col].max()][custom_color_col].values[0]
+        else:
+            label_color = df_edges[df_edges[arrow_color_col] == df_edges[arrow_color_col].min()][custom_color_col].values[0]
+
+        # st.write("df_edges[df_edges[arrow_color_col] == df_edges[arrow_color_col].max()]")
+        # st.write(df_edges[df_edges[arrow_color_col] == df_edges[arrow_color_col].max()])
+        # st.write("df_edges[df_edges[arrow_color_col] == df_edges[arrow_color_col].max()][custom_color_col]")
+        # st.write(df_edges[df_edges[arrow_color_col] == df_edges[arrow_color_col].max()][custom_color_col])
+        # st.write("label_color")
+        # st.write(label_color)
+
         utility.pitch.plot_position_arrow(
             from_entity,
             to_entity,
             plot_players=False,
-            label=f"{row[label_col]:.3f}" if label_col is not None else None,
+            label=formatted_label_str,
+            label_color=label_color,
             # label=f"{row['possession_attack_xg']['mean']:.2f}",
             arrow_width=row[custom_width_col],
             arrow_color=row[custom_color_col],

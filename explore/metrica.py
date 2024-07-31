@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import kloppy.metrica
 
 import streamlit_profiler
@@ -24,8 +25,10 @@ import utility.general
 import model.passing_network
 
 importlib.reload(model.passing_network)
-importlib.reload(utility.pitch)
-importlib.reload(utility.general)
+
+# importlib.reload(model.passing_network)
+# importlib.reload(utility.pitch)
+# importlib.reload(utility.general)
 
 
 @st.cache_resource
@@ -44,12 +47,15 @@ def preprocess_tracking_and_event_data(df_tracking, df_events):
     for period, df_tracking_period in df_tracking.groupby("period_id"):
         period2team2x[period] = {}
         for team in ["home", "away"]:
-            team_x_cols = [col for col in df_tracking.columns if col.startswith(f"{team}_") and col.endswith("_x_new")]
-            team_y_cols = [col for col in df_tracking.columns if col.startswith(f"{team}_") and col.endswith("_y_new")]
+            team_x_cols = [col for col in df_tracking.columns if col.startswith(f"{team}_") and col.endswith("_x")]
+            team_y_cols = [col for col in df_tracking.columns if col.startswith(f"{team}_") and col.endswith("_y")]
             # st.write(df_tracking_period[team_x_cols + team_y_cols].head(50))
-            x_avg = df_tracking_period[team_x_cols].mean(axis=1).mean()
-            y_avg = df_tracking_period[team_y_cols].mean(axis=1).mean()
+            x_avg = df_tracking_period[team_x_cols].mean(skipna=True, axis=1).mean(skipna=True)
+
+            y_avg = df_tracking_period[team_y_cols].dropna().mean(axis=1).mean()
             period2team2x[period][team] = x_avg
+
+            assert not np.isnan(x_avg)
 
     period2team2attacking_direction = {}
     for period in period2team2x:
@@ -64,6 +70,7 @@ def preprocess_tracking_and_event_data(df_tracking, df_events):
 
     # team2player = df_events[["Team", "From"]].drop_duplicates().set_index("From").to_dict()["Team"]
     player2team = df_events[["From", "Team"]].drop_duplicates().set_index("From").to_dict()["Team"]
+    team2players = df_events.groupby("Team")["From"].unique().to_dict()
     player2player_tracking_id = {player: f"{player2team[player].lower()}_{utility.general.extract_numbers_from_string_as_ints(player)[-1]}" for player in player2team}
     df_events["from_player_tracking_id"] = df_events["From"].map(player2player_tracking_id)
 
@@ -191,7 +198,6 @@ def preprocess_tracking_and_event_data(df_tracking, df_events):
 
     df_events["from_position"] = df_events["From"].map(positions)
     df_events["to_position"] = df_events["To"].map(positions)
-    # st.stop()
 
     for substitution in substitutions:
         i_frames = df_events["Start Frame"] > substitution["frame"]
@@ -201,9 +207,11 @@ def preprocess_tracking_and_event_data(df_tracking, df_events):
             df_events.loc[i_frames & i_from, "from_position"] = new_position
             df_events.loc[i_frames & i_to, "to_position"] = new_position
 
-            if substitution["formation_change"] is not None:
-                i_team = df_events["Team"] == "Home"
-                df_events.loc[i_frames, "live_formation"] = substitution["formation_change"]
+        if substitution["formation_change"] is not None:
+            i_team = df_events["Team"] == substitution["team"]
+            df_events.loc[i_frames & i_team, "live_formation"] = substitution["formation_change"]
+
+    # assert that every combination of live_formation and player has a unique position
 
     # Coordinates
     df_events["x"] = (df_events["Start X"] - 0.5) * 105
@@ -245,33 +253,75 @@ def preprocess_tracking_and_event_data(df_tracking, df_events):
     # Frame
     df_tracking["custom_frame_id"] = df_tracking["frame_id"] - 1
 
-    x_cols = [col for col in df_tracking.columns if col.endswith("_x")]
-    new_x_cols = [f"{col}_new" for col in x_cols]
-    y_cols = [col for col in df_tracking.columns if col.endswith("_y")]
-    new_y_cols = [f"{col}_new" for col in y_cols]
-    df_tracking[new_x_cols] = (df_tracking[x_cols] - 0.5) * 105
-    df_tracking[new_y_cols] = (df_tracking[y_cols] - 0.5) * 68
+    tracking_player_ids = [col.rsplit("_", 1)[0] for col in df_tracking.columns if col.endswith("_x")]
+    tracking_player_id2name = {player: f"Player{player.split('_')[-1]}" for player in tracking_player_ids if player != "ball"}
+
+    def transform_tracking():
+        exploded_rows = []
+        # progress_text = st.empty()
+        # progress_bar = st.progress(0)
+        for _, row in df_tracking.iterrows():
+            # progress_bar.progress(_ / len(df_tracking))
+            # progress_text.text(f"Processing row {_} of {len(df_tracking)}")
+            # For each column A, B, C, append corresponding values
+
+            # drop all x or y rows
+            reduced_row = row.drop([col for col in row.index if "_x" in col or "_y" in col or "_s" in col or "_d" in col or "_z" in col])
+
+            for tracking_player_id in tracking_player_ids:
+                player = "ball" if tracking_player_id == "ball" else tracking_player_id2name[tracking_player_id]
+                team = player2team.get(player, "ball")
+                exploded_rows.append(reduced_row.to_dict() | {
+                    'player': player,
+                    'team': team,
+                    'x': row[f'{tracking_player_id}_x'],
+                    'y': row[f'{tracking_player_id}_y']
+                })
+        exploded_df = pd.DataFrame(exploded_rows)
+        return exploded_df
+
+    df_tracking = transform_tracking()
+
+    # x_cols = [col for col in df_tracking.columns if col.endswith("_x")]
+    # new_x_cols = [f"{col}_new" for col in x_cols]
+    # y_cols = [col for col in df_tracking.columns if col.endswith("_y")]
+    # new_y_cols = [f"{col}_new" for col in y_cols]
+    df_tracking["x"] = (df_tracking["x"] - 0.5) * 105
+    df_tracking["y"] = (df_tracking["y"] - 0.5) * 68
 
     for period, df_tracking_period in df_tracking.groupby("period_id"):
         period2team2x[period] = {}
-        for team in ["home", "away"]:
-            team_x_cols = [col for col in df_tracking.columns if col.startswith(f"{team}_") and col.endswith("_x_new")]
-            team_y_cols = [col for col in df_tracking.columns if col.startswith(f"{team}_") and col.endswith("_y_new")]
-
-            new_team_x_cols = [f"{col}_norm" for col in team_x_cols]
-            new_team_y_cols = [f"{col}_norm" for col in team_y_cols]
+        for team in team2formation:
+            # team_x_cols = [col for col in df_tracking.columns if col.startswith(f"{team}_") and col.endswith("_x_new")]
+            # team_y_cols = [col for col in df_tracking.columns if col.startswith(f"{team}_") and col.endswith("_y_new")]
+            # new_team_x_cols = [f"{col}_norm" for col in team_x_cols]
+            # new_team_y_cols = [f"{col}_norm" for col in team_y_cols]
 
             i_period = df_tracking["period_id"] == period
+            i_team = df_tracking["team"] == team
 
-            df_tracking.loc[i_period, new_team_x_cols] = df_tracking.loc[i_period, team_x_cols].values * period2team2attacking_direction[period][team]
+            # df_tracking.loc[i_period & i_team, "x_norm"] = df_tracking.loc[i_period & i_team, "x"] * period2team2attacking_direction[period][team.lower()]
+            # df_tracking.loc[i_period & i_team, "y_norm"] = df_tracking.loc[i_period & i_team, "y"] * period2team2attacking_direction[period][team.lower()]
 
-            df_tracking.loc[i_period, new_team_y_cols] = df_tracking.loc[i_period, team_y_cols].values * period2team2attacking_direction[period][team]
+            # df_tracking.loc[i_period, new_team_x_cols] = df_tracking.loc[i_period, team_x_cols].values * period2team2attacking_direction[period][team]
+            #
+            # df_tracking.loc[i_period, new_team_y_cols] = df_tracking.loc[i_period, team_y_cols].values * period2team2attacking_direction[period][team]
 
-    df_tracking = df_tracking.drop(columns=x_cols + y_cols).rename(columns={col: col.replace("_new", "") for col in df_tracking.columns})
+    # df_tracking = df_tracking.drop(columns=x_cols + y_cols).rename(columns={col: col.replace("_new", "") for col in df_tracking.columns})
     df_tracking = df_tracking.drop(columns=["frame_id"]).rename(columns={"custom_frame_id": "frame_id"})
     df_tracking = df_tracking.dropna(axis=1, how="all")
 
-    return df_tracking, df_events
+    return df_tracking, df_events, player2team, team2players
+
+
+@st.cache_resource
+def get_preprocessed_tracking_and_event_data():
+    df_tracking = load_raw_tracking_data_single_match(1)
+    df_events = load_event_data_single_match(1)
+
+    df_tracking, df_events, player2team, team2players = preprocess_tracking_and_event_data(df_tracking, df_events)
+
+    return df_tracking, df_events, player2team, team2players
 
 
 @st.cache_resource
@@ -303,101 +353,335 @@ def main():
     import matplotlib.pyplot as plt
     import mplsoccer.pitch
 
-    df_tracking = load_raw_tracking_data_single_match(1)
-    df_events = load_event_data_single_match(1)
+    # df_tracking = load_raw_tracking_data_single_match(1)
+    # df_events = load_event_data_single_match(1)
 
-    df_tracking, df_events = preprocess_tracking_and_event_data(df_tracking, df_events)
+    df_tracking, df_events, player2team, team2players = get_preprocessed_tracking_and_event_data()
+    # team2players = df_tracking.groupby("team")["player"].unique().to_dict()
+    player2position = df_events.set_index("From")["from_position"].to_dict() | df_events.set_index("To")["to_position"].to_dict()
+    team2color = {"Home": "red", "Away": "blue"}
 
-    st.write("Event data")
-    st.write(df_events)
-    st.write("Tracking data (first 50 rows)")
-    st.write(df_tracking.head(50))
+    with st.expander("View data"):
+        st.write("Event data")
+        st.write(df_events)
+        st.write("Tracking data (first 500 rows)")
+        st.write(df_tracking.head(500))
 
     df_passes = df_events[df_events["Type"] == "PASS"]
 
-    for team, df_passes_team in df_passes.groupby(["Team"]):
-        st.write(f"### {team}")
+    def distance_to_goal(x_norm, y_norm, which):
+        x_goal = -52.5 if which == "own" else 52.5
 
-        most_common_formation = df_passes_team["live_formation"].value_counts().idxmax()
+        return np.linalg.norm([x_norm - x_goal, y_norm], axis=0)
 
-        df_passes_team_filtered = df_passes_team[
-            df_passes_team["from_position"].notna() & df_passes_team["to_position"].notna() & (df_passes_team["live_formation"] == most_common_formation)
-        ]
+        i_goal_direct_line = np.abs(y_norm) < 7.32 / 2
+        i_above_goal = y_norm > 7.32 / 2
+        i_below_goal = y_norm < -7.32 / 2
+        return np.where(i_goal_direct_line, np.abs(x_norm - x_goal),
+                        np.where(i_above_goal,
+                                 np.linalg.norm([x_norm - x_goal], y_norm - 7.32/2),
+                                 np.linalg.norm([x_norm - x_goal], y_norm + 7.32 / 2)))
 
-        df_nodes, df_edges = model.passing_network.get_passing_network_df(
-            df_passes_team_filtered,
-            x_col="x_norm",  # column with x position of the pass
-            y_col="y_norm",  # column with y position of the pass
-            from_col="from_position",  # column with unique (!) ID or name of the player/position/... who passes the ball
-            to_col="to_position",  # column with unique (!) ID or name of the player/position/... who receives the ball
-            x_to_col="x_end_norm",  # column with x position of the pass target
-            y_to_col="y_end_norm",  # column with y position of the pass target
-        )
+        # return np.where(y_norm < -3.66, np.linalg.norm([x_norm - x_goal, y_norm + 3.66], axis=0), np.where(y_norm > 3.66, np.linalg.norm([x_norm - x_goal, y_norm - 3.66], axis=0), x_norm - x_goal))
 
-        # df_nodes["other_value"] = 0
+        # if abs(y_norm) <= 3.66:
+        #     return x_norm - x_goal
+        # else:
+        #     if y_norm > 3.66:
+        #         return np.linalg.norm([x_norm - x_goal, y_norm - 3.66])
+        #     else:
+        #         return np.linalg.norm([x_norm - x_goal, y_norm + 3.66])
 
-        # fig = model.passing_network.plottt(df_nodes, df_edges)
-        fig, ax = model.passing_network.plot_passing_network(
-            df_nodes=df_nodes,
-            df_edges=df_edges,
-            show_colorbar=False,
-            node_size_multiplier=30,
-            colormap=matplotlib.cm.get_cmap("viridis"),
-        )
+    # df_passes["distance_to_own_goal"] = df_passes.apply(lambda x: distance_to_goal(x["x_norm"], x["y_norm"], "own"), axis=1)
+    # df_passes["distance_to_opponent_goal"] = df_passes.apply(lambda x: distance_to_goal(x["x_norm"], x["y_norm"], "opponent"), axis=1)
+    # df_passes["pass_distance_to_own_goal"] = df_passes.apply(lambda x: distance_to_goal(x["x_norm"], x["y_norm"], "own"), axis=1)
+    # df_passes["pass_end_distance_to_own_goal"] = df_passes.apply(lambda x: distance_to_goal(x["x_end_norm"], x["y_end_norm"], "own"), axis=1)
+    df_passes["pass_distance_to_attacked_goal"] = distance_to_goal(df_passes["x_norm"], df_passes["y_norm"], "opp")
+    df_passes["pass_end_distance_to_attacked_goal"] = distance_to_goal(df_passes["x_end_norm"], df_passes["y_end_norm"], "opp")
+    # df_passes["pass_distance_to_defended_goal"] = distance_to_goal(df_passes["x_norm"], df_passes["y_norm"], "opp")
+    # df_passes["pass_end_distance_to_defended_goal"] = distance_to_goal(df_passes["x_end_norm"], df_passes["y_end_norm"], "opp")
 
-        st.write(fig)
+    df_tracking_passes = df_tracking[df_tracking["frame_id"].isin(df_passes["Start Frame"]) | df_tracking["frame_id"].isin(df_passes["End Frame"])]
 
-        st.write("Nodes")
-        st.write(df_nodes)
-        st.write("Edges")
-        st.write(df_edges)
+    fr2adir = df_passes.set_index("Start Frame")["attacking_direction"].to_dict()
+    fr2adir.update(df_passes.set_index("End Frame")["attacking_direction"].to_dict())
 
-    selected_passes = st.multiselect("Select pass", df_passes.index, format_func=lambda x: df_passes.loc[x, "event_string"])
+    df_tracking_passes["attacking_direction"] = df_tracking_passes["frame_id"].apply(lambda x: fr2adir.get(x, None))
+    df_tracking_passes["x_norm"] = df_tracking_passes["x"] * df_tracking_passes["attacking_direction"]
+    df_tracking_passes["y_norm"] = df_tracking_passes["y"] * df_tracking_passes["attacking_direction"]
 
-    if selected_passes == []:
-        selected_passes = df_passes.index
+    i_notna = df_tracking_passes["x_norm"].notna()
+    # df_tracking_passes.loc[i_notna, "distance_to_attacked_goal"] = distance_to_goal(df_tracking_passes.loc[i_notna, "x_norm"], df_tracking_passes.loc[i_notna, "y_norm"], "own")
+    df_tracking_passes.loc[i_notna, "distance_to_defended_goal"] = distance_to_goal(df_tracking_passes.loc[i_notna, "x_norm"], df_tracking_passes.loc[i_notna, "y_norm"], "opp")
 
-    for i_pass in selected_passes:
-        p4ss = df_passes.loc[i_pass]
-        st.write(p4ss["event_string"])
+    ### offensive xT metrics
+    for pass_index, p4ss in df_passes.iterrows():
+        i_p4ss = df_tracking_passes["frame_id"] == p4ss["Start Frame"]
+        i_p4ss_end = df_tracking_passes["frame_id"] == p4ss["End Frame"]
 
-        # Plot the pass as an arrow
-        # st.write("p4ss")
-        # st.write(p4ss)
+        assert len(df_tracking_passes[i_p4ss]) == len(df_tracking_passes[i_p4ss_end])
 
-        columns = st.columns(2)
+        defending_team = "Home" if p4ss["Team"] == "Away" else "Away"
+        i_defenders = df_tracking_passes["team"] == defending_team
 
-        for is_target in [False, True]:
-            pitch = mplsoccer.Pitch(pitch_type="impect", pitch_width=68, pitch_length=105, axis=True)
-            fig, ax = pitch.draw()
+        # ball_x = p4ss["x_norm"]
+        # ball_y = p4ss["y_norm"]
+        # ball_x_end = p4ss["x_end_norm"]
+        # ball_y_end = p4ss["y_end_norm"]
 
-            pitch.arrows(p4ss["x"], p4ss["y"], p4ss["x_end"], p4ss["y_end"], width=2, headwidth=10, headlength=10, color='blue' if p4ss["Team"] == "Away" else 'red', ax=ax)
+        ball_distance_to_attacked_goal = p4ss["pass_distance_to_attacked_goal"]
+        ball_end_distance_to_attacked_goal = p4ss["pass_end_distance_to_attacked_goal"]
 
-            # Plot positions
-            if not is_target:
-                # i_tr = df_tracking["timestamp"] == p4ss["Start Time [s]"]
-                i_tr = df_tracking["frame_id"] == p4ss["Start Frame"]
-            else:
-                # i_tr = df_tracking["timestamp"] == p4ss["End Time [s]"]
-                i_tr = df_tracking["frame_id"] == p4ss["End Frame"]
+        df_tracking_passes.loc[i_p4ss & i_defenders, "is_closer_to_own_goal_than_ball"] = df_tracking_passes.loc[i_p4ss & i_defenders, "distance_to_defended_goal"] < ball_distance_to_attacked_goal
+        df_tracking_passes.loc[i_p4ss_end & i_defenders, "is_closer_to_own_goal_than_ball"] = df_tracking_passes.loc[i_p4ss_end & i_defenders, "distance_to_defended_goal"] < ball_end_distance_to_attacked_goal
 
-            for team in ["home", "away"]:
-                x_cols = [col for col in df_tracking.columns if col.endswith("_x") and col.startswith(team)]
-                y_cols = [col for col in df_tracking.columns if col.endswith("_y") and col.startswith(team)]
-                player_names = [f"{col.rsplit('_', -1)[1]}" for col in x_cols]
-                x_pos = df_tracking.loc[i_tr, x_cols].values[0]
-                y_pos = -df_tracking.loc[i_tr, y_cols].values[0]
-                pitch.scatter(x_pos, y_pos+0., color="red" if team == "home" else "blue", ax=ax)
+        df_tracking_passes.loc[i_p4ss & i_defenders, "is_outplayed"] = (df_tracking_passes.loc[i_p4ss & i_defenders, "is_closer_to_own_goal_than_ball"].values & (~df_tracking_passes.loc[i_p4ss_end & i_defenders, "is_closer_to_own_goal_than_ball"].values)).astype(bool)
+        df_tracking_passes.loc[i_p4ss & i_defenders, "is_inplayed"] = ((~df_tracking_passes.loc[i_p4ss & i_defenders, "is_closer_to_own_goal_than_ball"].values) & df_tracking_passes.loc[i_p4ss_end & i_defenders, "is_closer_to_own_goal_than_ball"].values).astype(bool)
 
-                # plot names
-                for i, _ in enumerate(x_pos):
-                    plt.gca().annotate(player_names[i], (x_pos[i], y_pos[i]-3.5), ha="center", va="bottom")
+        # st.write("df_tracking_passes.loc[i_p4ss & i_defenders]")
+        # st.write(df_tracking_passes.loc[i_p4ss & i_defenders])
+        # st.write("df_tracking_passes.loc[i_p4ss_end & i_defenders]")
+        # st.write(df_tracking_passes.loc[i_p4ss_end & i_defenders])
 
-            pitch.scatter(df_tracking.loc[i_tr, "ball_x"], -df_tracking.loc[i_tr, "ball_y"], color="black", ax=ax, marker="x", s=200)
+        n_outplayed_defenders_old = df_tracking_passes.loc[i_p4ss_end & i_defenders,
+        "is_closer_to_own_goal_than_ball"].sum() - df_tracking_passes.loc[i_p4ss & i_defenders,
+        "is_closer_to_own_goal_than_ball"].sum()
+        n_outplayed_defenders = df_tracking_passes.loc[i_p4ss & i_defenders, "is_outplayed"].sum()
+        n_inplayed_defenders = df_tracking_passes.loc[i_p4ss & i_defenders, "is_inplayed"].sum()
 
-            # Display the plot
-            plt.show()
-            columns[int(is_target)].write(fig)
+        df_passes.loc[pass_index, "n_outplayed_defenders_old"] = n_outplayed_defenders_old
+        df_passes.loc[pass_index, "n_outplayed_defenders"] = n_outplayed_defenders
+        df_passes.loc[pass_index, "n_inplayed_defenders"] = n_inplayed_defenders
+
+    ### Offensive Passing networks
+    with st.expander("Offensive passing networks"):
+        xt_metric_positive = st.selectbox("xT metric positive", [None, "n_outplayed_defenders"], format_func=lambda x: {None: "0", "n_outplayed_defenders": "Outplayed Defenders"}[x], index=1)
+        xt_metric_negative = st.selectbox("xT metric negative", [None, "n_inplayed_defenders"], format_func=lambda x: {None: "0", "n_inplayed_defenders": "Inplayed Defenders"}[x], index=0)
+
+        # negative_weight_mode = st.selectbox("Adjust NEGATIVE OFFENSIVE weights", ["keep", "remove", "clip"], format_func=lambda x: {
+        #     "keep": "Keep negative weights", "remove": "Remove passes with negative weight", "clip": "Set negative weights to 0"
+        # }[x], index=0)
+        # if xt_metric is not None:
+        #     if negative_weight_mode == "remove":
+        #         df_passes = df_passes[df_passes[xt_metric] >= 0]
+        #     elif negative_weight_mode == "clip":
+        #         df_passes[xt_metric] = df_passes[xt_metric].clip(lower=0)
+        #
+
+        if xt_metric_positive is None and xt_metric_negative is None:
+            df_passes["xt_metric"] = 0
+        elif xt_metric_positive is not None and xt_metric_negative is None:
+            df_passes["xt_metric"] = df_passes[xt_metric_positive]
+        elif xt_metric_positive is None and xt_metric_negative is not None:
+            df_passes["xt_metric"] = -df_passes[xt_metric_negative]
+        else:
+            df_passes["xt_metric"] = df_passes[xt_metric_positive] - df_passes[xt_metric_negative]
+
+        for team, df_passes_team in df_passes.groupby(["Team"]):
+            team = team[0]
+            st.write(f"### {team}")
+
+            for formation, df_passes_team_formation in df_passes_team.groupby("live_formation"):
+                most_common_formation = df_passes_team["live_formation"].value_counts().idxmax()
+
+                if formation != most_common_formation:
+                    continue
+
+                st.write(f"#### {formation}")
+
+                # df_passes_team_filtered = df_passes_team[
+                #     df_passes_team["from_position"].notna() & df_passes_team["to_position"].notna() & (df_passes_team["live_formation"] == most_common_formation)
+                # ]
+
+                df_nodes, df_edges = model.passing_network.get_passing_network_df(
+                    df_passes_team_formation,
+                    x_col="x_norm",  # column with x position of the pass
+                    y_col="y_norm",  # column with y position of the pass
+                    from_col="from_position",  # column with unique (!) ID or name of the player/position/... who passes the ball
+                    to_col="to_position",  # column with unique (!) ID or name of the player/position/... who receives the ball
+                    x_to_col="x_end_norm",  # column with x position of the pass target
+                    y_to_col="y_end_norm",  # column with y position of the pass
+                    value_col="xt_metric",  # column with the value of the pass (e.g. expected threat)
+                )
+
+                # df_nodes["other_value"] = 0
+
+                # fig = model.passing_network.plottt(df_nodes, df_edges)
+                fig, ax = model.passing_network.plot_passing_network(
+                    df_nodes=df_nodes,
+                    df_edges=df_edges,
+                    show_colorbar=False,
+                    node_size_multiplier=30,
+                    max_color_value_edges=40,
+                    max_color_value_nodes=80,
+                    label_col="xt_metric",
+                    label_format_string="{:.0f}",
+                    arrow_color_col="value_passes",
+                    node_color_col="value_passes",
+
+                    # colormap=matplotlib.cm.get_cmap("viridis"),
+                )
+
+                st.write(fig)
+
+                st.write("Nodes")
+                st.write(df_nodes)
+                st.write("Edges")
+                st.write(df_edges)
+
+    with st.expander("Defensive passing networks"):
+        # defensive_weight_mode = st.selectbox("DEFENSIVE weights method", ["outplayed", "outplayed_inplayed"], format_func=lambda x: {"None": "0", "outplayed": "Being outplayed: Only blame", "outplayed_inplayed": "Being outplayed and inplayed: Blame and credit"}[x], index=0)
+        defensive_weight_mode_blame = st.selectbox("DEFENSIVE weights bad defending", [None, "outplayed"], format_func=lambda x: {None: "0", "outplayed": "Being out-played"}[x], index=1)
+        defensive_weight_mode_reward = st.selectbox("Defensive weights good defending", [None, "inplayed"], format_func=lambda x: {None: "0", "inplayed": "Being in-played"}[x], index=1)
+
+        for team, df_passes_team in df_passes.groupby(["Team"]):
+            if defensive_weight_mode_blame is None and defensive_weight_mode_reward is None:
+                break
+            # if team == "Home":
+            #     continue
+            team = team[0]
+            st.write("### ", team)
+            other_team = "Home" if team == "Away" else "Away"
+            most_common_formation = df_passes_team["live_formation"].value_counts().idxmax()
+            df_passes_team_filtered = df_passes_team[
+                df_passes_team["from_position"].notna() & df_passes_team["to_position"].notna() &
+                (df_passes_team["live_formation"] == most_common_formation)
+            ]
+
+            for defender in team2players[other_team]:
+                defender_with_pos = f"{defender} ({player2position.get(defender, 'unknown position')})"
+
+                # st.write(f"#### {defender_with_pos}")
+
+                df_tracking_defender_passes = df_tracking_passes[(df_tracking_passes["player"] == defender) & (df_tracking_passes["frame_id"].isin(df_passes_team_filtered["Start Frame"]))]
+                df_passes_team_filtered_defender = df_passes_team_filtered[df_passes_team_filtered["Start Frame"].isin(df_tracking_defender_passes["frame_id"])].copy()
+                df_passes_team_filtered_defender = df_passes_team_filtered_defender.drop_duplicates(subset=["Start Frame"])
+
+                # st.write("df_tracking_defender_passes", df_tracking_defender_passes.shape)
+                # st.write(df_tracking_defender_passes)
+                # st.write("df_passes_team_filtered_defender", df_passes_team_filtered_defender.shape)
+                # st.write(df_passes_team_filtered_defender)
+
+                assert len(df_tracking_defender_passes) == len(df_passes_team_filtered_defender)
+
+                df_passes_team_filtered_defender["is_outplayed"] = df_tracking_defender_passes["is_outplayed"].values.astype(int)
+                df_passes_team_filtered_defender["is_inplayed"] = df_tracking_defender_passes["is_inplayed"].values.astype(int)
+
+                df_passes_team_filtered_defender["score"] = 0
+                if defensive_weight_mode_blame == "outplayed":
+                    df_passes_team_filtered_defender["score"] += df_passes_team_filtered_defender["is_outplayed"]
+                if defensive_weight_mode_reward == "inplayed":
+                    df_passes_team_filtered_defender["score"] -= df_passes_team_filtered_defender["is_inplayed"]
+
+                # st.write("df_passes_team_filtered_defender")
+                # st.write(df_passes_team_filtered_defender)
+
+                df_nodes, df_edges = model.passing_network.get_passing_network_df(
+                    df_passes_team_filtered_defender,
+                    x_col="x_norm",  # column with x position of the pass
+                    y_col="y_norm",  # column with y position of the pass
+                    from_col="from_position",  # column with unique (!) ID or name of the player/position/... who passes the ball
+                    to_col="to_position",  # column with unique (!) ID or name of the player/position/... who receives the ball
+                    x_to_col="x_end_norm",  # column with x position of the pass target
+                    y_to_col="y_end_norm",  # column with y position of the pass
+                    value_col="score",  # column with the value of the pass (e.g. expected threat)
+                )
+
+                # st.write(df_nodes)
+                # st.write(df_edges)
+                df_edges = df_edges[df_edges["value_passes"] != 0]
+                fig, ax = model.passing_network.plot_passing_network(
+                    df_nodes=df_nodes,
+                    df_edges=df_edges,
+                    show_colorbar=False,
+                    node_size_multiplier=30,
+                    max_color_value_edges=5,
+                    min_color_value_edges=-5,
+                    max_color_value_nodes=5,
+                    min_color_value_nodes=-5,
+                    node_color_col="value_passes",
+                    arrow_color_col="value_passes",
+                    label_col="value_passes",
+                    label_format_string="{:.0f}",
+                    annotate_top_n_edges=5,
+                    # colormap=matplotlib.cm.get_cmap("PuBuGn"),
+                    colormap=matplotlib.cm.get_cmap("coolwarm"),
+                )
+                plt.title(defender_with_pos)
+
+                st.write(fig)
+
+        # else:
+        #     raise NotImplementedError()
+
+    ### Pass plotting
+    with st.expander("Plot Passes"):
+        sort_by = st.selectbox("Sort by", ["Start Time [s]", "n_outplayed_defenders", "n_inplayed_defenders"], index=1, format_func=lambda x: {"Start Time [s]": "Start Time", "n_outplayed_defenders": "Outplayed Defenders", "n_inplayed_defenders": "Inplayed Defenders"}[x])
+        ascending = True if sort_by == "Start Time [s]" else False
+        show_top_n = st.slider("Show top N passes", 1, len(df_passes), 10)
+        df_passes = df_passes.sort_values(sort_by, ascending=ascending)
+
+        # selected_passes = st.multiselect("Select pass", df_passes.index, format_func=lambda x: df_passes.loc[x, "event_string"], default=df_passes.index[0:10].tolist())
+        selected_passes = []
+
+        if selected_passes == []:
+            selected_passes = df_passes.index
+
+        pass_nr = 0
+        for i_pass in selected_passes:
+            if pass_nr >= show_top_n:
+                break
+            pass_nr += 1
+
+            p4ss = df_passes.loc[i_pass]
+            st.write(p4ss["event_string"])
+
+            st.write("Out-played Defenders", int(p4ss["n_outplayed_defenders"]) if not np.isnan(p4ss["n_outplayed_defenders"]) else 0, ", In-played Defenders", int(p4ss["n_inplayed_defenders"]) if not np.isnan(p4ss["n_inplayed_defenders"]) else 0)
+
+            # Plot the pass as an arrow
+            # st.write("p4ss")
+            # st.write(p4ss)
+
+            columns = st.columns(2)
+
+            for is_target in [False, True]:
+                pitch = mplsoccer.Pitch(pitch_type="impect", pitch_width=68, pitch_length=105, axis=True)
+                fig, ax = pitch.draw()
+
+                pitch.arrows(p4ss["x"], p4ss["y"], p4ss["x_end"], p4ss["y_end"], width=2, headwidth=10, headlength=10, color='blue' if p4ss["Team"] == "Away" else 'red', ax=ax)
+
+                # Plot positions
+                if not is_target:
+                    # i_tr = df_tracking["timestamp"] == p4ss["Start Time [s]"]
+                    i_tr = df_tracking["frame_id"] == p4ss["Start Frame"]
+                else:
+                    # i_tr = df_tracking["timestamp"] == p4ss["End Time [s]"]
+                    i_tr = df_tracking["frame_id"] == p4ss["End Frame"]
+
+                for team in team2color:
+                    # x_cols = [col for col in df_tracking.columns if col.endswith("_x") and col.startswith(team)]
+                    # y_cols = [col for col in df_tracking.columns if col.endswith("_y") and col.startswith(team)]
+                    # player_names = [f"{col.rsplit('_', -1)[1]}" for col in x_cols]
+                    # x_pos = df_tracking.loc[i_tr, x_cols].values[0]
+                    # y_pos = -df_tracking.loc[i_tr, y_cols].values[0]
+
+                    df_fr_team = df_tracking.loc[i_tr & (df_tracking["team"] == team)]
+                    x_pos = df_fr_team["x"].values
+                    y_pos = -df_fr_team["y"].values
+                    player_names = df_fr_team["player"].values
+
+                    pitch.scatter(x_pos, y_pos+0., color=team2color[team], ax=ax)
+
+                    # plot names
+                    for i, _ in enumerate(x_pos):
+                        plt.gca().annotate(player_names[i], (x_pos[i], y_pos[i]-3.5), ha="center", va="bottom")
+
+                i_ball = df_tracking["player"] == "ball"
+                pitch.scatter(df_tracking.loc[i_tr & i_ball, "x"], -df_tracking.loc[i_tr & i_ball, "y"], color="black", ax=ax, marker="x", s=200)
+
+                # Display the plot
+                plt.show()
+                columns[int(is_target)].write(fig)
 
     profiler.stop()
 

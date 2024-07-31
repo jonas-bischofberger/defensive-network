@@ -152,7 +152,9 @@ def plot_position_arrow(start_position: str, end_position: str, label: str = "",
 
     # Plot the text, aligned to the right if the text is right of the arrow, and aligned to the left if the text is left of the arrow
     if include_label:
-        plt.text(xt, yt, label, horizontalalignment='right' if xt < x1 else 'left', bbox=dict(boxstyle='round', color="white", alpha=0.8), color=label_color)
+        plt.text(xt, yt, label, horizontalalignment='right' if xt < x1 else 'left',
+                 bbox=dict(boxstyle='round', color="white", alpha=0.8), color=label_color, weight='bold',
+                 )
 
     # plt.text((x1 + x2) / 3, (y1 + y2) / 3, label, color='red')
     if plot_players:
