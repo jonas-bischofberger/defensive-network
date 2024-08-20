@@ -2,6 +2,10 @@ kloppy
 mplsoccer
 pandas
 scikit-learn
+selenium
 statsbombpy
 streamlit
 streamlit-profiler
+tqdm
+webdriver-manager
+openpyxl
