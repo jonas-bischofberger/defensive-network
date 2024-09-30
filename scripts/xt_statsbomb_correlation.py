@@ -37,7 +37,7 @@ def get_statsbomb_events(match_id):
 
 
 def get_sofascore_data():
-    df_sofa = pd.read_csv("C:/Users/j.bischofberger/Downloads/metrics_sofa.csv")
+    df_sofa = pd.read_csv(os.path.join(os.path.dirname(__file__), "../assets/metrics_sofa (1).csv"))
     df_sofa = df_sofa[df_sofa["match_id"].notnull()]
     df_sofa["match_id"] = df_sofa["match_id"].astype(int)
     eve_cols = [col for col in df_sofa.columns if col.endswith("_xt") or col.endswith("_base")]
@@ -100,11 +100,12 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
         i_valid_end = df_events["x_cell_index_after"].notnull() & df_events["y_cell_index_after"].notnull()
         df_events.loc[i_valid_end, "xt_after"] = df_events.loc[i_valid_end, :].apply(lambda x: df_xt.iloc[int(x["y_cell_index_after"]), int(x["x_cell_index_after"])], axis=1)
 
-        df_events.loc[df_events["pass_outcome"].isin(["Unknown", "Out", "Incomplete"]), "xt_after"] = 0   # IMPORTANT: xT after an unsuccessful pass is 0!
+        # Important: xT after an unsuccessful pass is 0!
+        df_events.loc[df_events["pass_outcome"].isin(["Unknown", "Out", "Incomplete"]), "xt_after"] = 0
 
         df_events["pass_xt"] = df_events["xt_after"] - df_events["xt_before"]
 
-        # Match Statsbom player names and Sofascore player names so we can merge the two datasets later
+        # Match Statsbomb player names and Sofascore player names so we can merge the two datasets later
         all_statsbomb_players = df_events["player"].dropna().unique()
         all_sofa_players = df_sofa_match["player"].dropna().unique()
         player2sofa = {}
@@ -119,6 +120,7 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
         # Only include events of a certain type (e.g. only passes or passes and carries)
         df_events = df_events[df_events["type"].isin(event_types)]
 
+        # Exclude events with negative xT if selected by the user
         if exclude_negative_xt:
             df_events = df_events[(df_events["pass_xt"] > 0)]
 
@@ -161,11 +163,11 @@ def main():
     st.write("## Statsbomb xT Network vs Sofascore in World Cup 2022")
 
     # 1. Let the user select the xT model to use and some additional options
-    xt_files = os.listdir(os.path.join(os.path.dirname(__file__), "../assets/xt_weights"))
+    xt_files = os.listdir(os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets/xt_weights")))
     full_xt_files = [os.path.join(os.path.dirname(__file__), "../assets/xt_weights", file) for file in xt_files]
 
     selected_xt_file = st.selectbox("xT weights", full_xt_files, format_func=lambda x: os.path.basename(x))
-    description = {"ma2024.xlsx": "123", "the_athletic.xlsx": "Weights copied from here https://www.nytimes.com/athletic/2751525/2021/08/06/introducing-expected-threat-or-xt-the-new-metric-on-the-block/"}
+    description = {"ma2024.xlsx": "Eve's xT model, weights copied from the  WCPAS 2024 presentation in London", "the_athletic.xlsx": "Weights copied from here https://www.nytimes.com/athletic/2751525/2021/08/06/introducing-expected-threat-or-xt-the-new-metric-on-the-block/"}
     st.write(f"Using xT weights from **{os.path.basename(selected_xt_file)}**: {description[os.path.basename(selected_xt_file)]}")
 
     exclude_negative_xt = st.checkbox("Exclude passes (and/or dribbles) with negative xT", value=True)
@@ -188,91 +190,70 @@ def main():
     available_cols = [col for col in df_overall.columns if "match_id" not in col and not col.startswith("is_") and col not in ["team", "player", "sofascore_player", "match_string", "Sofascore Rating"]]
     cols_to_analyze = ["Sofascore Rating"] + st.multiselect("Variables for correlation matrix", available_cols, default=available_cols)
 
-
+    # 6. Calculate Correlation matrix
     correlation_method = st.selectbox("correlation_method", ["pearson", "spearman", "kendall"], format_func=lambda x: {"pearson": "Pearson", "spearman": "Spearman (Rank)", "kendall": "Kendall (Rank)"}[x])
-
     corr = df_overall[cols_to_analyze].corr(method=correlation_method)
-
     plt.figure(figsize=(12, 12))
-
     sns.heatmap(corr, annot=True, fmt=".3f", xticklabels=corr.columns, yticklabels=corr.columns)
     plt.title(f"Correlation matrix\nxt_weights={os.path.basename(selected_xt_file)}\nCorrelation method={correlation_method}\nexclude_negative_weights={exclude_negative_xt}")
+    plt.yticks(rotation=0)
     fig = plt.gcf()
-    fig.savefig("C:/misc/corr.png", dpi=300, bbox_inches="tight")
+    fig.savefig("corr.png", dpi=300, bbox_inches="tight")
     st.write(fig)
 
+    # 7. Print table
     st.write(df_overall)
 
-    if st.toggle("Show correlation plots"):
+    # 8. Show scatter plots
+    if st.toggle("Show scatter/correlation plots"):
         for col in cols_to_analyze:
             if col == "Sofascore Rating":
-                continue
+                continue  # Don't correlate Sofascore rating with itself
             st.write(f"## {col}")
-            # linear correlation plot of sofascore rating and xt
             plt.figure(figsize=(10, 10))
             try:
                 sns.regplot(x=col, y="Sofascore Rating", data=df_overall)
             except Exception:
                 continue
             fig = plt.gcf()
-            fig.savefig("C:/misc/regplot.png", dpi=300, bbox_inches="tight")
+            fig.savefig("regplot.png", dpi=300, bbox_inches="tight")
             plt.title(f"Correlation {col} vs SofaScore Rating\nxt_weights={os.path.basename(selected_xt_file)}\nCorrelation method={correlation_method}\nexclude_negative_weights={exclude_negative_xt}")
             st.write(fig)
 
-
+    # 9. Bootstrap Pearson correlation confidence intervals
     st.write("## Bootstrapped Pearson Correlation Confidence Intervals")
 
-    col2intervals = {}
-
+    col2confidence_interval = {}
     for col in cols_to_analyze:
         if col == "Sofascore Rating":
             continue
 
         i_notna = df_overall[col].notnull() & df_overall["Sofascore Rating"].notnull()
 
-        # Bootstrap Pearson correlation between 'Sofascore Rating' and the selected variable
-        x = df_overall.loc[i_notna, col].values  # Remove NaN values
+        x = df_overall.loc[i_notna, col].values
         y = df_overall.loc[i_notna, "Sofascore Rating"].values
 
-        if len(x) == len(y):  # Ensure matching sizes after NaN removal
-            try:
-                ci_lower, ci_upper = bootstrap_pearson(x, y, n_iterations=1000)
-            except Exception:
-                continue
+        try:
+            ci_lower, ci_upper = bootstrap_pearson(x, y, n_iterations=1000)
+        except Exception:
+            continue
 
-            col2intervals[col] = (ci_lower, ci_upper)
+        col2confidence_interval[col] = (ci_lower, ci_upper)
 
-    # plot cis in a bar chart
-
-    # plt.figure(figsize=(10, 10))
-    # plt.barh(list(col2intervals.keys()), [v[1] - v[0] for v in col2intervals.values()], left=[v[0] for v in col2intervals.values()])
-    # plt.axvline(0, color="black")
-    # plt.xlabel("95% CI for Pearson correlation")
-    # plt.title("95% CI for Pearson correlation between variables and SofaScore Rating")
-    # fig = plt.gcf()
-    # fig.savefig("C:/misc/cis.png", dpi=300, bbox_inches="tight")
-    # st.write(fig)
-
-    # Plotting the error bar plot
-    means = [(v[1] + v[0]) / 2 for v in col2intervals.values()]  # Mean of each CI
-    errors = [(v[1] - (v[1] + v[0]) / 2) for v in col2intervals.values()]  # Error = Upper CI - Mean
-    # plt.figure(figsize=(10, 10))
+    # Plot confidence intervals
+    means = [(v[1] + v[0]) / 2 for v in col2confidence_interval.values()]  # Mean of each CI
+    errors = [(v[1] - (v[1] + v[0]) / 2) for v in col2confidence_interval.values()]  # Error = Upper CI - Mean
     plt.figure()
-    # Create horizontal error bars
-    plt.errorbar(means, list(col2intervals.keys()), xerr=errors, fmt='o', capsize=5, capthick=2, elinewidth=2, marker='s', markersize=7)
-    # Customize the plot
+    plt.errorbar(means, list(col2confidence_interval.keys()), xerr=errors, fmt='o', capsize=5, capthick=2, elinewidth=2, marker='s', markersize=7)
     plt.axvline(0, color="black", linestyle="--")  # Line at 0 for reference
     plt.xlabel("Pearson Correlation (95% CI)")
     plt.title("95% Confidence Intervals for Pearson Correlation between Variables and SofaScore Rating")
-    # Save the figure
     fig = plt.gcf()
-    fig.savefig("C:/misc/cis_error_bars.png", dpi=300, bbox_inches="tight")
-    # Show the plot in Streamlit
+    fig.savefig("cis_error_bars.png", dpi=300, bbox_inches="tight")
     st.write(fig)
 
-
-    for col in col2intervals:
-        ci_lower, ci_upper = col2intervals[col]
+    for col in col2confidence_interval:
+        ci_lower, ci_upper = col2confidence_interval[col]
         st.write(f"Bootstrap 95% CI for Pearson correlation between **{col}** and **Sofascore Rating**: [{ci_lower:.3f}, {ci_upper:.3f}]")
 
 
