@@ -8,6 +8,7 @@ import seaborn as sns
 import sklearn.utils
 import streamlit as st
 from statsbombpy import sb
+import networkx as nx
 
 
 @st.cache_resource
@@ -62,6 +63,7 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
     progress_bar_text = st.empty()
     progress_bar = st.progress(0)
     dfs = []
+
     for match_nr, (_, match) in enumerate(df_schedule.iterrows()):
         progress_bar.progress(match_nr / len(df_schedule))
         progress_bar_text.write(match["match_id"])
@@ -129,10 +131,71 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
         dfg_xt_as_receiver = df_events.groupby("pass_recipient").agg({"pass_xt": "sum"}).sort_values("pass_xt", ascending=False)
         dfg_xt_total = dfg_xt_as_passer["pass_xt"].fillna(0).add(dfg_xt_as_receiver["pass_xt"].fillna(0), fill_value=0)
 
+        matrix_df = df_events.pivot_table(index='player', columns='pass_recipient', values='pass_xt')
+        matrix_df.fillna(0, inplace=True)
+        matrix_df_inverted = 1 / matrix_df  # 权重变化取倒数
+        matrix_df_inverted.replace([np.inf, -np.inf], 0, inplace=True)
+        # print(matrix_df_inverted)
+
+        # st.write(matrix_df)
+        # st.write(matrix_df_inverted)
+
+        def network(matrix):  # 创建一个有向加权图
+            G = nx.DiGraph()
+            # 将邻接矩阵转换为边列表，并添加到图中
+            for player in matrix.index:
+                # print(player)
+                for recipient in matrix.columns:
+                    # print(recipient)
+                    weight = matrix.loc[player, recipient]
+                    if weight != 0:
+                        G.add_edge(player, recipient, weight=weight)
+            return G
+
+        G = network(matrix_df)
+        G_inverted = network(matrix_df_inverted)
+
+        # def metrics(G, G_inverted):
+
+            # pagerank = nx.pagerank(G, weight='weight')
+            # sorted_pagerank = dict(sorted(pagerank.items(), key=lambda item: item[1], reverse=True))
+
+            # eigenvector = nx.eigenvector_centrality(G, weight='weight')
+            # sorted_eigenvector = dict(sorted(eigenvector.items(), key=lambda item: item[1], reverse=True))
+
+            # clustering = nx.clustering(G, weight='weight')
+            # sorted_clustering = dict(sorted(clustering.items(), key=lambda item: item[1], reverse=True))
+            #
+            # closeness_centrality = nx.closeness_centrality(G_inverted,
+            #                                                distance='weight')  # closeness = 1/shortest length
+            # sorted_closeness_centrality = dict(
+            #     sorted(closeness_centrality.items(), key=lambda item: item[1], reverse=True))
+            #
+            # betweenness_centrality = nx.betweenness_centrality(G_inverted, weight='weight')
+            # sorted_betweenness_centrality = dict(
+            #     sorted(betweenness_centrality.items(), key=lambda item: item[1], reverse=True))
+
+            # df_metrics = pd.DataFrame({'Clustering': clustering,
+            #                            'Closeness': closeness_centrality, 'Betweenness': betweenness_centrality})
+            # df_metrics = pd.DataFrame({'Nodes Degree': degrees, 'Betweenness': betweenness_centrality})
+            # return df_metrics
+
+        # st.write("test")
+
+        # df_matrix = metrics(G, G_inverted)
+        # st.write(df_matrix)
+
+
         # Classic degree centrality
         dfg_total_passes = df_events.groupby("player").size()
         dfg_total_passes_receiver = df_events.groupby("pass_recipient").size()
         dfg_total_passes_total = dfg_total_passes.fillna(0).add(dfg_total_passes_receiver.fillna(0), fill_value=0)
+        # df
+        #
+        # matrix_df = df_events.pivot_table(index='player', columns='pass_recipient', values='pass_')
+        # matrix_df.fillna(0, inplace=True)
+        # matrix_df_inverted = 1 / matrix_df  # 权重变化取倒数
+        # matrix_df_inverted.replace([np.inf, -np.inf], 0, inplace=True)
 
         # Put everything together and add some metadata
         dfg_overall = pd.concat([dfg_xt_as_passer, dfg_xt_as_receiver, dfg_xt_total, dfg_total_passes, dfg_total_passes_receiver, dfg_total_passes_total], axis=1)
@@ -142,6 +205,7 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
         dfg_overall["sofascore_player"] = dfg_overall.index.map(player2sofa)  # to merge with SofaScore data later
         dfg_overall["is_goalkeeper"] = dfg_overall.index.isin(goalkeepers)  # to exclude goalkeepers later
 
+        # dfg_overall['betweenness'] = df_matrix['Betweenness']
         dfs.append(dfg_overall)
 
     df_overall = pd.concat(dfs)
