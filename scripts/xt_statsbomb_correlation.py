@@ -160,7 +160,7 @@ def bootstrap_pearson(x, y, n_iterations=10000):
 
 
 def main():
-    st.write("## Statsbomb xT Network vs Sofascore in World Cup 2022")
+    st.write("## Statsbomb xT Network vs Sofascore in the World Cup 2022")
 
     # 1. Let the user select the xT model to use and some additional options
     xt_files = os.listdir(os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets/xt_weights")))
