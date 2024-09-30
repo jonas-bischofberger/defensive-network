@@ -37,7 +37,7 @@ def get_statsbomb_events(match_id):
 
 
 def get_sofascore_data():
-    df_sofa = pd.read_csv(os.path.join(os.path.dirname(__file__), "../assets/metrics_sofa (1).csv"))
+    df_sofa = pd.read_csv(os.path.join(os.path.dirname(__file__), "../assets/metrics_sofa.csv"))
     df_sofa = df_sofa[df_sofa["match_id"].notnull()]
     df_sofa["match_id"] = df_sofa["match_id"].astype(int)
     eve_cols = [col for col in df_sofa.columns if col.endswith("_xt") or col.endswith("_base")]
