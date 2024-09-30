@@ -215,6 +215,7 @@ def preprocess_tracking_and_event_data(df_tracking, df_events):
 
     # Coordinates
     df_events["x"] = (df_events["Start X"] - 0.5) * 105
+    # cri
     df_events["y"] = (df_events["Start Y"] - 0.5) * 68
     df_events["x_end"] = (df_events["End X"] - 0.5) * 105
     df_events["y_end"] = (df_events["End Y"] - 0.5) * 68
