@@ -124,14 +124,16 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
 
         # Exclude events with negative xT if selected by the user
         if exclude_negative_xt:
-            df_events = df_events[(df_events["pass_xt"] > 0)]
+            df_events_for_xt = df_events[(df_events["pass_xt"] > 0)].copy()
+        else:
+            df_events_for_xt = df_events
 
         # xT degree centrality
-        dfg_xt_as_passer = df_events.groupby("player").agg({"pass_xt": "sum"}).sort_values("pass_xt", ascending=False)
-        dfg_xt_as_receiver = df_events.groupby("pass_recipient").agg({"pass_xt": "sum"}).sort_values("pass_xt", ascending=False)
+        dfg_xt_as_passer = df_events_for_xt.groupby("player").agg({"pass_xt": "sum"}).sort_values("pass_xt", ascending=False)
+        dfg_xt_as_receiver = df_events_for_xt.groupby("pass_recipient").agg({"pass_xt": "sum"}).sort_values("pass_xt", ascending=False)
         dfg_xt_total = dfg_xt_as_passer["pass_xt"].fillna(0).add(dfg_xt_as_receiver["pass_xt"].fillna(0), fill_value=0)
 
-        matrix_df = df_events.pivot_table(index='player', columns='pass_recipient', values='pass_xt')
+        matrix_df = df_events_for_xt.pivot_table(index='player', columns='pass_recipient', values='pass_xt')
         matrix_df.fillna(0, inplace=True)
         matrix_df_inverted = 1 / matrix_df  # 权重变化取倒数
         matrix_df_inverted.replace([np.inf, -np.inf], 0, inplace=True)
@@ -185,11 +187,11 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
         # df_matrix = metrics(G, G_inverted)
         # st.write(df_matrix)
 
-
         # Classic degree centrality
         dfg_total_passes = df_events.groupby("player").size()
         dfg_total_passes_receiver = df_events.groupby("pass_recipient").size()
         dfg_total_passes_total = dfg_total_passes.fillna(0).add(dfg_total_passes_receiver.fillna(0), fill_value=0)
+
         # df
         #
         # matrix_df = df_events.pivot_table(index='player', columns='pass_recipient', values='pass_')
@@ -242,9 +244,11 @@ def main():
     df_overall = calculate_degree_centrality(df_schedule, xt_file=selected_xt_file, event_types=event_types, exclude_negative_xt=exclude_negative_xt)
 
     # 3. Exclude goalkeepers if selected by the user
-    exclude_goalkeepers = st.checkbox("Exclude goalkeepers")
-    if exclude_goalkeepers:
+    exclude_goalkeepers = st.selectbox("Goalkeepers", ["Include Goalkeepers", "Exclude Goalkeepers", "Analyze only goalkeepers"], index=0)
+    if exclude_goalkeepers == "Exclude Goalkeepers":
         df_overall = df_overall[~df_overall["is_goalkeeper"]]
+    if exclude_goalkeepers == "Analyze only goalkeepers":
+        df_overall = df_overall[df_overall["is_goalkeeper"]]
 
     # 4. Merge with SofaScore data
     df_sofa = get_sofascore_data()
@@ -259,7 +263,7 @@ def main():
     corr = df_overall[cols_to_analyze].corr(method=correlation_method)
     plt.figure(figsize=(12, 12))
     sns.heatmap(corr, annot=True, fmt=".3f", xticklabels=corr.columns, yticklabels=corr.columns)
-    plt.title(f"Correlation matrix\nxt_weights={os.path.basename(selected_xt_file)}\nCorrelation method={correlation_method}\nexclude_negative_weights={exclude_negative_xt}")
+    plt.title(f"Correlation matrix\nxt_weights={os.path.basename(selected_xt_file)}\nCorrelation method={correlation_method}\nexclude_negative_weights={exclude_negative_xt}\nexclude_goalkeepers={exclude_goalkeepers}")
     plt.yticks(rotation=0)
     fig = plt.gcf()
     fig.savefig("corr.png", dpi=300, bbox_inches="tight")
