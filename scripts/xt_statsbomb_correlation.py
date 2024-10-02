@@ -20,7 +20,8 @@ def get_stastbomb_competitions():
 @st.cache_resource
 def get_statsbomb_matches_world_cup_2022():
     df_competitions = get_stastbomb_competitions()
-    df_competitions = df_competitions[(df_competitions["competition_id"] == 43) & (df_competitions["season_id"] == 106)]  # World Cup 2022 IDs
+    df_competitions = df_competitions[
+        (df_competitions["competition_id"] == 43) & (df_competitions["season_id"] == 106)]  # World Cup 2022 IDs
 
     dfs_matches = []
     for _, iteration in df_competitions.iterrows():
@@ -78,29 +79,40 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
 
         ## Calculate xT
         # Transform Statsbomb coordinates to x in [-52.5, 52.5] and y in [-34, 34]
-        df_events["x"] = (df_events["location"].astype(str).str.replace("[", "").str.replace("]", "")).apply(lambda x: float(x.split(",")[0]) if x != "nan" else np.nan)
-        df_events["y"] = (df_events["location"].astype(str).str.replace("[", "").str.replace("]", "")).apply(lambda x: float(x.split(",")[1]) if x != "nan" else np.nan)
+        df_events["x"] = (df_events["location"].astype(str).str.replace("[", "").str.replace("]", "")).apply(
+            lambda x: float(x.split(",")[0]) if x != "nan" else np.nan)
+        df_events["y"] = (df_events["location"].astype(str).str.replace("[", "").str.replace("]", "")).apply(
+            lambda x: float(x.split(",")[1]) if x != "nan" else np.nan)
         df_events["x"] = (df_events["x"] / 120) * 105 - 52.5
         df_events["y"] = (df_events["y"] / 80) * 68 - 34
 
-        df_events["pass_end_x"] = (df_events["pass_end_location"].astype(str).str.replace("[", "").str.replace("]", "")).apply(lambda x: float(x.split(",")[0]) if x != "nan" else np.nan)
-        df_events["pass_end_y"] = (df_events["pass_end_location"].astype(str).str.replace("[", "").str.replace("]", "")).apply(lambda x: float(x.split(",")[1]) if x != "nan" else np.nan)
+        df_events["pass_end_x"] = (
+            df_events["pass_end_location"].astype(str).str.replace("[", "").str.replace("]", "")).apply(
+            lambda x: float(x.split(",")[0]) if x != "nan" else np.nan)
+        df_events["pass_end_y"] = (
+            df_events["pass_end_location"].astype(str).str.replace("[", "").str.replace("]", "")).apply(
+            lambda x: float(x.split(",")[1]) if x != "nan" else np.nan)
         df_events["pass_end_x"] = (df_events["pass_end_x"] / 120) * 105 - 52.5
         df_events["pass_end_y"] = (df_events["pass_end_y"] / 80) * 68 - 34
 
         # Get cell index from x and y coordinates
         df_events["x_cell_index"] = np.clip(((df_events["x"] + 52.5) / dx_cell).apply(np.floor), 0, num_x_cells - 1)
         df_events["y_cell_index"] = np.clip(((df_events["y"] + 34) / dy_cell).apply(np.floor), 0, num_y_cells - 1)
-        df_events["x_cell_index_after"] = np.clip(((df_events["pass_end_x"] + 52.5) / dx_cell).apply(np.floor), 0, num_x_cells - 1)
-        df_events["y_cell_index_after"] = np.clip(((df_events["pass_end_y"] + 34) / dy_cell).apply(np.floor), 0, num_y_cells - 1)
+        df_events["x_cell_index_after"] = np.clip(((df_events["pass_end_x"] + 52.5) / dx_cell).apply(np.floor), 0,
+                                                  num_x_cells - 1)
+        df_events["y_cell_index_after"] = np.clip(((df_events["pass_end_y"] + 34) / dy_cell).apply(np.floor), 0,
+                                                  num_y_cells - 1)
 
         # assign xT values based on cell index and compute xT of passes
         df_events["xt_before"] = 0
         df_events["xt_after"] = 0
-        i_valid_before = df_events["x_cell_index"].notnull() & df_events["y_cell_index"].notnull()  # sometimes we have no cell index because x and y coordinates are missing!
-        df_events.loc[i_valid_before, "xt_before"] = df_events.loc[i_valid_before, :].apply(lambda x: df_xt.iloc[int(x["y_cell_index"]), int(x["x_cell_index"])], axis=1)
+        i_valid_before = df_events["x_cell_index"].notnull() & df_events[
+            "y_cell_index"].notnull()  # sometimes we have no cell index because x and y coordinates are missing!
+        df_events.loc[i_valid_before, "xt_before"] = df_events.loc[i_valid_before, :].apply(
+            lambda x: df_xt.iloc[int(x["y_cell_index"]), int(x["x_cell_index"])], axis=1)
         i_valid_end = df_events["x_cell_index_after"].notnull() & df_events["y_cell_index_after"].notnull()
-        df_events.loc[i_valid_end, "xt_after"] = df_events.loc[i_valid_end, :].apply(lambda x: df_xt.iloc[int(x["y_cell_index_after"]), int(x["x_cell_index_after"])], axis=1)
+        df_events.loc[i_valid_end, "xt_after"] = df_events.loc[i_valid_end, :].apply(
+            lambda x: df_xt.iloc[int(x["y_cell_index_after"]), int(x["x_cell_index_after"])], axis=1)
 
         # Important: xT after an unsuccessful pass is 0!
         df_events.loc[df_events["pass_outcome"].isin(["Unknown", "Out", "Incomplete"]), "xt_after"] = 0
@@ -116,31 +128,22 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
             assert len(closest_sofascore_matches) <= 1
             player2sofa[player] = closest_sofascore_matches[0] if len(closest_sofascore_matches) > 0 else None
 
-        df_events["sofascore_player_name"] = df_events["player"].apply(lambda x: player2sofa[x] if x in player2sofa else None)
-        df_events["sofascore_receiver_name"] = df_events["pass_recipient"].apply(lambda x: player2sofa[x] if x in player2sofa else None)
+        df_events["sofascore_player_name"] = df_events["player"].apply(
+            lambda x: player2sofa[x] if x in player2sofa else None)
+        df_events["sofascore_receiver_name"] = df_events["pass_recipient"].apply(
+            lambda x: player2sofa[x] if x in player2sofa else None)
 
         # Only include events of a certain type (e.g. only passes or passes and carries)
         df_events = df_events[df_events["type"].isin(event_types)]
+
+        # passes_between = df_events.groupby(['player', 'pass_recipient']).agg(pass_count=('player', 'size'),
+        #                                                                      xt=('pass_xt', 'sum'))
 
         # Exclude events with negative xT if selected by the user
         if exclude_negative_xt:
             df_events_for_xt = df_events[(df_events["pass_xt"] > 0)].copy()
         else:
             df_events_for_xt = df_events
-
-        # xT degree centrality
-        dfg_xt_as_passer = df_events_for_xt.groupby("player").agg({"pass_xt": "sum"}).sort_values("pass_xt", ascending=False)
-        dfg_xt_as_receiver = df_events_for_xt.groupby("pass_recipient").agg({"pass_xt": "sum"}).sort_values("pass_xt", ascending=False)
-        dfg_xt_total = dfg_xt_as_passer["pass_xt"].fillna(0).add(dfg_xt_as_receiver["pass_xt"].fillna(0), fill_value=0)
-
-        matrix_df = df_events_for_xt.pivot_table(index='player', columns='pass_recipient', values='pass_xt')
-        matrix_df.fillna(0, inplace=True)
-        matrix_df_inverted = 1 / matrix_df  # 权重变化取倒数
-        matrix_df_inverted.replace([np.inf, -np.inf], 0, inplace=True)
-        # print(matrix_df_inverted)
-
-        # st.write(matrix_df)
-        # st.write(matrix_df_inverted)
 
         def network(matrix):  # 创建一个有向加权图
             G = nx.DiGraph()
@@ -154,60 +157,86 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
                         G.add_edge(player, recipient, weight=weight)
             return G
 
-        G = network(matrix_df)
-        G_inverted = network(matrix_df_inverted)
+        def metrics(G, G_inverted):
+            reciprocity = nx.reciprocity(G)
+            neighbor = nx.average_neighbor_degree(G, weight='weight')
+            clustering = nx.clustering(G, weight='weight')
+            eigenvector = nx.eigenvector_centrality(G, weight='weight', max_iter=10000)
+            closeness_centrality = nx.closeness_centrality(G_inverted, distance='weight')  # closeness=1/shortest length
+            betweenness_centrality = nx.betweenness_centrality(G_inverted, weight='weight')
 
-        # def metrics(G, G_inverted):
-
-            # pagerank = nx.pagerank(G, weight='weight')
-            # sorted_pagerank = dict(sorted(pagerank.items(), key=lambda item: item[1], reverse=True))
-
-            # eigenvector = nx.eigenvector_centrality(G, weight='weight')
-            # sorted_eigenvector = dict(sorted(eigenvector.items(), key=lambda item: item[1], reverse=True))
-
-            # clustering = nx.clustering(G, weight='weight')
-            # sorted_clustering = dict(sorted(clustering.items(), key=lambda item: item[1], reverse=True))
-            #
-            # closeness_centrality = nx.closeness_centrality(G_inverted,
-            #                                                distance='weight')  # closeness = 1/shortest length
-            # sorted_closeness_centrality = dict(
-            #     sorted(closeness_centrality.items(), key=lambda item: item[1], reverse=True))
-            #
-            # betweenness_centrality = nx.betweenness_centrality(G_inverted, weight='weight')
-            # sorted_betweenness_centrality = dict(
-            #     sorted(betweenness_centrality.items(), key=lambda item: item[1], reverse=True))
-
-            # df_metrics = pd.DataFrame({'Clustering': clustering,
-            #                            'Closeness': closeness_centrality, 'Betweenness': betweenness_centrality})
+            df_metrics = pd.DataFrame({'Reciprocity': reciprocity,
+                                       'Neighbor': neighbor,
+                                       'Clustering': clustering,
+                                       'Eigenvector': eigenvector,
+                                       'Closeness': closeness_centrality,
+                                       'Betweenness': betweenness_centrality})
             # df_metrics = pd.DataFrame({'Nodes Degree': degrees, 'Betweenness': betweenness_centrality})
-            # return df_metrics
+            return df_metrics
 
-        # st.write("test")
+        # calculate the xT degree centrality
+        dfg_xt_as_passer = df_events_for_xt.groupby("player").agg({"pass_xt": "sum"}).sort_values("pass_xt",
+                                                                                                  ascending=False)
+        dfg_xt_as_receiver = df_events_for_xt.groupby("pass_recipient").agg({"pass_xt": "sum"}).sort_values("pass_xt",
+                                                                                                            ascending=False)
+        dfg_xt_total = dfg_xt_as_passer["pass_xt"].fillna(0).add(dfg_xt_as_receiver["pass_xt"].fillna(0), fill_value=0)
 
-        # df_matrix = metrics(G, G_inverted)
-        # st.write(df_matrix)
+        # calculate other xT network metrics
+        # keep only the positive pass_xt for calculating the network metrics
+        # bc some metrics cannot work in negative,like betweenness
+        df_events_for_xt_positive = df_events[df_events["pass_xt"] > 0].copy()
+        passes_between_positive = df_events_for_xt_positive.groupby(['player', 'pass_recipient']).agg(xt=('pass_xt', 'sum'))
+        matrix_df = passes_between_positive.pivot_table(index='player', columns='pass_recipient', values='xt')
+        matrix_df.fillna(0, inplace=True)
+        matrix_df_inverted = 1 / matrix_df  # 权重变化取倒数
+        matrix_df_inverted.replace([np.inf, -np.inf], 0, inplace=True)
+
+        G_xT = network(matrix_df)
+        G_xT_inverted = network(matrix_df_inverted)
+
+        df_matrix = metrics(G_xT, G_xT_inverted)
 
         # Classic degree centrality
         dfg_total_passes = df_events.groupby("player").size()
         dfg_total_passes_receiver = df_events.groupby("pass_recipient").size()
         dfg_total_passes_total = dfg_total_passes.fillna(0).add(dfg_total_passes_receiver.fillna(0), fill_value=0)
 
-        # df
-        #
-        # matrix_df = df_events.pivot_table(index='player', columns='pass_recipient', values='pass_')
-        # matrix_df.fillna(0, inplace=True)
-        # matrix_df_inverted = 1 / matrix_df  # 权重变化取倒数
-        # matrix_df_inverted.replace([np.inf, -np.inf], 0, inplace=True)
+        # calculate other classic network metrics
+        passes_between = df_events.groupby(['player', 'pass_recipient']).agg(pass_count=('player', 'size'))
+        matrix_df_classic = passes_between.pivot_table(index='player', columns='pass_recipient', values='pass_count')
+        matrix_df_classic.fillna(0, inplace=True)
+        matrix_df_classic_inverted = 1 / matrix_df_classic  # 权重变化取倒数
+        matrix_df_classic_inverted.replace([np.inf, -np.inf], 0, inplace=True)
+
+        G_classic = network(matrix_df_classic)
+        G_inverted_classic = network(matrix_df_classic_inverted)
+
+        df_matrix_classic = metrics(G_classic, G_inverted_classic)
 
         # Put everything together and add some metadata
-        dfg_overall = pd.concat([dfg_xt_as_passer, dfg_xt_as_receiver, dfg_xt_total, dfg_total_passes, dfg_total_passes_receiver, dfg_total_passes_total], axis=1)
-        dfg_overall.columns = ["Out_Degree_xT", "In_Degree_xT", "Degree_Centrality_xT", "Out_Degree_Classic", "In_Degree_Classic", "Degree_Centrality_Classic"]
+        dfg_overall = pd.concat(
+            [dfg_xt_as_passer, dfg_xt_as_receiver, dfg_xt_total, dfg_total_passes, dfg_total_passes_receiver,
+             dfg_total_passes_total], axis=1)
+        dfg_overall.columns = ["Out_Degree_xT", "In_Degree_xT", "Degree_Centrality_xT", "Out_Degree_Classic",
+                               "In_Degree_Classic", "Degree_Centrality_Classic"]
 
         dfg_overall["sofascore_match_id"] = match_id_sofa
         dfg_overall["sofascore_player"] = dfg_overall.index.map(player2sofa)  # to merge with SofaScore data later
         dfg_overall["is_goalkeeper"] = dfg_overall.index.isin(goalkeepers)  # to exclude goalkeepers later
 
-        # dfg_overall['betweenness'] = df_matrix['Betweenness']
+        dfg_overall['Reciprocity_xT'] = df_matrix['Reciprocity']
+        dfg_overall['Neighbor_xT'] = df_matrix['Neighbor']
+        dfg_overall['betweenness_xT'] = df_matrix['Betweenness']
+        dfg_overall['closeness_xT'] = df_matrix['Closeness']
+        dfg_overall['clustering_xT'] = df_matrix['Clustering']
+        dfg_overall['Eigenvector_xT'] = df_matrix['Eigenvector']
+
+        dfg_overall['Reciprocity_classic'] = df_matrix_classic['Reciprocity']
+        dfg_overall['Neighbor_classic'] = df_matrix_classic['Neighbor']
+        dfg_overall['betweenness_classic'] = df_matrix_classic['Betweenness']
+        dfg_overall['closeness_classic'] = df_matrix_classic['Closeness']
+        dfg_overall['clustering_classic'] = df_matrix_classic['Clustering']
+        dfg_overall['Eigenvector_classic'] = df_matrix_classic['Eigenvector']
         dfs.append(dfg_overall)
 
     df_overall = pd.concat(dfs)
@@ -233,18 +262,23 @@ def main():
     full_xt_files = [os.path.join(os.path.dirname(__file__), "../assets/xt_weights", file) for file in xt_files]
 
     selected_xt_file = st.selectbox("xT weights", full_xt_files, format_func=lambda x: os.path.basename(x))
-    description = {"ma2024.xlsx": "Eve's xT model, weights copied from the  WCPAS 2024 presentation in London", "the_athletic.xlsx": "Weights copied from here https://www.nytimes.com/athletic/2751525/2021/08/06/introducing-expected-threat-or-xt-the-new-metric-on-the-block/"}
-    st.write(f"Using xT weights from **{os.path.basename(selected_xt_file)}**: {description[os.path.basename(selected_xt_file)]}")
+    description = {"ma2024.xlsx": "Eve's xT model, weights copied from the  WCPAS 2024 presentation in London",
+                   "the_athletic.xlsx": "Weights copied from here https://www.nytimes.com/athletic/2751525/2021/08/06/introducing-expected-threat-or-xt-the-new-metric-on-the-block/"}
+    st.write(
+        f"Using xT weights from **{os.path.basename(selected_xt_file)}**: {description[os.path.basename(selected_xt_file)]}")
 
     exclude_negative_xt = st.checkbox("Exclude passes (and/or dribbles) with negative xT", value=True)
     event_types = st.multiselect("Event types", ["Pass"], default=["Pass"])
 
     # 2. Calculate network metrics for WC 2022 (currently only degree centrality)
     df_schedule = get_statsbomb_matches_world_cup_2022()
-    df_overall = calculate_degree_centrality(df_schedule, xt_file=selected_xt_file, event_types=event_types, exclude_negative_xt=exclude_negative_xt)
+    df_overall = calculate_degree_centrality(df_schedule, xt_file=selected_xt_file, event_types=event_types,
+                                             exclude_negative_xt=exclude_negative_xt)
 
     # 3. Exclude goalkeepers if selected by the user
-    exclude_goalkeepers = st.selectbox("Goalkeepers", ["Include Goalkeepers", "Exclude Goalkeepers", "Analyze only goalkeepers"], index=0)
+    exclude_goalkeepers = st.selectbox("Goalkeepers",
+                                       ["Include Goalkeepers", "Exclude Goalkeepers", "Analyze only goalkeepers"],
+                                       index=0)
     if exclude_goalkeepers == "Exclude Goalkeepers":
         df_overall = df_overall[~df_overall["is_goalkeeper"]]
     if exclude_goalkeepers == "Analyze only goalkeepers":
@@ -252,18 +286,26 @@ def main():
 
     # 4. Merge with SofaScore data
     df_sofa = get_sofascore_data()
-    df_overall = df_overall.merge(df_sofa, left_on=["sofascore_match_id", "sofascore_player"], right_on=["match_id", "player"], how="left")
+    df_overall = df_overall.merge(df_sofa, left_on=["sofascore_match_id", "sofascore_player"],
+                                  right_on=["match_id", "player"], how="left")
 
     # 5. Select variables for correlation matrix
-    available_cols = [col for col in df_overall.columns if "match_id" not in col and not col.startswith("is_") and col not in ["team", "player", "sofascore_player", "match_string", "Sofascore Rating"]]
-    cols_to_analyze = ["Sofascore Rating"] + st.multiselect("Variables for correlation matrix", available_cols, default=available_cols)
+    available_cols = [col for col in df_overall.columns if
+                      "match_id" not in col and not col.startswith("is_") and col not in ["team", "player",
+                                                                                          "sofascore_player",
+                                                                                          "match_string",
+                                                                                          "Sofascore Rating"]]
+    cols_to_analyze = ["Sofascore Rating"] + st.multiselect("Variables for correlation matrix", available_cols,
+                                                            default=available_cols)
 
     # 6. Calculate Correlation matrix
-    correlation_method = st.selectbox("correlation_method", ["pearson", "spearman", "kendall"], format_func=lambda x: {"pearson": "Pearson", "spearman": "Spearman (Rank)", "kendall": "Kendall (Rank)"}[x])
+    correlation_method = st.selectbox("correlation_method", ["pearson", "spearman", "kendall"], format_func=lambda x:
+    {"pearson": "Pearson", "spearman": "Spearman (Rank)", "kendall": "Kendall (Rank)"}[x])
     corr = df_overall[cols_to_analyze].corr(method=correlation_method)
     plt.figure(figsize=(12, 12))
     sns.heatmap(corr, annot=True, fmt=".3f", xticklabels=corr.columns, yticklabels=corr.columns)
-    plt.title(f"Correlation matrix\nxt_weights={os.path.basename(selected_xt_file)}\nCorrelation method={correlation_method}\nexclude_negative_weights={exclude_negative_xt}\nexclude_goalkeepers={exclude_goalkeepers}")
+    plt.title(
+        f"Correlation matrix\nxt_weights={os.path.basename(selected_xt_file)}\nCorrelation method={correlation_method}\nexclude_negative_weights={exclude_negative_xt}\nexclude_goalkeepers={exclude_goalkeepers}")
     plt.yticks(rotation=0)
     fig = plt.gcf()
     fig.savefig("corr.png", dpi=300, bbox_inches="tight")
@@ -285,7 +327,8 @@ def main():
                 continue
             fig = plt.gcf()
             fig.savefig("regplot.png", dpi=300, bbox_inches="tight")
-            plt.title(f"Correlation {col} vs SofaScore Rating\nxt_weights={os.path.basename(selected_xt_file)}\nCorrelation method={correlation_method}\nexclude_negative_weights={exclude_negative_xt}")
+            plt.title(
+                f"Correlation {col} vs SofaScore Rating\nxt_weights={os.path.basename(selected_xt_file)}\nCorrelation method={correlation_method}\nexclude_negative_weights={exclude_negative_xt}")
             st.write(fig)
 
     # 9. Bootstrap Pearson correlation confidence intervals
@@ -312,7 +355,8 @@ def main():
     means = [(v[1] + v[0]) / 2 for v in col2confidence_interval.values()]  # Mean of each CI
     errors = [(v[1] - (v[1] + v[0]) / 2) for v in col2confidence_interval.values()]  # Error = Upper CI - Mean
     plt.figure()
-    plt.errorbar(means, list(col2confidence_interval.keys()), xerr=errors, fmt='o', capsize=5, capthick=2, elinewidth=2, marker='s', markersize=7)
+    plt.errorbar(means, list(col2confidence_interval.keys()), xerr=errors, fmt='o', capsize=5, capthick=2, elinewidth=2,
+                 marker='s', markersize=7)
     plt.axvline(0, color="black", linestyle="--")  # Line at 0 for reference
     plt.xlabel("Pearson Correlation (95% CI)")
     plt.title("95% Confidence Intervals for Pearson Correlation between Variables and SofaScore Rating")
@@ -322,7 +366,8 @@ def main():
 
     for col in col2confidence_interval:
         ci_lower, ci_upper = col2confidence_interval[col]
-        st.write(f"Bootstrap 95% CI for Pearson correlation between **{col}** and **Sofascore Rating**: [{ci_lower:.3f}, {ci_upper:.3f}]")
+        st.write(
+            f"Bootstrap 95% CI for Pearson correlation between **{col}** and **Sofascore Rating**: [{ci_lower:.3f}, {ci_upper:.3f}]")
 
 
 if __name__ == '__main__':
