@@ -65,6 +65,9 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
     progress_bar = st.progress(0)
     dfs = []
 
+    if not exclude_negative_xt:
+        st.warning("Negative xT values are included, so some network metrics for xT are not calculated: Reciprocity, Neighbor, Betweenness, Closeness, Clustering, Eigenvector. These metrics would require normalization.")
+
     for match_nr, (_, match) in enumerate(df_schedule.iterrows()):
         progress_bar.progress(match_nr / len(df_schedule))
         progress_bar_text.write(match["match_id"])
@@ -181,21 +184,6 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
                                                                                                             ascending=False)
         dfg_xt_total = dfg_xt_as_passer["pass_xt"].fillna(0).add(dfg_xt_as_receiver["pass_xt"].fillna(0), fill_value=0)
 
-        # calculate other xT network metrics
-        # keep only the positive pass_xt for calculating the network metrics
-        # bc some metrics cannot work in negative,like betweenness
-        df_events_for_xt_positive = df_events[df_events["pass_xt"] > 0].copy()
-        passes_between_positive = df_events_for_xt_positive.groupby(['player', 'pass_recipient']).agg(xt=('pass_xt', 'sum'))
-        matrix_df = passes_between_positive.pivot_table(index='player', columns='pass_recipient', values='xt')
-        matrix_df.fillna(0, inplace=True)
-        matrix_df_inverted = 1 / matrix_df  # 权重变化取倒数
-        matrix_df_inverted.replace([np.inf, -np.inf], 0, inplace=True)
-
-        G_xT = network(matrix_df)
-        G_xT_inverted = network(matrix_df_inverted)
-
-        df_matrix = metrics(G_xT, G_xT_inverted)
-
         # Classic degree centrality
         dfg_total_passes = df_events.groupby("player").size()
         dfg_total_passes_receiver = df_events.groupby("pass_recipient").size()
@@ -224,12 +212,28 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
         dfg_overall["sofascore_player"] = dfg_overall.index.map(player2sofa)  # to merge with SofaScore data later
         dfg_overall["is_goalkeeper"] = dfg_overall.index.isin(goalkeepers)  # to exclude goalkeepers later
 
-        dfg_overall['Reciprocity_xT'] = df_matrix['Reciprocity']
-        dfg_overall['Neighbor_xT'] = df_matrix['Neighbor']
-        dfg_overall['betweenness_xT'] = df_matrix['Betweenness']
-        dfg_overall['closeness_xT'] = df_matrix['Closeness']
-        dfg_overall['clustering_xT'] = df_matrix['Clustering']
-        dfg_overall['Eigenvector_xT'] = df_matrix['Eigenvector']
+        if exclude_negative_xt:
+            # calculate other xT network metrics
+            # keep only the positive pass_xt for calculating the network metrics
+            # bc some metrics cannot work in negative,like betweenness
+            passes_between_positive = df_events_for_xt.groupby(['player', 'pass_recipient']).agg(
+                xt=('pass_xt', 'sum'))
+            matrix_df = passes_between_positive.pivot_table(index='player', columns='pass_recipient', values='xt')
+            matrix_df.fillna(0, inplace=True)
+            matrix_df_inverted = 1 / matrix_df  # 权重变化取倒数
+            matrix_df_inverted.replace([np.inf, -np.inf], 0, inplace=True)
+
+            G_xT = network(matrix_df)
+            G_xT_inverted = network(matrix_df_inverted)
+
+            df_matrix = metrics(G_xT, G_xT_inverted)
+
+            dfg_overall['Reciprocity_xT'] = df_matrix['Reciprocity']
+            dfg_overall['Neighbor_xT'] = df_matrix['Neighbor']
+            dfg_overall['betweenness_xT'] = df_matrix['Betweenness']
+            dfg_overall['closeness_xT'] = df_matrix['Closeness']
+            dfg_overall['clustering_xT'] = df_matrix['Clustering']
+            dfg_overall['Eigenvector_xT'] = df_matrix['Eigenvector']
 
         dfg_overall['Reciprocity_classic'] = df_matrix_classic['Reciprocity']
         dfg_overall['Neighbor_classic'] = df_matrix_classic['Neighbor']
