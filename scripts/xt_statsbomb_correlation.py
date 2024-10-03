@@ -306,8 +306,8 @@ def main():
     correlation_method = st.selectbox("correlation_method", ["pearson", "spearman", "kendall"], format_func=lambda x:
     {"pearson": "Pearson", "spearman": "Spearman (Rank)", "kendall": "Kendall (Rank)"}[x])
     corr = df_overall[cols_to_analyze].corr(method=correlation_method)
-    plt.figure(figsize=(12, 12))
-    sns.heatmap(corr, annot=True, fmt=".3f", xticklabels=corr.columns, yticklabels=corr.columns)
+    plt.figure(figsize=(15, 15))
+    sns.heatmap(corr, annot=True, fmt=".2f", xticklabels=corr.columns, yticklabels=corr.columns)
     plt.title(
         f"Correlation matrix\nxt_weights={os.path.basename(selected_xt_file)}\nCorrelation method={correlation_method}\nexclude_negative_weights={exclude_negative_xt}\nexclude_goalkeepers={exclude_goalkeepers}")
     plt.yticks(rotation=0)
