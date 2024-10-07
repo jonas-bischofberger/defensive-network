@@ -167,7 +167,7 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
             eigenvector = nx.eigenvector_centrality(G, weight='weight', max_iter=10000)
             closeness_centrality = nx.closeness_centrality(G_inverted, distance='weight')  # closeness=1/shortest length
             betweenness_centrality = nx.betweenness_centrality(G_inverted, weight='weight')
-            degree = dict(G.degree(weight='weight'))
+            degree = dict(nx.degree(G, weight='weight'))
             in_degree = dict(G.in_degree(weight='weight'))
             out_degree = dict(G.out_degree(weight='weight'))
 
@@ -257,6 +257,9 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
         dfs.append(dfg_overall)
 
     df_overall = pd.concat(dfs)
+
+    df_overall = df_overall.drop(columns=["Out_Degree_xT", "In_Degree_xT", "Degree_Centrality_xT", "Out_Degree_Classic",
+                               "In_Degree_Classic", "Degree_Centrality_Classic"])
 
     return df_overall
 
