@@ -80,7 +80,7 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
 
         team_list = df_events_all['team'].unique()
         for team in team_list:
-            df_events = df_events_all.loc[df_events_all.team.isin([team])].copy
+            df_events = df_events_all.loc[df_events_all.team.isin([team])].copy()
             goalkeepers = df_events[df_events["position"] == "Goalkeeper"]["player"].unique()
 
             ## Calculate xT
@@ -170,13 +170,20 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
                 eigenvector = nx.eigenvector_centrality(G, weight='weight', max_iter=10000)
                 closeness_centrality = nx.closeness_centrality(G_inverted, distance='weight')  # closeness=1/shortest length
                 betweenness_centrality = nx.betweenness_centrality(G_inverted, weight='weight')
+                degree = dict(nx.degree(G, weight='weight'))
+                in_degree = dict(G.in_degree(weight='weight'))
+                out_degree = dict(G.out_degree(weight='weight'))
 
                 df_metrics = pd.DataFrame({'Reciprocity': reciprocity,
                                            'Neighbor': neighbor,
                                            'Clustering': clustering,
                                            'Eigenvector': eigenvector,
                                            'Closeness': closeness_centrality,
-                                           'Betweenness': betweenness_centrality})
+                                           'Betweenness': betweenness_centrality,
+                                           "Degree_v2": degree,
+                                            "In-Degree_v2": in_degree,
+                                            "Out-Degree_v2": out_degree
+                                           })
                 # df_metrics = pd.DataFrame({'Nodes Degree': degrees, 'Betweenness': betweenness_centrality})
                 return df_metrics
 
@@ -237,6 +244,9 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
                 dfg_overall['closeness_xT'] = df_matrix['Closeness']
                 dfg_overall['clustering_xT'] = df_matrix['Clustering']
                 dfg_overall['Eigenvector_xT'] = df_matrix['Eigenvector']
+                dfg_overall['Degree_v2_xT'] = df_matrix['Degree_v2']
+                dfg_overall['In-Degree_v2_xT'] = df_matrix['In-Degree_v2']
+                dfg_overall['Out-Degree_v2_xT'] = df_matrix['Out-Degree_v2']
 
             dfg_overall['Reciprocity_classic'] = df_matrix_classic['Reciprocity']
             dfg_overall['Neighbor_classic'] = df_matrix_classic['Neighbor']
@@ -244,9 +254,15 @@ def calculate_degree_centrality(df_schedule, xt_file, event_types=("Pass",), exc
             dfg_overall['closeness_classic'] = df_matrix_classic['Closeness']
             dfg_overall['clustering_classic'] = df_matrix_classic['Clustering']
             dfg_overall['Eigenvector_classic'] = df_matrix_classic['Eigenvector']
+            dfg_overall['Degree_v2_classic'] = df_matrix_classic['Degree_v2']
+            dfg_overall['In-Degree_v2_classic'] = df_matrix_classic['In-Degree_v2']
+            dfg_overall['Out-Degree_v2_classic'] = df_matrix_classic['Out-Degree_v2']
             dfs.append(dfg_overall)
 
     df_overall = pd.concat(dfs)
+
+    df_overall = df_overall.drop(columns=["Out_Degree_xT", "In_Degree_xT", "Degree_Centrality_xT", "Out_Degree_Classic",
+                               "In_Degree_Classic", "Degree_Centrality_Classic"])
 
     return df_overall
 
@@ -302,15 +318,15 @@ def main():
                                                                                           "sofascore_player",
                                                                                           "match_string",
                                                                                           "Sofascore Rating"]]
-    cols_to_analyze = ["Sofascore Rating"] + st.multiselect("Variables for correlation matrix", available_cols,
-                                                            default=available_cols)
+    cols_to_analyze = ["Sofascore Rating"] + st.multiselect("Variables for correlation matrix", sorted(available_cols), default=available_cols)
 
     # 6. Calculate Correlation matrix
     correlation_method = st.selectbox("correlation_method", ["pearson", "spearman", "kendall"], format_func=lambda x:
     {"pearson": "Pearson", "spearman": "Spearman (Rank)", "kendall": "Kendall (Rank)"}[x])
     corr = df_overall[cols_to_analyze].corr(method=correlation_method)
     plt.figure(figsize=(15, 15))
-    sns.heatmap(corr, annot=True, fmt=".2f", xticklabels=corr.columns, yticklabels=corr.columns)
+    fmt_string = st.selectbox("Number format for correlation matrix", [".2f", ".3f", ".4f"])
+    sns.heatmap(corr, annot=True, fmt=fmt_string, xticklabels=corr.columns, yticklabels=corr.columns)
     plt.title(
         f"Correlation matrix\nxt_weights={os.path.basename(selected_xt_file)}\nCorrelation method={correlation_method}\nexclude_negative_weights={exclude_negative_xt}\nexclude_goalkeepers={exclude_goalkeepers}")
     plt.yticks(rotation=0)
@@ -361,7 +377,7 @@ def main():
     # Plot confidence intervals
     means = [(v[1] + v[0]) / 2 for v in col2confidence_interval.values()]  # Mean of each CI
     errors = [(v[1] - (v[1] + v[0]) / 2) for v in col2confidence_interval.values()]  # Error = Upper CI - Mean
-    plt.figure()
+    plt.figure(figsize=(10, 7))
     plt.errorbar(means, list(col2confidence_interval.keys()), xerr=errors, fmt='o', capsize=5, capthick=2, elinewidth=2,
                  marker='s', markersize=7)
     plt.axvline(0, color="black", linestyle="--")  # Line at 0 for reference
