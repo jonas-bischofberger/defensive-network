@@ -1,6 +1,9 @@
 kloppy
 mplsoccer
+networkx
+openpyxl
 pandas
+python-slugify
 scikit-learn
 selenium
 statsbombpy
@@ -8,5 +11,3 @@ streamlit
 streamlit-profiler
 tqdm
 webdriver-manager
-openpyxl
-networkx
