@@ -7,7 +7,7 @@ python-slugify
 scikit-learn
 selenium
 statsbombpy
-streamlit
+streamlit==1.40.2
 streamlit-profiler
 tqdm
 webdriver-manager
