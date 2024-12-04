@@ -16,6 +16,9 @@ import pandas as pd
 import slugify
 import streamlit as st
 
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
 import utility.general
 
 
