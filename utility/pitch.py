@@ -1,7 +1,7 @@
 import math
 
 import numpy as np
-
+import streamlit as st
 
 def_x = -30
 mf_x = 0
@@ -151,9 +151,10 @@ def plot_position_arrow(start_position: str, end_position: str, label: str = "",
     xt, yt = text_pos[0], text_pos[1]
 
     # Plot the text, aligned to the right if the text is right of the arrow, and aligned to the left if the text is left of the arrow
-    if include_label:
+    if include_label and label != 0.0:  # TODO FIX
         plt.text(xt, yt, label, horizontalalignment='right' if xt < x1 else 'left',
-                 bbox=dict(boxstyle='round', color="white", alpha=0.8), color=label_color, weight='bold',
+                 bbox=dict(boxstyle='round', color="black", alpha=0.8), color="white", weight='bold', fontsize=6,
+                 # color=label_color,
                  )
 
     # plt.text((x1 + x2) / 3, (y1 + y2) / 3, label, color='red')

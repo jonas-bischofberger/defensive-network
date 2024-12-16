@@ -1,3 +1,4 @@
+import importlib
 import os.path
 import sys
 import streamlit as st
@@ -504,7 +505,10 @@ def plot_passing_network(
         x2_avg = df_nodes.loc[str(to_entity), x_col]
         y2_avg = df_nodes.loc[str(to_entity), y_col]
 
-        formatted_label_str = label_format_string.format(row[arrow_color_col]) if label_col is not None and edge_nr >= len(df_edges) - annotate_top_n_edges else None
+        if label_col is not None and edge_nr >= len(df_edges) - annotate_top_n_edges and row[label_col] is not None and not pd.isna(row[label_col]):
+            formatted_label_str = label_format_string.format(row[label_col])
+        else:
+            formatted_label_str = None
 
         # import streamlit as st
         # st.write(df_edges[arrow_color_col])
@@ -526,7 +530,9 @@ def plot_passing_network(
         # st.write("df_edges[df_edges[arrow_color_col] == df_edges[arrow_color_col].max()][custom_color_col]")
         # st.write(df_edges[df_edges[arrow_color_col] == df_edges[arrow_color_col].max()][custom_color_col])
         # st.write("label_color")
-        # st.write(label_color)
+        # st.write
+
+        importlib.reload(utility.pitch)
 
         utility.pitch.plot_position_arrow(
             from_entity,
