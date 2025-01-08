@@ -1,2 +1,6 @@
 .idea/
 data/
+*.png
+*.mp4
+venv/
+env/

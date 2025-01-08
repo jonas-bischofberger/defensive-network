@@ -1,7 +1,9 @@
 accessible-space
 kloppy
+matplotlib
 mplsoccer
 networkx
+numpy
 openpyxl
 pandas
 python-slugify
