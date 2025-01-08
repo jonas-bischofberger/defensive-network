@@ -42,6 +42,9 @@ def get_dfb_csv_files_in_folder(folder, exclude_files=None):
     }
     filetype_to_files = {}
     for csv_file in csv_files:
+        st.write(csv_file)
+        if csv_file.startswith("._"):
+            continue
         full_csv_file = os.path.join(folder, csv_file)
         if exclude_files is not None and full_csv_file in exclude_files:
             continue
