@@ -19,12 +19,8 @@ source venv/bin/activate  # On Windows use `venv\Scripts\activate`
 pip install -r requirements.txt
 ```
 
-4. Run the Streamlit app to explore Metrica or StatsBomb data!
+4. Run the Streamlit app!
 
 ```
-streamlit run explore/metrica.py
-```
-or 
-```
-streamlit run explore/statsbomb.py
+streamlit run analyze_defensive_network.py
 ```
