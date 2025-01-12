@@ -54,9 +54,6 @@ def get_expected_threat(
     dx_cell = 105 / num_x_cells
     dy_cell = 68 / num_y_cells
 
-    st.write("df_events")
-    st.write(df_events[["x_norm", "y_norm", "x_target_norm", "y_target_norm"]])
-
     # Get cell index from x and y coordinates
     x_cell_index_col, y_cell_index_col, x_cell_index_after_col, y_cell_index_after_col = defensive_network.utility.general.get_unused_column_name(df_events.columns, "x_cell_index"), defensive_network.utility.general.get_unused_column_name(df_events.columns, "y_cell_index"), defensive_network.utility.general.get_unused_column_name(df_events.columns, "x_cell_index_after"), defensive_network.utility.general.get_unused_column_name(df_events.columns, "y_cell_index_after")
     df_events[x_cell_index_col] = np.clip(((df_events[event_x_col] + 52.5) / dx_cell).apply(np.floor), 0, num_x_cells - 1)

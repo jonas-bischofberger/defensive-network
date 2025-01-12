@@ -93,14 +93,11 @@ df_pass_risky = df_pass_safe.copy()
 df_pass_risky["x_target"] = 50
 
 
-BASE_PATH = "C:/Users/Jonas/Downloads/dfl_test_data/2324"
-
-
-def _select_matches():
-    df_meta = defensive_network.parse.dfb.get_all_meta(BASE_PATH)
-    df_lineups = defensive_network.parse.dfb.get_all_lineups(BASE_PATH)
-    all_tracking_files = os.listdir(os.path.dirname(defensive_network.parse.dfb.get_tracking_fpath(BASE_PATH, "")))
-    all_event_files = os.listdir(os.path.dirname(defensive_network.parse.dfb.get_event_fpath(BASE_PATH, "")))
+def _select_matches(base_path):
+    df_meta = defensive_network.parse.dfb.get_all_meta(base_path)
+    df_lineups = defensive_network.parse.dfb.get_all_lineups(base_path)
+    all_tracking_files = os.listdir(os.path.dirname(defensive_network.parse.dfb.get_tracking_fpath(base_path, "")))
+    all_event_files = os.listdir(os.path.dirname(defensive_network.parse.dfb.get_event_fpath(base_path, "")))
 
     all_files = [file for file in all_tracking_files if file.replace("parquet", "csv") in all_event_files]
     all_slugified_match_strings = [os.path.splitext(file)[0] for file in all_files]
@@ -185,14 +182,17 @@ def defensive_network_dashboard():
     profiler = wfork_streamlit_profiler.Profiler()
     profiler.start()
 
-    create_animation = st.toggle("Create animation", value=False)
+    base_path = st.text_input("Base path", "C:/Users/Jonas/Downloads/dfl_test_data/2324")
 
-    selected_tracking_matches = _select_matches()
+    # create_animation = st.toggle("Create animation", value=False)
+    create_animation = False
+
+    selected_tracking_matches = _select_matches(base_path)
     xt_model = st.selectbox("Select xT model", ["ma2024", "the_athletic"])
     expected_receiver_model = st.selectbox("Select expected receiver model", ["power2017"])
 
     for slugified_match_string in selected_tracking_matches:
-        df_tracking, df_event = defensive_network.parse.dfb.get_match_data(BASE_PATH, slugified_match_string, xt_model=xt_model, expected_receiver_model=expected_receiver_model)
+        df_tracking, df_event = defensive_network.parse.dfb.get_match_data(base_path, slugified_match_string, xt_model=xt_model, expected_receiver_model=expected_receiver_model)
         df_passes = df_event[df_event["event_type"] == "pass"]
         player2name = df_tracking[["player_id", "player_name"]].set_index("player_id")["player_name"].to_dict()
 
