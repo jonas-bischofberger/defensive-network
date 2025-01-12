@@ -66,7 +66,12 @@ def plot_passes_with_involvement(
         st.warning("plot_passes_with_involvement: No passes found.")
         return
     for pass_nr, (pass_id, df_outplayed_pass) in enumerate(df_involvement.groupby(event_id_col)):
-        p4ss = df_passes[df_passes[event_id_col] == pass_id].iloc[0]
+        try:
+            p4ss = df_passes[df_passes[event_id_col] == pass_id].iloc[0]
+        except IndexError as e:
+            st.warning(f"plot_passes_with_involvement: Pass {pass_id} not found in df_passes.")
+            st.write(e)
+            continue
         fig = defensive_network.utility.plot_pass_involvement(
             p4ss, df_outplayed_pass, df_tracking,
             pass_x_col, pass_y_col, pass_target_x_col, pass_target_y_col, pass_frame_col, pass_team_col, pass_player_name_col,
@@ -275,7 +280,7 @@ def _get_faultribution_by_model_matrix(
     df_tracking["distance_to_goal"] = _dist_to_goal(df_tracking, tracking_x_col, tracking_y_col)
 
     import accessible_space.utility
-    unique_frame_col = accessible_space.utility.get_unused_column_name(df_passes.columns, "doa")
+    unique_frame_col = accessible_space.utility.get_unused_column_name(df_passes.columns, "unique_frame")
     df_passes[unique_frame_col] = np.arange(len(df_passes))
 
     df_tracking_passes = df_passes[[unique_frame_col, event_frame_col, event_team_col]].merge(df_tracking, how="left", left_on=tracking_frame_col, right_on=tracking_frame_col)

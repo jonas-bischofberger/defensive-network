@@ -1,16 +1,11 @@
 import collections
 import importlib
-import math
 
 import networkx.exception
 import numpy as np
 import pandas as pd
 import streamlit as st
-import accessible_space
-import accessible_space.interface
-import matplotlib.pyplot as plt
 import matplotlib
-import subprocess
 import functools
 import networkx as nx
 
@@ -21,9 +16,14 @@ import defensive_network.utility
 import defensive_network.models.involvement
 import defensive_network.models
 import defensive_network.models.passing_network
-import wfork_streamlit_profiler
+import defensive_network.parse.dfb
 
-import random
+import defensive_network.scripts.create_dfb_tracking_animations
+
+importlib.reload(defensive_network.scripts.create_dfb_tracking_animations)
+importlib.reload(defensive_network.parse.dfb)
+
+import wfork_streamlit_profiler
 
 assert "defensive_network" in sys.modules
 assert "defensive_network.utility" in sys.modules
@@ -35,7 +35,6 @@ PRELOADED_MODULES = set()
 def init() :
     # local imports to keep things neat
     from sys import modules
-    import importlib
 
     global PRELOADED_MODULES
 
@@ -95,92 +94,22 @@ df_pass_risky["x_target"] = 50
 
 
 BASE_PATH = "C:/Users/Jonas/Downloads/dfl_test_data/2324"
-lineup_fpath = os.path.abspath(os.path.join(BASE_PATH, "lineup.csv"))
-meta_fpath = os.path.abspath(os.path.join(BASE_PATH, "meta.csv"))
-event_path = os.path.abspath(os.path.join(BASE_PATH, "events"))
-tracking_path = os.path.abspath(os.path.join(BASE_PATH, "tracking"))
-
-
-@st.cache_resource
-def _get_all_meta():
-    return pd.read_csv(meta_fpath)
-
-
-@st.cache_resource
-def _get_all_lineups():
-    return pd.read_csv(lineup_fpath)
 
 
 def _select_matches():
-    df_meta = _get_all_meta()
-    df_lineups = _get_all_lineups()
-    all_files = os.listdir(tracking_path)
+    df_meta = defensive_network.parse.dfb.get_all_meta(BASE_PATH)
+    df_lineups = defensive_network.parse.dfb.get_all_lineups(BASE_PATH)
+    all_tracking_files = os.listdir(os.path.dirname(defensive_network.parse.dfb.get_tracking_fpath(BASE_PATH, "")))
+    all_event_files = os.listdir(os.path.dirname(defensive_network.parse.dfb.get_event_fpath(BASE_PATH, "")))
+
+    all_files = [file for file in all_tracking_files if file.replace("parquet", "csv") in all_event_files]
     all_slugified_match_strings = [os.path.splitext(file)[0] for file in all_files]
-    selceted_tracking_slugified_match_strings = st.multiselect("Select tracking files", all_slugified_match_strings, default=all_slugified_match_strings[:1])
+
+    default = "3-liga-2023-2024-20-st-sc-verl-viktoria-koln"
+
+    slugified_match_string_to_match_string = df_meta.set_index("slugified_match_string")["match_string"].to_dict()
+    selceted_tracking_slugified_match_strings = st.multiselect("Select tracking files", all_slugified_match_strings, default=[default], format_func=lambda x: slugified_match_string_to_match_string.get(x, x))
     return selceted_tracking_slugified_match_strings
-
-@st.cache_resource
-def _get_match_data(slugified_match_string, xt_model="ma2024", expected_receiver_model="power2017"):
-    df_meta = _get_all_meta()
-    match_id = df_meta[df_meta["slugified_match_string"] == slugified_match_string]["match_id"].iloc[0]
-    df_lineup = _get_all_lineups()
-    df_lineup_match = df_lineup[df_lineup["match_id"] == match_id]
-    playerid2name = df_lineup_match[['player_id', 'short_name']].set_index('player_id').to_dict()['short_name']
-    team2name = df_lineup_match.loc[df_lineup_match["team_name"].notna(), ['team_id', 'team_name']].set_index('team_id').to_dict()['team_name']
-
-    fpath_tracking = os.path.join(tracking_path, f"{slugified_match_string}.parquet")
-    df_tracking = pd.read_parquet(fpath_tracking)
-    df_tracking["full_frame"] = df_tracking["section"].str.cat(df_tracking["frame"].astype(float).astype(str), sep="-")
-    df_tracking["player_name"] = df_tracking["player_id"].map(playerid2name)
-
-    fpath_event = os.path.join(event_path, f"{slugified_match_string}.csv")
-    df_event = pd.read_csv(fpath_event)
-    df_event["full_frame"] = df_event["section"].str.cat(df_event["frame"].astype(float).astype(str), sep="-")
-    df_event["full_frame_rec"] = df_event["section"].str.cat(df_event["frame_rec"].astype(float).astype(str), sep="-")
-    df_event["player_name_1"] = df_event["player_id_1"].map(playerid2name)
-    df_event["player_name_2"] = df_event["player_id_2"].map(playerid2name)
-    df_event["team_name_1"] = df_event["team_id_1"].map(team2name)
-    df_event["team_name_2"] = df_event["team_id_2"].map(team2name)
-    df_event["event_string"] = df_event["full_frame"].astype(str) + ": " + df_event["event_type"] + " " + df_event["player_name_1"] + " (" + df_event["team_name_1"] + ") -> " + df_event["player_name_2"] + " (" + df_event["team_name_2"] + ") (" + df_event["event_outcome"].astype(str) + ")"
-
-    df_tracking["playing_direction"] = accessible_space.infer_playing_direction(
-        df_tracking, team_col="team_id", period_col="section", team_in_possession_col="ball_poss_team_id", x_col="x_tracking"
-    )
-    df_tracking["x_norm"] = df_tracking["x_tracking"] * df_tracking["playing_direction"]
-    df_tracking["y_norm"] = df_tracking["y_tracking"] * df_tracking["playing_direction"]
-    fr2playing_direction = df_tracking.set_index("full_frame")["playing_direction"].to_dict()
-    df_event["playing_direction"] = df_event["full_frame"].map(fr2playing_direction)
-    df_event["x_norm"] = df_event["x_event"] * df_event["playing_direction"]
-    df_event["y_norm"] = df_event["y_event"] * df_event["playing_direction"]
-    df_event["x_target_norm"] = df_event["x_target"] * df_event["playing_direction"]
-    df_event["y_target_norm"] = df_event["y_target"] * df_event["playing_direction"]
-
-    df_event["is_successful"] = df_event["event_outcome"] == "successfully_completed"
-
-    xt_res = defensive_network.models.get_expected_threat(df_event, xt_model=xt_model)
-    df_event["pass_xt"] = xt_res.delta_xt
-
-    i_pass = df_event["event_type"] == "pass"
-    df_event.loc[i_pass, "pass_is_intercepted"] = (df_event.loc[i_pass, "event_outcome"] == "unsuccessful") & ~pd.isna(df_event.loc[i_pass, "player_id_2"])
-    df_event.loc[i_pass, "pass_is_out"] = (df_event.loc[i_pass, "event_outcome"] == "unsuccessful") & pd.isna(df_event.loc[i_pass, "player_id_2"])
-    df_event.loc[i_pass, "pass_is_successful"] = df_event.loc[i_pass, "event_outcome"] == "successfully_completed"
-
-    # assert all three exist
-    assert df_event.loc[i_pass, "pass_is_intercepted"].sum() > 0
-    assert df_event.loc[i_pass, "pass_is_out"].sum() > 0
-    assert df_event.loc[i_pass, "pass_is_successful"].sum() > 0
-
-    df_event.loc[i_pass, "outcome"] = df_event.loc[i_pass].apply(lambda x: "successful" if x["pass_is_successful"] else ("intercepted" if x["pass_is_intercepted"] else "out"), axis=1)
-    xr_result = defensive_network.models.get_expected_receiver(df_event.loc[i_pass, :], df_tracking)
-    df_event.loc[i_pass, "expected_receiver"] = xr_result.expected_receiver
-    df_event.loc[i_pass, "expected_receiver_name"] = df_event.loc[i_pass, "expected_receiver"].map(playerid2name)
-    df_event.loc[i_pass, "is_intercepted"] = df_event.loc[i_pass, "outcome"] == "intercepted"
-
-    df_tracking = df_tracking[df_tracking["team_id"] != "referee"]
-
-    df_tracking = defensive_network.models.add_velocity(df_tracking)
-
-    return df_tracking, df_event
 
 
 def get_network_metrics(matrix):
@@ -256,18 +185,22 @@ def defensive_network_dashboard():
     profiler = wfork_streamlit_profiler.Profiler()
     profiler.start()
 
+    create_animation = st.toggle("Create animation", value=False)
+
     selected_tracking_matches = _select_matches()
     xt_model = st.selectbox("Select xT model", ["ma2024", "the_athletic"])
     expected_receiver_model = st.selectbox("Select expected receiver model", ["power2017"])
 
     for slugified_match_string in selected_tracking_matches:
-        df_tracking, df_event = _get_match_data(slugified_match_string, xt_model=xt_model, expected_receiver_model=expected_receiver_model)
+        df_tracking, df_event = defensive_network.parse.dfb.get_match_data(BASE_PATH, slugified_match_string, xt_model=xt_model, expected_receiver_model=expected_receiver_model)
         df_passes = df_event[df_event["event_type"] == "pass"]
         player2name = df_tracking[["player_id", "player_name"]].set_index("player_id")["player_name"].to_dict()
 
-        # remove passes without frame_id
-        st.write("df_passes")
-        st.write(df_passes)
+        if create_animation:
+            video_fpath = os.path.join(os.path.dirname(__file__), f"{slugified_match_string}.mp4")
+            with st.spinner("Creating animation..."):
+                defensive_network.scripts.create_dfb_tracking_animations.create_animation(df_tracking, df_event, video_fpath)
+
         df_passes = df_passes.dropna(subset=["frame"])
 
         # df_tracking = defensive_network.add_velocity(df_tracking)
@@ -301,7 +234,7 @@ def defensive_network_dashboard():
         model_radius = st.number_input("Circle model radius", min_value=0, value=5)
 
         @st.cache_resource
-        def _get_involvement(value_col):
+        def _get_involvement(value_col, slugified_match_string, involvement_model_success_pos_value, involvement_model_success_neg_value, involvement_model_out, involvement_model_intercepted, model_radius):
             df_involvement = defensive_network.models.get_involvement(
                 df_passes, df_tracking,
                 involvement_model_success_pos_value=involvement_model_success_pos_value,
@@ -313,15 +246,17 @@ def defensive_network_dashboard():
 
         selected_value_col = st.selectbox("Value column for networks", ["pass_xt", None], format_func=lambda x: str(x))
 
-        df_involvement = _get_involvement(selected_value_col)
+        df_involvement = _get_involvement(selected_value_col, slugified_match_string, involvement_model_success_pos_value, involvement_model_success_neg_value, involvement_model_out, involvement_model_intercepted, model_radius)
 
         st.write("df_involvement")
         st.write(df_involvement)
 
-        plot_involvement_examples = st.checkbox("Plot involvement examples", value=True)
+        plot_involvement_examples = st.multiselect("Plot involvement examples", df_involvement["involvement_type"].unique(), default=df_involvement["involvement_type"].unique())
         n_examples_per_type = st.number_input("Number of examples", min_value=0, value=3)
-        if plot_involvement_examples:
+        if len(plot_involvement_examples) > 0:
             for involvement_type, df_involvement_type in df_involvement.groupby("involvement_type"):
+                if involvement_type not in plot_involvement_examples:
+                    continue
                 st.write(f"### {involvement_type}")
                 with st.expander(f"### {involvement_type}"):
                     defensive_network.models.plot_passes_with_involvement(

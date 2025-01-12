@@ -189,9 +189,11 @@ def check_tracking_files(folder):
 def main():
     overwrite_if_exists = True
     # overwrite_if_exists = st.toggle("Overwrite if exists", value=True)
-    _process_events = st.toggle("Process events", value=True)
-    _process_tracking = st.toggle("Process tracking", value=True)
-    _check_tracking_files = st.toggle("Check tracking files", value=True)
+    _process_meta = st.toggle("Process meta", value=False)
+    _process_lineups = st.toggle("Process lineups", value=False)
+    _process_events = st.toggle("Process events", value=False)
+    _process_tracking = st.toggle("Process tracking", value=False)
+    _check_tracking_files = st.toggle("Check tracking files", value=False)
     folder = st.text_input("Folder", "C:/Users/Jonas/Downloads/dfl_test_data/2324/")
     if not os.path.exists(folder):
         st.error(f"Folder {folder} does not exist")
@@ -204,8 +206,10 @@ def main():
     filetype_to_files = get_dfb_csv_files_in_folder(folder, [fpath_target_meta, fpath_target_lineup])
     st.write("Found files:", filetype_to_files)
 
-    process_meta(filetype_to_files["meta"], fpath_target_meta, overwrite_if_exists)
-    process_lineups(filetype_to_files["lineup"], fpath_target_lineup, overwrite_if_exists)
+    if _process_meta:
+        process_meta(filetype_to_files["meta"], fpath_target_meta, overwrite_if_exists)
+    if _process_lineups:
+        process_lineups(filetype_to_files["lineup"], fpath_target_lineup, overwrite_if_exists)
     if _process_tracking:
         chunksize = st.number_input("Rows per chunk of tracking data (more = faster but consumes more RAM)", min_value=1, value=500000)
         process_tracking(filetype_to_files["tracking"], folder_tracking, fpath_target_meta, chunksize)
@@ -215,5 +219,21 @@ def main():
         check_tracking_files(folder_tracking)
 
 
+def concat_metas_and_lineups():
+    for kind, path in [
+        ("meta", "C:/Users/Jonas/Downloads/dfl_test_data/2324/meta"),
+        ("lineup", "C:/Users/Jonas/Downloads/dfl_test_data/2324/lineup"),
+    ]:
+        files = os.listdir(path)
+        dfs = []
+        for file in files:
+            fpath = os.path.join(path, file)
+            df = pd.read_csv(fpath)
+            dfs.append(df)
+        df_meta = pd.concat(dfs, axis=0)
+        df_meta.to_csv(f"C:/Users/Jonas/Downloads/dfl_test_data/2324/{kind}.csv", index=False)
+
+
 if __name__ == '__main__':
+    concat_metas_and_lineups()
     main()

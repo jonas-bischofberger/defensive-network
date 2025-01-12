@@ -2,6 +2,7 @@ import collections
 
 import numpy as np
 import pandas as pd
+import streamlit as st
 
 from defensive_network.utility import get_unused_column_name, check_presence_of_required_columns
 
@@ -30,6 +31,10 @@ def get_expected_receiver(
     df_passes = df_passes.copy()
 
     df_passes_unsuccessful = df_passes[~df_passes[event_success_col]]
+
+    frames_in_events_not_in_tracking = set(df_passes_unsuccessful[event_frame_col]) - set(df_tracking[tracking_frame_col])
+    if len(frames_in_events_not_in_tracking) != 0:
+        st.warning(f"Frames in events not in tracking: {frames_in_events_not_in_tracking} (tracking, e.g.: {df_tracking[tracking_frame_col].iloc[0]}), (events, e.g.: {df_passes_unsuccessful[event_frame_col].iloc[0]})")
 
     for pass_index, p4ss in df_passes_unsuccessful.iterrows():
         df_tracking_frame_attackers = df_tracking[df_tracking[tracking_frame_col] == p4ss[event_frame_col]]
