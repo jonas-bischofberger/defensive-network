@@ -18,9 +18,9 @@ import defensive_network.models
 import defensive_network.models.passing_network
 import defensive_network.parse.dfb
 
-import defensive_network.scripts.create_dfb_tracking_animations
+# import defensive_network.scripts.create_dfb_tracking_animations
 
-importlib.reload(defensive_network.scripts.create_dfb_tracking_animations)
+# importlib.reload(defensive_network.scripts.create_dfb_tracking_animations)
 importlib.reload(defensive_network.parse.dfb)
 
 import wfork_streamlit_profiler
@@ -190,11 +190,13 @@ def defensive_network_dashboard():
     selected_tracking_matches = _select_matches(base_path)
     xt_model = st.selectbox("Select xT model", ["ma2024", "the_athletic"])
     expected_receiver_model = st.selectbox("Select expected receiver model", ["power2017"])
+    formation_model = st.selectbox("Select formation model", ["average_pos"])
 
     for slugified_match_string in selected_tracking_matches:
-        df_tracking, df_event = defensive_network.parse.dfb.get_match_data(base_path, slugified_match_string, xt_model=xt_model, expected_receiver_model=expected_receiver_model)
+        df_tracking, df_event = defensive_network.parse.dfb.get_match_data(base_path, slugified_match_string, xt_model=xt_model, expected_receiver_model=expected_receiver_model, formation_model=formation_model)
+
         df_passes = df_event[df_event["event_type"] == "pass"]
-        player2name = df_tracking[["player_id", "player_name"]].set_index("player_id")["player_name"].to_dict()
+        # player2name = df_tracking[["player_id", "player_name"]].set_index("player_id")["player_name"].to_dict()
 
         if create_animation:
             video_fpath = os.path.join(os.path.dirname(__file__), f"{slugified_match_string}.mp4")
@@ -225,28 +227,39 @@ def defensive_network_dashboard():
         #
         #     if pass_nr > 3:
         #         break
-        max_passes_for_debug = st.number_input("Max passes for debug", min_value=0, value=3)
+
+        # max_passes_for_debug = st.number_input("Max passes for debug", min_value=0, value=3)
         all_models = ["circle_circle_rectangle", "circle_passer", "circle_receiver", "intercepter"]
         involvement_model_success_pos_value = st.selectbox("Select involvement model for successful passes with positive value", all_models, index=0)
         involvement_model_success_neg_value = st.selectbox("Select involvement model for successful passes with negative value", all_models, index=1)
         involvement_model_out = st.selectbox("Select involvement model for passes that are interrupted by referee (e.g. goes out of the pitch)", all_models, index=1)
         involvement_model_intercepted = st.selectbox("Select involvement model for passes that are intercepted", all_models, index=3)
         model_radius = st.number_input("Circle model radius", min_value=0, value=5)
+        selected_player_mode = st.selectbox("Select player column for networks", [("player_id_1", "player_name_1", "player_id_2", "player_name_2", "expected_receiver", "expected_receiver_name", "player_id", "player_name", "Player"), ("role_1", "role_name_1", "role_2", "role_name_2", "expected_receiver_role", "expected_receiver_role_name", "role", "role_name", "Role")], format_func=lambda x: x[-1], index=1)
+        selected_player_col, selected_player_name_col, selected_receiver_col, selected_receiver_name_col, selected_expected_receiver_col, selected_expected_receiver_name_col, selected_tracking_player_col, selected_tracking_player_name_col = selected_player_mode[0], selected_player_mode[1], selected_player_mode[2], selected_player_mode[3], selected_player_mode[4], selected_player_mode[5], selected_player_mode[6], selected_player_mode[7]
+        selectedtrackingplayer2name = df_tracking[[selected_tracking_player_col, selected_tracking_player_name_col]].set_index(selected_tracking_player_col)[selected_tracking_player_name_col].to_dict()
+
+        df_tracking = df_tracking[df_tracking[selected_tracking_player_col].notna()]
+        df_passes = df_passes[df_passes["frame"].isin(df_tracking["frame"])]
 
         @st.cache_resource
-        def _get_involvement(value_col, slugified_match_string, involvement_model_success_pos_value, involvement_model_success_neg_value, involvement_model_out, involvement_model_intercepted, model_radius):
+        def _get_involvement(
+            value_col, player_col, receiver_col, tracking_player_col, tracking_player_name_col, slugified_match_string, involvement_model_success_pos_value,
+            involvement_model_success_neg_value, involvement_model_out, involvement_model_intercepted,
+            model_radius
+        ):
             df_involvement = defensive_network.models.get_involvement(
-                df_passes, df_tracking,
+                df_passes, df_tracking, event_player_col=player_col, event_receiver_col=receiver_col, tracking_player_col=tracking_player_col,
                 involvement_model_success_pos_value=involvement_model_success_pos_value,
                 involvement_model_success_neg_value=involvement_model_success_neg_value,
                 involvement_model_out=involvement_model_out, involvement_model_intercepted=involvement_model_intercepted,
-                model_radius=model_radius, value_col=value_col,
+                model_radius=model_radius, value_col=value_col, tracking_player_name_col=tracking_player_name_col,
             )
             return df_involvement
 
         selected_value_col = st.selectbox("Value column for networks", ["pass_xt", None], format_func=lambda x: str(x))
 
-        df_involvement = _get_involvement(selected_value_col, slugified_match_string, involvement_model_success_pos_value, involvement_model_success_neg_value, involvement_model_out, involvement_model_intercepted, model_radius)
+        df_involvement = _get_involvement(selected_value_col, selected_player_col, selected_receiver_col, selected_tracking_player_col, selected_tracking_player_name_col, slugified_match_string, involvement_model_success_pos_value, involvement_model_success_neg_value, involvement_model_out, involvement_model_intercepted, model_radius)
 
         st.write("df_involvement")
         st.write(df_involvement)
@@ -281,7 +294,7 @@ def defensive_network_dashboard():
 
         def _analyse_network(network):
             df_metrics = analyse_network(network)
-            df_metrics["player_name"] = df_metrics.index.map(player2name)
+            df_metrics["player_name"] = df_metrics.index.map(selectedtrackingplayer2name)
             return df_metrics.set_index("player_name")
 
         DefensiveNetworkMetrics = collections.namedtuple("DefensiveNetworkMetrics", ["off_network", "off_involvement_type_network", "def_networks", "def_network_sums"])
@@ -296,7 +309,7 @@ def defensive_network_dashboard():
                 def_sums[defender] = df_metrics_def.sum()
 
             df_def_sums = pd.DataFrame(def_sums).T
-            df_def_sums["player_name"] = df_def_sums.index.map(player2name)
+            df_def_sums["player_name"] = df_def_sums.index.map(selectedtrackingplayer2name)
             df_def_sums = df_def_sums.set_index("player_name")
 
             return DefensiveNetworkMetrics(df_metrics_off, df_metrics_off_involvement_type, def_metrics, df_def_sums)
@@ -309,7 +322,16 @@ def defensive_network_dashboard():
             for invplvement_type_col in ["involvement", "contribution", "fault"]:
                 st.write(f"## {invplvement_type_col.capitalize()} networks")
                 with st.expander(invplvement_type_col.capitalize()):
-                    networks = get_defensive_network(df_involvement_team, value_col=selected_value_col, involvement_type_col=invplvement_type_col)
+                    # selected_player_col, selected_receiver_col
+                    df_involvement_team["network_receiver"] = df_involvement_team[selected_expected_receiver_col].where(df_involvement_team[selected_expected_receiver_col].notna(), df_involvement_team[selected_receiver_col])
+                    df_involvement_team["network_receiver"] = df_involvement_team["network_receiver"].where(df_involvement_team["outcome"] != "intercepted", None)
+                    df_involvement_team["network_receiver_name"] = df_involvement_team[selected_expected_receiver_name_col].where(df_involvement_team[selected_expected_receiver_name_col].notna(), df_involvement_team[selected_receiver_name_col])
+                    df_involvement_team["network_receiver_name"] = df_involvement_team["network_receiver_name"].where(df_involvement_team["outcome"] != "intercepted", None)
+
+                    networks = get_defensive_network(
+                        df_involvement_team, value_col=selected_value_col, involvement_type_col=invplvement_type_col,
+                        player_col=selected_player_col, player_name_col=selected_player_name_col, receiver_col="network_receiver",
+                    )
                     metrics = analyse_networks(networks)
 
                     columns = st.columns(2)
@@ -318,7 +340,7 @@ def defensive_network_dashboard():
                     columns[0].write(fig)
                     columns[0].write(metrics.off_network)
                     fig, ax = plot_offensive_network(df_nodes=networks.off_involvement_type_network.df_nodes, df_edges=networks.off_involvement_type_network.df_edges)
-                    columns[1].write(f"Offensive {invplvement_type_col} network")
+                    columns[1].write(f"Defensive {invplvement_type_col} network")
                     columns[1].write(fig)
                     columns[1].write(metrics.off_involvement_type_network)
 
@@ -336,9 +358,6 @@ def defensive_network_dashboard():
                             columns[defender_nr % 3].write("sum")
                             columns[defender_nr % 3].write(metrics.def_network_sums.loc[defender_name])
 
-                    st.write("df_sum")
-                    st.write(metrics.def_network_sums)
-
                     # fig, ax = defensive_network.models.plot_passing_network(
         # df_nodes=df_nodes, df_edges=df_edges, show_colorbar=False, node_size_multiplier=20, arrow_width_multiplier=1,
         # label_col=edge_value_col, arrow_color_col=edge_value_col, annotate_top_n_edges=5, label_format_string="{:.3f}",
@@ -355,21 +374,21 @@ DefensiveNetworks = collections.namedtuple("DefensiveNetworkResult", ["off_netwo
 Network = collections.namedtuple("AttackingNetwork", ["df_nodes", "df_edges"])
 
 
-def get_defensive_network(df_passes_with_defenders, value_col="pass_xt", involvement_type_col="involvement") -> DefensiveNetworks:
+def get_defensive_network(
+    df_passes_with_defenders, value_col="pass_xt", involvement_type_col="involvement", player_col="player_id_1",
+    player_name_col="player_name_1", receiver_col="network_receiver", receiver_name_col="network_receiver_name"
+) -> DefensiveNetworks:
     if value_col is None:
         df_passes_with_defenders["dummy"] = 1
         value_col = "dummy"
 
-    df_passes_with_defenders["network_receiver"] = df_passes_with_defenders["expected_receiver"].where(df_passes_with_defenders["expected_receiver"].notna(), df_passes_with_defenders["player_id_2"])
-    df_passes_with_defenders["network_receiver"] = df_passes_with_defenders["network_receiver"].where(df_passes_with_defenders["outcome"] != "intercepted", None)
-
     df_passes_with_defenders_dedup = df_passes_with_defenders.groupby("event_id").agg({
         "x_event": "first",
         "y_event": "first",
-        "player_id_1": "first",
-        "network_receiver": "first",
-        "player_name_1": "first",
-        "player_name_2": "first",
+        player_col: "first",
+        receiver_col: "first",
+        player_name_col: "first",
+        receiver_name_col: "first",
         involvement_type_col: "sum",
         "x_target": "first",
         "y_target": "first",
@@ -379,15 +398,17 @@ def get_defensive_network(df_passes_with_defenders, value_col="pass_xt", involve
 
     df_nodes, df_edges = defensive_network.models.get_passing_network_df(
         df_passes_with_defenders_dedup.reset_index(),
-        x_col="x_event", y_col="y_event", from_col="player_id_1", to_col="network_receiver", from_name_col="player_name_1", to_name_col="player_name_2",
-        value_col=value_col, x_to_col="x_target", y_to_col="y_target", dedup_cols=["event_id"],
+        x_col="x_event", y_col="y_event", from_col=player_col, to_col=receiver_col, from_name_col=player_name_col,
+        to_name_col=receiver_name_col, value_col=value_col, x_to_col="x_target", y_to_col="y_target",
+        dedup_cols=["event_id"],
     )
     off_network = Network(df_nodes, df_edges)
 
     df_nodes, df_edges = defensive_network.models.get_passing_network_df(
         df_passes_with_defenders_dedup.reset_index(),
-        x_col="x_event", y_col="y_event", from_col="player_id_1", to_col="network_receiver", from_name_col="player_name_1", to_name_col="player_name_2",
-        value_col=involvement_type_col, x_to_col="x_target", y_to_col="y_target", dedup_cols=["event_id"],
+        x_col="x_event", y_col="y_event", from_col=player_col, to_col=receiver_col, from_name_col=player_name_col,
+        to_name_col=receiver_name_col, value_col=involvement_type_col, x_to_col="x_target", y_to_col="y_target",
+        dedup_cols=["event_id"],
     )
     off_involvement_type_network = Network(df_nodes, df_edges)
 
@@ -396,8 +417,8 @@ def get_defensive_network(df_passes_with_defenders, value_col="pass_xt", involve
     for defender_nr, (defender, df_defender) in enumerate(df_passes_with_defenders.reset_index().groupby("defender_id")):
         df_nodes, df_edges = defensive_network.models.passing_network.get_passing_network_df(
             df_defender.reset_index(),
-            x_col="x_event", y_col="y_event", from_col="player_id_1", to_col="network_receiver",
-            from_name_col="player_name_1", to_name_col="player_name_2",
+            x_col="x_event", y_col="y_event", from_col=player_col, to_col=receiver_col,
+            from_name_col=player_name_col, to_name_col=receiver_name_col,
             value_col=involvement_type_col, x_to_col="x_target", y_to_col="y_target", dedup_cols=["event_id"],
         )
         df_edges["edge_label"] = df_edges[edge_value_col].apply(lambda x: x if x != 0 else None)

@@ -275,6 +275,7 @@ def _get_faultribution_by_model_matrix(
     2        2              0.0               0.0        0.0         0.00          0.00   0.00  circle_circle_rectangle
     """
     defensive_network.utility.check_presence_of_required_columns(df_tracking, "df_tracking", ["full_frame", "team_id", "player_id", "x_tracking", "y_tracking"], [tracking_frame_col, tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col])
+
     assert ball_tracking_player_id in df_tracking[tracking_player_col].unique()
 
     df_tracking["distance_to_goal"] = _dist_to_goal(df_tracking, tracking_x_col, tracking_y_col)
@@ -289,6 +290,9 @@ def _get_faultribution_by_model_matrix(
     teams = df_tracking[tracking_team_col].unique().tolist()
 
     import accessible_space.interface
+    # check no frame-player duplicates
+    # duplicates = df_tracking_passes.duplicated([tracking_frame_col, tracking_player_col], keep=False)
+    assert len(df_tracking_passes) == len(df_tracking_passes.drop_duplicates([tracking_frame_col, tracking_player_col]))
     PLAYER_POS, BALL_POS, players, player_teams, controlling_teams, frame_to_index, player_to_index = accessible_space.interface._get_matrix_coordinates(
         df_tracking_passes, frame_col=unique_frame_col, team_col=tracking_team_col, player_col=tracking_player_col,
         x_col=tracking_x_col, y_col=tracking_y_col, controlling_team_col=event_team_col,
@@ -550,7 +554,7 @@ def get_involvement(
         tracking_player_col, tracking_x_col, tracking_y_col, tracking_period_col, tracking_team_in_possession_col,
         event_id_col, event_team_col, event_player_col, event_frame_col, event_raw_x_col, event_raw_y_col, event_receiver_col, value_col,
         event_target_frame_col, event_raw_target_x_col, event_raw_target_y_col, event_outcome_col,
-        model=involvement_model_success_pos_value, max_passes_for_debug=max_passes_for_debug, model_radius=model_radius,
+        model=involvement_model_success_pos_value, max_passes_for_debug=max_passes_for_debug, model_radius=model_radius, tracking_player_name_col=tracking_player_name_col,
     )
     # with st.expander("Success, xT > 0"):
     #     plot_passes_with_involvement(
@@ -576,7 +580,7 @@ def get_involvement(
         tracking_player_col, tracking_x_col, tracking_y_col, tracking_period_col, tracking_team_in_possession_col,
         event_id_col, event_team_col, event_player_col, event_frame_col, event_raw_x_col, event_raw_y_col, event_receiver_col, value_col,
         event_target_frame_col, event_raw_target_x_col, event_raw_target_y_col, event_outcome_col,
-        model=involvement_model_success_neg_value, max_passes_for_debug=max_passes_for_debug, model_radius=model_radius
+        model=involvement_model_success_neg_value, max_passes_for_debug=max_passes_for_debug, model_radius=model_radius, tracking_player_name_col=tracking_player_name_col,
     )
 
     # with st.expander("Success, xT < 0"):
@@ -603,7 +607,7 @@ def get_involvement(
         tracking_player_col, tracking_x_col, tracking_y_col, tracking_period_col, tracking_team_in_possession_col,
         event_id_col, event_team_col, event_player_col, event_frame_col, event_raw_x_col, event_raw_y_col, event_receiver_col, value_col,
         event_target_frame_col, event_raw_target_x_col, event_raw_target_y_col, event_outcome_col,
-        model=involvement_model_out, max_passes_for_debug=max_passes_for_debug, model_radius=model_radius
+        model=involvement_model_out, max_passes_for_debug=max_passes_for_debug, model_radius=model_radius, tracking_player_name_col=tracking_player_name_col,
     )
     # with st.expander("Out"):
     #     plot_passes_with_involvement(
@@ -629,7 +633,7 @@ def get_involvement(
         tracking_player_col, tracking_x_col, tracking_y_col, tracking_period_col, tracking_team_in_possession_col,
         event_id_col, event_team_col, event_player_col, event_frame_col, event_raw_x_col, event_raw_y_col, event_receiver_col, value_col,
         event_target_frame_col, event_raw_target_x_col, event_raw_target_y_col, event_outcome_col,
-        model=involvement_model_intercepted, max_passes_for_debug=max_passes_for_debug, model_radius=model_radius
+        model=involvement_model_intercepted, max_passes_for_debug=max_passes_for_debug, model_radius=model_radius, tracking_player_name_col=tracking_player_name_col,
     )
     # with st.expander("Intercepted"):
     #     plot_passes_with_involvement(

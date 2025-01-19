@@ -28,6 +28,12 @@ def get_tracking_fpath(base_path, slugified_match_string):
     return os.path.abspath(os.path.join(base_path, "tracking", f"{slugified_match_string}.parquet"))
 
 
+def get_preprocessed_tracking_fpath(base_path, slugified_match_string):
+    path = os.path.abspath(os.path.join(base_path, "preprocessed/tracking", f"{slugified_match_string}.parquet"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return path
+
+
 @st.cache_resource
 def get_all_meta(base_path):
     return pd.read_csv(get_meta_fpath(base_path))
@@ -39,7 +45,7 @@ def get_all_lineups(base_path):
 
 
 @st.cache_resource
-def get_match_data(base_path, slugified_match_string, xt_model="ma2024", expected_receiver_model="power2017"):
+def get_match_data(base_path, slugified_match_string, xt_model="ma2024", expected_receiver_model="power2017", formation_model="average_pos"):
     event_fpath = get_event_fpath(base_path, slugified_match_string)
     tracking_fpath = get_tracking_fpath(base_path, slugified_match_string)
 
@@ -209,5 +215,42 @@ def get_match_data(base_path, slugified_match_string, xt_model="ma2024", expecte
     df_tracking = df_tracking[df_tracking["team_id"] != "referee"]
 
     df_tracking = defensive_network.models.add_velocity(df_tracking)
+
+    with st.spinner("Inferring formation"):
+        res = defensive_network.models.detect_formation(df_tracking, model=formation_model)
+        df_tracking["role"] = res.role
+        df_tracking["role_name"] = res.role_name
+        df_tracking["formation_instance"] = res.formation_instance
+
+    ball_player = "BALL"
+    i_ball = df_tracking["player_id"] == ball_player
+    df_tracking.loc[i_ball, "role"] = ball_player
+    df_tracking.loc[i_ball, "role_name"] = ball_player
+
+    fpath_preprocessed_tracking = get_preprocessed_tracking_fpath(base_path, slugified_match_string)
+    df_tracking.to_parquet(fpath_preprocessed_tracking, index=False)
+
+    # Add role to events
+    frameplayerrole = df_tracking.groupby(["frame", "player_id"])["role"].first().to_dict()
+    role2name = df_tracking.groupby("role")["role_name"].first().to_dict()
+    role2name = {role: role_name.replace("def", "off") for role, role_name in role2name.items()}
+    frameplayerrole = {k: v.replace("def", "off") for k, v in frameplayerrole.items() if v is not None}
+
+    df_tracking["role"] = df_tracking["role"].apply(lambda x: str(x).replace("def", "off") if not pd.isna(x) else x)
+    df_tracking["role_name"] = df_tracking.apply(lambda x: role2name.get(x["role"], x["role"]), axis=1)
+
+    frameplayerrole = df_tracking.groupby(["frame", "player_id"])["role"].first().to_dict()
+    role2name = df_tracking.groupby("role")["role_name"].first().to_dict()
+    role2name = {role: role_name.replace("def", "off") for role, role_name in role2name.items()}
+    frameplayerrole = {k: v.replace("def", "off") for k, v in frameplayerrole.items() if v is not None}
+
+    with st.spinner("role_1"):
+        df_event["role_1"] = df_event[["frame", "player_id_1"]].apply(lambda x: frameplayerrole.get((x["frame"], x["player_id_1"]), None), axis=1)
+    with st.spinner("role_2"):
+        df_event["role_2"] = df_event[["frame", "player_id_2"]].apply(lambda x: frameplayerrole.get((x["frame"], x["player_id_2"]), None), axis=1)
+    df_event["role_name_1"] = df_event["role_1"].map(role2name)
+    df_event["role_name_2"] = df_event["role_2"].map(role2name)
+    df_event["expected_receiver_role"] = df_event[["frame", "expected_receiver"]].apply(lambda x: frameplayerrole.get((x["frame"], x["expected_receiver"]), None), axis=1)
+    df_event["expected_receiver_role_name"] = df_event["expected_receiver_role"].map(role2name)
 
     return df_tracking, df_event

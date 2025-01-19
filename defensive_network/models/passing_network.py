@@ -268,6 +268,8 @@ def get_passing_network_df(
     if to_name_col is None:
         to_name_col = to_col
 
+    df_passes = df_passes[df_passes[[from_col, to_col]].notnull().all(axis=1)]
+
     entity2name = dict(zip(df_passes[from_col], df_passes[from_name_col]))
     entity2name.update(dict(zip(df_passes[to_col], df_passes[to_name_col])))
 
@@ -303,6 +305,8 @@ def get_passing_network_df(
     df_nodes["value_passes_and_receptions"] = df_nodes["value_passes"] + df_nodes["value_receptions"]
 
     df_nodes["name"] = df_nodes.index.map(entity2name)
+    df_nodes = df_nodes.dropna()
+
     df_nodes["x_avg"] = average_positions["x"]
     df_nodes["y_avg"] = average_positions["y"]
 
