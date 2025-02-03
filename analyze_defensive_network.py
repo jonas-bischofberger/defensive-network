@@ -29,6 +29,7 @@ importlib.reload(defensive_network.parse.dfb)
 assert "defensive_network" in sys.modules
 assert "defensive_network.utility" in sys.modules
 importlib.reload(defensive_network.models.involvement)
+importlib.reload(defensive_network.models.passing_network)
 importlib.reload(defensive_network.models)
 
 

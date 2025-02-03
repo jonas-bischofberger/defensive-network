@@ -59,7 +59,7 @@ def get_defensive_networks(
     df_passes_with_defenders, pass_id_col="event_id", value_col=None, involvement_type_col="involvement", player_col="player_id_1",
     player_name_col=None, receiver_col="network_receiver", receiver_name_col=None,
     x_target_col=None, y_target_col=None, x_col="x_event", y_col="y_event",
-    average_positions=None, total_minutes=90, remove_passes_with_zero_involvement=True,
+    average_positions=None, total_minutes=90, remove_passes_with_zero_involvement=True, entities=None, entity_to_name=None,
 ) -> DefensiveNetworks:
     """
     >>> defensive_network.utility.dataframes.prepare_doctest()
@@ -105,11 +105,23 @@ def get_defensive_networks(
     df_passes_defender_sums = df_passes_with_defenders.groupby(pass_id_col).agg(aggregates)
     # df_passes_defender_sums = df_passes_defender_sums[df_passes_defender_sums[receiver_col].notna()]  # TODO... ?
 
+    if entities is None:
+        entities = defensive_network.utility.general.uniquify_keep_order(df_passes_with_defenders[player_col].tolist() + df_passes_with_defenders[receiver_col].tolist())
+    st.write("entities")
+    st.write(entities)
+    if entity_to_name is None:
+        if player_name_col == player_col:
+            entity_to_name = {entity: entity for entity in entities}
+        else:
+            entity_to_name = df_passes_with_defenders[[player_col, player_name_col]].set_index(player_col)[player_name_col].to_dict()
+            entity_to_name.update(df_passes_with_defenders[[receiver_col, receiver_name_col]].set_index(receiver_col)[receiver_name_col].to_dict())
+    st.write("entity_to_name")
+    st.write(entity_to_name)
     df_nodes_off, df_edges_off = get_passing_network(
         df_passes_defender_sums.reset_index(),
         x_col=x_col, y_col=y_col, from_col=player_col, to_col=receiver_col, from_name_col=player_name_col,
         to_name_col=receiver_name_col, value_col=value_col, x_to_col=x_target_col, y_to_col=y_target_col,
-        entity_to_average_position=average_positions, total_minutes=total_minutes,
+        entity_to_average_position=average_positions, total_minutes=total_minutes, entities=entities, entity_to_name=entity_to_name,
         remove_passes_with_zero_value=False,  # for the normal xT network, we shouldn't ignore passes with 0 value (= 0 xT or 0 DAS Gained or 0 outplayed opponents, ...) because 0 can be a normal value!
     )
     off_network = Network(df_nodes_off, df_edges_off)
@@ -119,7 +131,7 @@ def get_defensive_networks(
         x_col=x_col, y_col=y_col, from_col=player_col, to_col=receiver_col, from_name_col=player_name_col,
         to_name_col=receiver_name_col, value_col=involvement_type_col, x_to_col=x_target_col, y_to_col=y_target_col,
         entity_to_average_position=average_positions, total_minutes=total_minutes,
-        remove_passes_with_zero_value=remove_passes_with_zero_involvement,
+        remove_passes_with_zero_value=remove_passes_with_zero_involvement, entities=entities, entity_to_name=entity_to_name,
     )
     off_involvement_type_network = Network(df_nodes_off_inv, df_edges_off_inv)
 
@@ -132,7 +144,7 @@ def get_defensive_networks(
             from_name_col=player_name_col, to_name_col=receiver_name_col,
             value_col=involvement_type_col, x_to_col=x_target_col, y_to_col=y_target_col,
             entity_to_average_position=average_positions, total_minutes=total_minutes,
-            remove_passes_with_zero_value=remove_passes_with_zero_involvement
+            remove_passes_with_zero_value=remove_passes_with_zero_involvement, entities=entities, entity_to_name=entity_to_name,
         )
         df_edges_def["edge_label"] = df_edges_def[edge_value_col].apply(lambda x: x if x != 0 else None)
         defensive_networks[defender] = Network(df_nodes_def, df_edges_def)
@@ -537,7 +549,7 @@ def analyse_network(df_nodes, df_edges):
         "Team reciprocity": team_reciprocity, "Total Degree": team_degree,
     })
 
-    return df_player_metrics, team_metrics
+    return Metrics(player=df_player_metrics, team=team_metrics)
 
 
 def analyse_defensive_networks(networks: DefensiveNetworks):
@@ -598,3 +610,21 @@ if __name__ == '__main__':
         st.write(fig)
         st.write(network.df_nodes)
         st.write(network.df_edges)
+
+        assert len(network.df_nodes) == 3
+
+    metrics = analyse_defensive_networks(networks)
+
+    st.write("metrics")
+    st.write("metrics.off_network.team")
+    st.write(metrics.off_network.team)
+    st.write("metrics.off_network.player")
+    st.write(metrics.off_network.player)
+    st.write("metrics.off_involvement_type_network.team")
+    st.write(metrics.off_involvement_type_network.team)
+    st.write("metrics.off_involvement_type_network.player")
+    st.write(metrics.off_involvement_type_network.player)
+    st.write("metrics.def_network_sums")
+    st.write(metrics.def_network_sums)
+
+# TODO implement gleiche Farbskala
