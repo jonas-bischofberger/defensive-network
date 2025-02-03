@@ -24,12 +24,6 @@ import utility.pitch
 import utility.general
 import model.passing_network
 
-importlib.reload(model.passing_network)
-
-# importlib.reload(model.passing_network)
-# importlib.reload(utility.pitch)
-# importlib.reload(utility.general)
-
 
 @st.cache_resource
 def load_raw_tracking_data_single_match(match_id):

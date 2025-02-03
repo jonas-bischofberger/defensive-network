@@ -286,8 +286,6 @@ if st.toggle("Animate", value=True):
             # else:
             #     frame2pass_interval[fr] = None
 
-        st.stop()
-
         # st.write("frame2pass_interval")
         # st.write(frame2pass_interval)
 

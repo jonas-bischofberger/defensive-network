@@ -4,7 +4,6 @@ import warnings
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-import importlib
 import streamlit as st
 
 import matplotlib.cm
@@ -18,10 +17,12 @@ import networkx as nx
 import networkx.exception
 import numpy as np
 import pandas as pd
+import functools
 
-DefensiveNetworks = collections.namedtuple("DefensiveNetworkResult", ["off_network", "off_involvement_type_network", "def_networks"])
-Network = collections.namedtuple("AttackingNetwork", ["df_nodes", "df_edges"])
-DefensiveNetworkMetrics = collections.namedtuple("DefensiveNetworkMetrics", ["off_network", "off_involvement_type_network", "def_networks", "def_network_sums"])
+DefensiveNetworks = collections.namedtuple("DefensiveNetworks", ["off_network", "off_network_only_positive", "off_network_only_successful", "off_involvement_type_network", "def_networks"])
+Network = collections.namedtuple("Network", ["df_nodes", "df_edges"])
+DefensiveNetwork = collections.namedtuple("DefensiveNetwork", ["df_nodes", "df_edges", "defender", "defender_name"])
+DefensiveNetworkMetrics = collections.namedtuple("DefensiveNetworkMetrics", ["off_network", "off_network_only_positive", "off_involvement_type_network", "def_networks", "def_network_sums", "def_network_team_sums", "def_network_team_means"])
 Metrics = collections.namedtuple("Metrics", ["player", "team"])
 
 
@@ -43,7 +44,7 @@ def _get_average_positions(df_passes, x_col, y_col, from_col, x_to_col=None, y_t
     C  0.00  3.0
     D   NaN  NaN
     """
-    df_agg = df_passes.groupby(from_col).agg({x_col: "sum", y_col: "sum", to_col: "count"}).rename(columns={x_col: "x", y_col: "y", to_col: "count"})
+    df_agg = df_passes.groupby(from_col).agg({x_col: "sum", y_col: "sum", from_col: "count"}).rename(columns={x_col: "x", y_col: "y", from_col: "count"})
     if x_to_col is not None:
         dfpos_to = df_passes.groupby(to_col).agg({x_to_col: "sum", y_to_col: "sum", to_col: "count"}).rename(columns={x_to_col: "x", y_to_col: "y", to_col: "count"})
         df_agg = dfpos_to.add(df_agg, fill_value=0)
@@ -52,26 +53,30 @@ def _get_average_positions(df_passes, x_col, y_col, from_col, x_to_col=None, y_t
     if len(average_positions) < len(entities):
         # If there are players who did not pass the ball, add them to the average positions
         average_positions = average_positions.reindex(entities).fillna(np.nan)
+    # assert (average_positions["x"].dropna() < 52.5).all()
+    # assert (average_positions["x"].dropna() > -52.5).all()
     return average_positions
 
 
 def get_defensive_networks(
     df_passes_with_defenders, pass_id_col="event_id", value_col=None, involvement_type_col="involvement", player_col="player_id_1",
     player_name_col=None, receiver_col="network_receiver", receiver_name_col=None,
-    x_target_col=None, y_target_col=None, x_col="x_event", y_col="y_event",
-    average_positions=None, total_minutes=90, remove_passes_with_zero_involvement=True,
+    x_col="x_event", y_col="y_event", x_to_col=None, y_to_col=None,
+    defender_id_col="defender_id", defender_name_col="defender_name",
+    average_positions=None, total_minutes=90, remove_passes_with_zero_involvement=True, entities=None, entity_to_name=None,
+    success_col="pass_is_successful",
 ) -> DefensiveNetworks:
     """
     >>> defensive_network.utility.dataframes.prepare_doctest()
-    >>> df = pd.DataFrame({"event_id": [0, 1, 1, 2, 3], "defender_id": ["DA", "DA", "DB", "DA", "DB"], "involvement": [0.2, 0.3, 0.1, 0.4, 0.5], "x": [-10] * 3 + [5, 5], "y": [0] * 3 + [10, -25], "player_id_1": ["A"] * 3 + ["A", "B"], "to": ["B"] * 3 + ["B", "C"], "pass_xt": list(np.arange(5) / 28)})
+    >>> df = pd.DataFrame({"event_id": [0, 1, 1, 2, 3], "defender_id": ["DA", "DA", "DB", "DA", "DB"], "involvement": [0.2, 0.3, 0.1, 0.4, 0.5], "x": [-10] * 3 + [5, 5], "y": [0] * 3 + [10, -25], "player_id_1": ["A"] * 3 + ["A", "B"], "to": ["B"] * 3 + ["B", "C"], "pass_xt": list(np.arange(5) / 28), "pass_is_successful": [True] * 5})
     >>> df
-       event_id defender_id  involvement   x   y player_id_1 to   pass_xt
-    0         0          DA          0.2 -10   0           A  B  0.000000
-    1         1          DA          0.3 -10   0           A  B  0.035714
-    2         1          DB          0.1 -10   0           A  B  0.071429
-    3         2          DA          0.4   5  10           A  B  0.107143
-    4         3          DB          0.5   5 -25           B  C  0.142857
-    >>> networks = get_defensive_networks(df, x_col="x", y_col="y", x_target_col=None, y_target_col=None, receiver_col="to", receiver_name_col="to", total_minutes=3)
+       event_id defender_id  involvement   x   y player_id_1 to   pass_xt  pass_is_successful
+    0         0          DA          0.2 -10   0           A  B  0.000000                True
+    1         1          DA          0.3 -10   0           A  B  0.035714                True
+    2         1          DB          0.1 -10   0           A  B  0.071429                True
+    3         2          DA          0.4   5  10           A  B  0.107143                True
+    4         3          DB          0.5   5 -25           B  C  0.142857                True
+    >>> networks = get_defensive_networks(df, x_col="x", y_col="y", x_to_col=None, y_to_col=None, receiver_col="to", receiver_name_col="to", total_minutes=3)
     >>> networks.off_involvement_type_network.df_nodes
 
     >>> networks.off_involvement_type_network.df_edges
@@ -97,47 +102,87 @@ def get_defensive_networks(
         player_name_col: "first",
         receiver_name_col: "first",
         involvement_type_col: "sum",
-        x_target_col: "first",
-        y_target_col: "first",
+        x_to_col: "first",
+        y_to_col: "first",
         value_col: "first",
+        success_col: "first",
     }
     aggregates = {k: v for k, v in aggregates.items() if k in df_passes_with_defenders.columns}
     df_passes_defender_sums = df_passes_with_defenders.groupby(pass_id_col).agg(aggregates)
     # df_passes_defender_sums = df_passes_defender_sums[df_passes_defender_sums[receiver_col].notna()]  # TODO... ?
 
+    if entities is None:
+        entities = defensive_network.utility.general.uniquify_keep_order(df_passes_with_defenders[player_col].tolist() + df_passes_with_defenders[receiver_col].tolist())
+
+    if defender_name_col not in df_passes_with_defenders.columns:
+        defender_to_name = {defender_id: defender_id for defender_id in df_passes_with_defenders[defender_id_col].unique()}
+    else:
+        defender_to_name = df_passes_with_defenders[[defender_id_col, defender_name_col]].set_index(defender_id_col)[defender_name_col].to_dict()
+
+    if entity_to_name is None:
+        if player_name_col == player_col:
+            entity_to_name = {entity: entity for entity in entities}
+        else:
+            entity_to_name = df_passes_with_defenders[[player_col, player_name_col]].set_index(player_col)[player_name_col].to_dict()
+            entity_to_name.update(df_passes_with_defenders[[receiver_col, receiver_name_col]].set_index(receiver_col)[receiver_name_col].to_dict())
+
     df_nodes_off, df_edges_off = get_passing_network(
         df_passes_defender_sums.reset_index(),
-        x_col=x_col, y_col=y_col, from_col=player_col, to_col=receiver_col, from_name_col=player_name_col,
-        to_name_col=receiver_name_col, value_col=value_col, x_to_col=x_target_col, y_to_col=y_target_col,
-        entity_to_average_position=average_positions, total_minutes=total_minutes,
+        x_col=x_col, y_col=y_col, x_to_col=x_to_col, y_to_col=y_to_col, from_col=player_col, to_col=receiver_col,
+        from_name_col=player_name_col, to_name_col=receiver_name_col, value_col=value_col,
+        entity_to_average_position=average_positions, total_minutes=total_minutes, entities=entities, entity_to_name=entity_to_name,
         remove_passes_with_zero_value=False,  # for the normal xT network, we shouldn't ignore passes with 0 value (= 0 xT or 0 DAS Gained or 0 outplayed opponents, ...) because 0 can be a normal value!
     )
     off_network = Network(df_nodes_off, df_edges_off)
 
+    df_passes_defender_sums_only_successful = df_passes_defender_sums.copy()
+    i_success = df_passes_defender_sums_only_successful[success_col]
+    # df_passes_defender_sums_only_successful = df_passes_defender_sums_only_successful[df_passes_defender_sums_only_successful[success_col]]
+    df_passes_defender_sums_only_successful.loc[~i_success, value_col] = 0
+    df_nodes_off_only_successful, df_edges_off_only_successful = get_passing_network(
+        df_passes_defender_sums_only_successful.reset_index(),
+        x_col=x_col, y_col=y_col, from_col=player_col, to_col=receiver_col, from_name_col=player_name_col,
+        to_name_col=receiver_name_col, value_col=value_col, x_to_col=x_to_col, y_to_col=y_to_col,
+        entity_to_average_position=average_positions, total_minutes=total_minutes, entities=entities, entity_to_name=entity_to_name,
+        remove_passes_with_zero_value=False,  # for the normal xT network, we shouldn't ignore passes with 0 value (= 0 xT or 0 DAS Gained or 0 outplayed opponents, ...) because 0 can be a normal value!
+    )
+    off_network_only_successful = Network(df_nodes_off_only_successful, df_edges_off_only_successful)
+
+    df_passes_defender_sums_only_positive = df_passes_defender_sums.copy()
+    df_passes_defender_sums_only_positive[value_col] = df_passes_defender_sums_only_positive[value_col].clip(lower=0)
+    df_nodes_only_positive, df_edges_only_positive = get_passing_network(
+        df_passes_defender_sums_only_positive.reset_index(),
+        x_col=x_col, y_col=y_col, from_col=player_col, to_col=receiver_col, from_name_col=player_name_col,
+        to_name_col=receiver_name_col, value_col=value_col, x_to_col=x_to_col, y_to_col=y_to_col,
+        entity_to_average_position=average_positions, total_minutes=total_minutes, entities=entities, entity_to_name=entity_to_name,
+        remove_passes_with_zero_value=False,  # for the normal xT network, we shouldn't ignore passes with 0 value (= 0 xT or 0 DAS Gained or 0 outplayed opponents, ...) because 0 can be a normal value!
+    )
+    off_network_only_positive = Network(df_nodes_only_positive, df_edges_only_positive)
+
     df_nodes_off_inv, df_edges_off_inv = get_passing_network(
         df_passes_defender_sums.reset_index(),
         x_col=x_col, y_col=y_col, from_col=player_col, to_col=receiver_col, from_name_col=player_name_col,
-        to_name_col=receiver_name_col, value_col=involvement_type_col, x_to_col=x_target_col, y_to_col=y_target_col,
+        to_name_col=receiver_name_col, value_col=involvement_type_col, x_to_col=x_to_col, y_to_col=y_to_col,
         entity_to_average_position=average_positions, total_minutes=total_minutes,
-        remove_passes_with_zero_value=remove_passes_with_zero_involvement,
+        remove_passes_with_zero_value=remove_passes_with_zero_involvement, entities=entities, entity_to_name=entity_to_name,
     )
     off_involvement_type_network = Network(df_nodes_off_inv, df_edges_off_inv)
 
     edge_value_col = "value_passes"
     defensive_networks = {}
-    for defender_nr, (defender, df_defender) in enumerate(df_passes_with_defenders.reset_index().groupby("defender_id")):
+    for defender_nr, (defender, df_defender) in enumerate(df_passes_with_defenders.reset_index().groupby(defender_id_col)):
         df_nodes_def, df_edges_def = get_passing_network(
             df_defender.reset_index(),
             x_col=x_col, y_col=y_col, from_col=player_col, to_col=receiver_col,
             from_name_col=player_name_col, to_name_col=receiver_name_col,
-            value_col=involvement_type_col, x_to_col=x_target_col, y_to_col=y_target_col,
+            value_col=involvement_type_col, x_to_col=x_to_col, y_to_col=y_to_col,
             entity_to_average_position=average_positions, total_minutes=total_minutes,
-            remove_passes_with_zero_value=remove_passes_with_zero_involvement
+            remove_passes_with_zero_value=remove_passes_with_zero_involvement, entities=entities, entity_to_name=entity_to_name,
         )
         df_edges_def["edge_label"] = df_edges_def[edge_value_col].apply(lambda x: x if x != 0 else None)
-        defensive_networks[defender] = Network(df_nodes_def, df_edges_def)
+        defensive_networks[defender] = DefensiveNetwork(df_nodes_def, df_edges_def, defender, defender_to_name[defender])
 
-    res = DefensiveNetworks(off_network, off_involvement_type_network, defensive_networks)
+    res = DefensiveNetworks(off_network, off_network_only_positive, off_network_only_successful, off_involvement_type_network, defensive_networks)
     return res
 
 
@@ -215,9 +260,13 @@ def get_passing_network(
     df_nodes["name"] = df_nodes.index.map(entity_to_name)
     df_nodes["x_avg"] = average_positions["x"]
     df_nodes["y_avg"] = average_positions["y"]
+
     df_nodes["value_per_pass"] = (df_nodes["value_passes"] / df_nodes["num_passes"]).fillna(0)
     df_nodes["value_per_reception"] = (df_nodes["value_receptions"] / df_nodes["num_receptions"]).fillna(0)
     df_nodes["value_per_pass_and_reception"] = (df_nodes["value_passes_and_receptions"] / df_nodes["num_passes_and_receptions"]).fillna(0)
+
+    # assert (df_nodes["x_avg"].dropna() < 52.5).all()
+    # assert (df_nodes["x_avg"].dropna() > -52.5).all()
 
     # Aggregate edges
     df_edges = df_passes.groupby([from_col, to_col]).agg({from_col: "count", value_col: "sum"}).rename(columns={from_col: "num_passes", value_col: "value_passes"})
@@ -288,6 +337,10 @@ def plot_passing_network(
     colormap: str = None,
 
     ignore_nodes_without_position: bool = False,
+    ignore_nodes_without_passes_or_receptions: bool = True,
+
+    title: str = None,
+    zoom: bool = False,  # zooms a little bit into the plot so that there is less empty space in the plot
 ):
     """
     >>> defensive_network.utility.dataframes.prepare_doctest()
@@ -321,6 +374,10 @@ def plot_passing_network(
     if not ignore_nodes_without_position:
         df_nodes[x_col] = df_nodes[x_col].fillna(0)
         df_nodes[y_col] = df_nodes[y_col].fillna(0)
+    if ignore_nodes_without_passes_or_receptions:
+        i_zero = df_nodes["num_passes_and_receptions"] == 0
+        df_nodes.loc[i_zero, x_col] = np.nan
+        df_nodes.loc[i_zero, y_col] = np.nan
 
     normalize_edges = plt.Normalize(min_color_value_edges, max_color_value_edges)
     normalize_nodes = plt.Normalize(min_color_value_nodes, max_color_value_nodes)
@@ -354,7 +411,7 @@ def plot_passing_network(
 
     df_nodes[custom_size_col] = np.maximum(1, df_nodes[custom_size_col]**1.5 * node_size_multiplier / 15)# - node_min_size)
 
-    df_edges["sort_value"] = df_edges[arrow_color_col].abs()
+    df_edges["sort_value"] = df_edges[arrow_color_col]#.abs()
 
     for edge_nr, (_, row) in enumerate(df_edges.sort_values(by="sort_value", ascending=True).iterrows()):
         if (alternative_threshold_col is not None and row[alternative_threshold_col] < alternative_threshold) and (threshold_col is not None and row[threshold_col] < threshold):
@@ -375,8 +432,6 @@ def plot_passing_network(
             label_color = df_edges[df_edges[arrow_color_col] == df_edges[arrow_color_col].max()][custom_color_col].values[0]
         else:
             label_color = df_edges[df_edges[arrow_color_col] == df_edges[arrow_color_col].min()][custom_color_col].values[0]
-
-        importlib.reload(defensive_network.utility.pitch)
 
         defensive_network.utility.pitch.plot_position_arrow(
             row["from"],
@@ -406,44 +461,25 @@ def plot_passing_network(
     if show_colorbar:
         plt.colorbar(matplotlib.cm.ScalarMappable(norm=normalize_edges, cmap=colormap), label=colorbar_label, cax=plt.gca())#, fraction=0.046, pad=0.04)
 
-    return fig
+    if title is not None:
+        plt.title(title)
 
-
-def plottt(df_nodes, df_edges, title: str = ""):
-    fig, ax = plot_passing_network(
-        df_nodes,
-        df_edges=df_edges,
-        node_size_col="num_passes_and_receptions_per90",
-        node_color_col="value_passes_and_receptions_per90",
-        node_size_multiplier=3.0,
-        max_color_value_nodes=1.25,
-
-        arrow_width_col="num_passes_per90",
-        arrow_color_col="value_passes_per90",
-        arrow_width_multiplier=0.5,
-        max_color_value_edges=0.25,
-
-        colorbar_label="pxT Pass (per 90 minutes)",
-    )
-    plt.title(title)
-
-    # xlim to max
-    x_padding = -5
-    y_padding = 5
-    i_ok = ~df_nodes["x_avg"].isin([-np.inf, np.nan, np.inf])
-
-    x_min = df_nodes.loc[i_ok, "x_avg"].min()
-    x_max = df_nodes.loc[i_ok, "x_avg"].max()
-    y_min = df_nodes.loc[i_ok, "y_avg"].min()
-    y_max = df_nodes.loc[i_ok, "y_avg"].max()
-    if len(df_nodes) > 0:
-        ax.set_xlim(x_min - x_padding, x_max + x_padding)
-        ax.set_ylim(y_min - y_padding, y_max + y_padding)
+    if zoom:
+        x_padding = -5
+        y_padding = 5
+        i_ok = ~df_nodes["x_avg"].isin([-np.inf, np.nan, np.inf]) & ~df_nodes["y_avg"].isin([-np.inf, np.nan, np.inf])
+        x_min = df_nodes.loc[i_ok, "x_avg"].min()
+        x_max = df_nodes.loc[i_ok, "x_avg"].max()
+        y_min = df_nodes.loc[i_ok, "y_avg"].min()
+        y_max = df_nodes.loc[i_ok, "y_avg"].max()
+        if len(df_nodes) > 0 and not pd.isna(x_min) and not pd.isna(x_max) and not pd.isna(y_min) and not pd.isna(y_max):
+            plt.gca().set_xlim(x_min - x_padding, x_max + x_padding)
+            plt.gca().set_ylim(y_min - y_padding, y_max + y_padding)
 
     return fig
 
 
-def analyse_network(df_nodes, df_edges):
+def analyse_network(df_nodes, df_edges, silent=True):
     """
     >>> defensive_network.utility.dataframes.prepare_doctest()
     >>> df = pd.DataFrame({"x": [-10] * 3 + [5, 5], "y": [0] * 3 + [10, -25], "from": ["A"] * 3 + ["A", "B"], "to": ["B"] * 3 + ["B", "C"], "xT": list(np.arange(5) / 28)})
@@ -488,21 +524,24 @@ def analyse_network(df_nodes, df_edges):
     try:
         reciprocity = nx.reciprocity(G, G.nodes)
     except networkx.exception.NetworkXError as e:
-        st.warning(e)
+        if not silent:
+            st.warning(e)
         reciprocity = np.nan
 
     average_neighbor_degree = nx.average_neighbor_degree(G, weight='weight')
     clustering = nx.clustering(G, weight='weight')
     unweighted_density = nx.density(G)
     try:
-        eigenvector_centrality = nx.eigenvector_centrality(G, weight='weight', max_iter=10000)
+        eigenvector_centrality = None  # nx.eigenvector_centrality(G, weight='weight', max_iter=10000)  # too inefficient!
     except (networkx.exception.PowerIterationFailedConvergence, networkx.exception.NetworkXPointlessConcept) as e:
-        st.warning(e)
+        if not silent:
+            st.warning(e)
         eigenvector_centrality = np.nan
     try:
         closeness_centrality = nx.closeness_centrality(G_inverted, distance='weight')
     except ValueError as e:
-        st.warning(e)
+        if not silent:
+            st.warning(e)
         closeness_centrality = np.nan
     betweenness_centrality = nx.betweenness_centrality(G_inverted, weight='weight')
 
@@ -537,7 +576,7 @@ def analyse_network(df_nodes, df_edges):
         "Team reciprocity": team_reciprocity, "Total Degree": team_degree,
     })
 
-    return df_player_metrics, team_metrics
+    return Metrics(player=df_player_metrics, team=team_metrics)
 
 
 def analyse_defensive_networks(networks: DefensiveNetworks):
@@ -549,6 +588,7 @@ def analyse_defensive_networks(networks: DefensiveNetworks):
 
     """
     df_metrics_off = analyse_network(networks.off_network.df_nodes, networks.off_network.df_edges)
+    df_metrics_off_only_positive = analyse_network(networks.off_network_only_positive.df_nodes, networks.off_network_only_positive.df_edges)
     df_metrics_off_involvement_type = analyse_network(networks.off_involvement_type_network.df_nodes, networks.off_involvement_type_network.df_edges)
     def_metrics = {}
     def_sums = {}
@@ -562,7 +602,67 @@ def analyse_defensive_networks(networks: DefensiveNetworks):
     # df_def_sums["player_name"] = df_def_sums.index.map(selectedtrackingplayer2name)
     # df_def_sums = df_def_sums.set_index("player_name")
 
-    return DefensiveNetworkMetrics(df_metrics_off, df_metrics_off_involvement_type, def_metrics, df_def_sums)
+    df_def_team_sums = df_def_sums.sum()
+    df_def_team_means = df_def_sums.mean()
+
+    return DefensiveNetworkMetrics(df_metrics_off, df_metrics_off_only_positive, df_metrics_off_involvement_type, def_metrics, df_def_sums, df_def_team_sums, df_def_team_means)
+
+
+def plot_defensive_networks(networks: DefensiveNetworks, max_value=5):
+    fig = plot_passing_network(df_nodes=networks.off_network.df_nodes, df_edges=networks.off_network.df_edges, node_color_col="value_passes_and_receptions", arrow_color_col="value_passes")
+    st.write(fig)
+    st.write(networks.off_network.df_nodes)
+    st.write(networks.off_network.df_edges)
+
+    # max_nodes_involvement = max(networks.off_involvement_type_network.df_nodes["value_passes"])
+    # max_edges_involvement = max(networks.off_involvement_type_network.df_edges["value_passes"])
+
+    fig = plot_passing_network(df_nodes=networks.off_involvement_type_network.df_nodes, df_edges=networks.off_involvement_type_network.df_edges, max_color_value_nodes=max_value, max_color_value_edges=max_value, node_color_col="value_passes", arrow_color_col="value_passes")
+    st.write(fig)
+    st.write(networks.off_involvement_type_network.df_nodes)
+    st.write(networks.off_involvement_type_network.df_edges)
+
+    for defender, network in networks.def_networks.items():
+        fig = plot_passing_network(df_nodes=network.df_nodes, df_edges=network.df_edges, max_color_value_nodes=max_value, max_color_value_edges=max_value, node_color_col="value_passes", arrow_color_col="value_passes")
+        st.write("#### " + defender)
+        st.write(fig)
+        st.write(network.df_nodes)
+        st.write(network.df_edges)
+
+    metrics = analyse_defensive_networks(networks)
+
+    st.write("metrics")
+    st.write("metrics.off_network.team")
+    st.write(metrics.off_network.team)
+    st.write("metrics.off_network.player")
+    st.write(metrics.off_network.player)
+    st.write("metrics.off_involvement_type_network.team")
+    st.write(metrics.off_involvement_type_network.team)
+    st.write("metrics.off_involvement_type_network.player")
+    st.write(metrics.off_involvement_type_network.player)
+    st.write("metrics.def_network_sums")
+    st.write(metrics.def_network_sums)
+
+
+plot_offensive_network = functools.partial(
+    plot_passing_network, show_colorbar=False, node_size_multiplier=30,#, node_size_multiplier=20,
+    arrow_width_multiplier=1,#100,
+    label_col="value_passes_per_time", arrow_color_col="value_passes_per_time", annotate_top_n_edges=5,
+    arrow_width_col="num_passes_per_time", node_size_col="num_passes_per_time",
+    label_format_string="{:.3f}", ignore_nodes_without_position=False, node_color_col="value_passes_per_time",
+    # arrow_width_col = "value_passes_per_time",
+    ignore_nodes_without_passes_or_receptions=True, max_color_value_nodes=0.1,
+)
+plot_defensive_network = functools.partial(plot_passing_network,    arrow_width_col="num_passes_per_time", node_size_col="num_passes_per_time",
+
+
+    show_colorbar=False, node_size_multiplier=200, arrow_width_multiplier=3,
+    # colormap=matplotlib.cm.get_cmap("PuBuGn"),
+    colormap=matplotlib.cm.get_cmap("coolwarm"), min_color_value_edges=-0.05, max_color_value_edges=0.05,
+    min_color_value_nodes=-0.5, max_color_value_nodes=0.2, annotate_top_n_edges=5, label_col="edge_label",
+    label_format_string="{:.3f}", arrow_color_col="value_passes_per_time", ignore_nodes_without_position=False, node_color_col="value_passes_per_time",
+    ignore_nodes_without_passes_or_receptions=True,
+)
 
 
 if __name__ == '__main__':
@@ -570,31 +670,16 @@ if __name__ == '__main__':
     df = pd.DataFrame({
         "event_id": [0, 1, 1, 2, 3],
         "defender_id": ["DA", "DA", "DB", "DA", "DB"],
+        "defender_name": ["DA", "DA", "DB", "DA", "DB"],
         "involvement": [0.2, 0.3, 0.1, 0.4, 0.5],
         "x": [-10] * 3 + [5, 5],
         "y": [0] * 3 + [10, -25],
+        "x_target": [-40] * 3 + [45, 50],
+        "y_target": [0] * 5,
         "from": ["A"] * 3 + ["A", "B"],
         "to": ["B"] * 3 + ["B", "C"],
         "pass_xt": list(np.arange(5) / 28)
     })
-    st.write("df")
-    st.write(df)
-    networks = get_defensive_networks(df, player_col="from", player_name_col="from", x_col="x", y_col="y", x_target_col=None, y_target_col=None, receiver_col="to", receiver_name_col="to", total_minutes=3)
-    st.write("networks.def_networks")
-    st.write(networks.def_networks)
+    networks = get_defensive_networks(df, player_col="from", player_name_col="from", x_col="x", y_col="y", receiver_col="to", receiver_name_col="to", total_minutes=3, defender_name_col="defender_name", x_to_col="x_target", y_to_col="y_target")
 
-    fig = plot_passing_network(df_nodes=networks.off_network.df_nodes, df_edges=networks.off_network.df_edges)
-    st.write(fig)
-    st.write(networks.off_network.df_nodes)
-    st.write(networks.off_network.df_edges)
-    fig = plot_passing_network(df_nodes=networks.off_involvement_type_network.df_nodes, df_edges=networks.off_involvement_type_network.df_edges)
-    st.write(fig)
-    st.write(networks.off_involvement_type_network.df_nodes)
-    st.write(networks.off_involvement_type_network.df_edges)
-
-    for defender, network in networks.def_networks.items():
-        fig = plot_passing_network(df_nodes=network.df_nodes, df_edges=network.df_edges)
-        st.write("#### " + defender)
-        st.write(fig)
-        st.write(network.df_nodes)
-        st.write(network.df_edges)
+    plot_defensive_networks(networks)

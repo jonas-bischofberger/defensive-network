@@ -1,13 +1,10 @@
 import collections
 import os
-import pandas as pd
+
 import numpy as np
-import streamlit as st
+import pandas as pd
 
 import defensive_network.utility.dataframes
-# from ..utility.general import check_presence_of_required_columns, get_unused_column_name
-import defensive_network.utility.general
-
 
 XT_WEIGHTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets/xt_weights"))
 
@@ -19,6 +16,9 @@ def get_expected_threat(
     pass_end_y_col="y_target_norm", event_success_col="is_successful", xt_model="ma2024", attacking_direction_col=None,
 ) -> XTResult:
     """
+    Add expected threat to passes.
+
+    >>> defensive_network.utility.dataframes.prepare_doctest()
     >>> df_events = pd.DataFrame({"x_norm": [0, -30, 0], "y_norm": [0, 10, 0], "x_target_norm": [-30, 25, 10], "y_target_norm": [0, 0, 0], "is_successful": [True, True, False]})
     >>> df_events
        x_norm  y_norm  x_target_norm  y_target_norm  is_successful
@@ -28,12 +28,10 @@ def get_expected_threat(
     >>> res = get_expected_threat(df_events, xt_model="ma2024")
     >>> df_events["xt_before"], df_events["xt_after"], df_events["delta_xt"] = res.xt_before, res.xt_after, res.delta_xt
     >>> df_events
-       x_norm  y_norm  x_target_norm  ...  xt_before  xt_after  delta_xt
-    0       0       0            -30  ...   0.015593  0.004577 -0.011016
-    1     -30      10             25  ...   0.004604  0.037778  0.033174
-    2       0       0             10  ...   0.015593  0.000000 -0.015593
-    <BLANKLINE>
-    [3 rows x 8 columns]
+       x_norm  y_norm  x_target_norm  y_target_norm  is_successful  xt_before  xt_after  delta_xt
+    0       0       0            -30              0           True   0.015593  0.004577 -0.011016
+    1     -30      10             25              0           True   0.004604  0.037778  0.033174
+    2       0       0             10              0          False   0.015593  0.000000 -0.015593
     """
     defensive_network.utility.dataframes.check_presence_of_required_columns(df_events, "df_events", ["event_x_col", "event_y_col", "pass_end_x_col", "pass_end_y_col", "event_success_col"], [event_x_col, event_y_col, pass_end_x_col, pass_end_y_col, event_success_col])
     df_events[event_success_col] = df_events[event_success_col].astype(bool)

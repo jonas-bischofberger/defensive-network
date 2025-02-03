@@ -1,81 +1,59 @@
 import collections
+import os.path
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import streamlit as st
 import scipy.optimize
+import streamlit as st
+
+import defensive_network.utility.general
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+
+FormationResult = collections.namedtuple("FormationResult", ["role", "role_name", "formation_instance", "role_category"])
 
 
-def plot_roles(df, x_col="x_norm", y_col="y_norm", role_col="role", role_name_col="role_name"):
-    role_col = "role"
-    role_name_col = "role_name"
-    assert role_col in df.columns
-    assert role_name_col in df.columns
-    # role_col = "player_index"
-    dfg = df.groupby(role_col).agg({x_col: "mean", y_col: "mean", role_name_col: "first"}).reset_index()
+def _plot_roles(df_tracking, x_col="x_norm", y_col="y_norm", role_col="role", role_name_col=None):
+    """
+    >>> df_tracking = pd.DataFrame({"role": ["A", "A", "B", "B", "C", "C"], "role_name": ["Role A", "Role A", "Role B", "Role B", "Role C", "Role C"], "x_norm": [0, 10, 20, 30, 40, 50], "y_norm": [0, 0, 30, 35, -20, 10]})
+    >>> df_tracking
+      role role_name  x_norm  y_norm
+    0    A    Role A       0       0
+    1    A    Role A      10       0
+    2    B    Role B      20      30
+    3    B    Role B      30      35
+    4    C    Role C      40     -20
+    5    C    Role C      50      10
+    >>> _plot_roles(df_tracking, role_name_col="role_name")
+    <Figure size 640x480 with 1 Axes>
+    >>> plt.show()
+    """
+    if role_name_col is None:
+        role_name_col = role_col
+    assert role_col in df_tracking.columns
+    assert role_name_col in df_tracking.columns
+
+    dfg = df_tracking.groupby(role_col).agg({x_col: "mean", y_col: "mean", role_name_col: "first"})
+    try:
+        dfg = dfg.reset_index()
+    except ValueError:
+        pass
+
     plt.figure()
-    # plt.xlim(-52.5, 52.5)
-    # plt.ylim(-34, 34)
-    roles = dfg[role_col].unique()
-    dfg["role_index"] = dfg[role_col].apply(lambda x: list(roles).index(x))
+    roles = dfg[role_col].unique().tolist()
+    dfg["role_index"] = dfg[role_col].apply(lambda x: roles.index(x))
     plt.scatter(dfg[x_col], dfg[y_col], c=dfg["role_index"])
     for i, txt in enumerate(dfg[role_name_col]):
         plt.annotate(txt, (dfg[x_col].iloc[i], dfg[y_col].iloc[i]-0.5), fontsize=8, color="black", ha="center", va="top")
     plt.legend()
-    st.write(plt.gcf())
-    plt.close()
-
-
-def get_default_role_assignment(df, frame_col, player_col, x_col="x_norm", y_col="y_norm", role_prefix=""):
-    df_configuration = df.groupby(frame_col)[player_col].apply(set).reset_index()
-    df["configuration"] = df[frame_col].map(df_configuration.set_index(frame_col)[player_col])
-
-    unique_configurations = df_configuration[player_col].drop_duplicates().tolist()
-    dfg_player_means = df.groupby(player_col).agg(x_mean=(x_col, "mean"), y_mean=(y_col, "mean"))
-
-    current_config = unique_configurations[0]
-    current_player2role = {player: player_nr for player_nr, player in enumerate(current_config)}
-    i_current_configuration = df["configuration"] == current_config
-    df.loc[i_current_configuration, "role"] = df.loc[i_current_configuration, player_col].map(current_player2role)
-    for next_config in unique_configurations[1:]:
-        out_subs = list(current_config - next_config)
-        in_subs = list(next_config - current_config)
-        assert all([out_sub in current_player2role for out_sub in out_subs])
-        assert not any([in_sub in current_player2role for in_sub in in_subs])
-
-        if len(in_subs) == 1:
-            assert in_subs[0] not in current_player2role
-            assert len(current_player2role) == 11
-            current_player2role[in_subs[0]] = current_player2role.pop(out_subs[0])
-            assert len(current_player2role) == 11
-        elif len(in_subs) > 1:
-            in_sub_pos_means = dfg_player_means.loc[in_subs, ["x_mean", "y_mean"]]
-            out_sub_pos_means = dfg_player_means.loc[out_subs, ["x_mean", "y_mean"]]
-            cost_matrix = np.linalg.norm(in_sub_pos_means.values[:, np.newaxis, :] - out_sub_pos_means.values[np.newaxis, :, :], axis=-1)
-            optimal_insub, optimal_outsub = scipy.optimize.linear_sum_assignment(cost_matrix, maximize=True)
-            for in_sub_index, out_sub_index in zip(optimal_insub, optimal_outsub):
-                in_sub = in_subs[in_sub_index]
-                out_sub = out_subs[out_sub_index]
-                assert out_sub in current_player2role
-                current_player2role[in_sub] = current_player2role.pop(out_sub)
-        else:
-            raise NotImplementedError(f"len(in_subs) == {len(in_subs)}")
-
-        i_config = df["configuration"] == next_config
-        df.loc[i_config, "role"] = df.loc[i_config, player_col].map(current_player2role)
-
-        current_config = next_config
-
-    df["role"] = role_prefix + df["role"].astype(str)
-    return df["role"]
-
-
-FormationResult = collections.namedtuple("FormationResult", ["role", "role_name", "formation_instance"])
+    return plt.gcf()
 
 
 def detect_formation(
     df_tracking, frame_col="full_frame", x_col="x_norm", y_col="y_norm", player_col="player_id", team_col="team_id",
-    player_name_col="player_name", team_name_col="team_id", ball_team="BALL", model="average_pos"
+    player_name_col="player_name", team_name_col="team_id", ball_team="BALL", model="average_pos", plot_formation=False,
 ):
     """
     >>> df_tracking =
@@ -85,8 +63,10 @@ def detect_formation(
     if ball_team is not None:
         df_tracking = df_tracking[df_tracking[team_col] != ball_team]
 
-    df_tracking = df_tracking.sort_values([frame_col, team_col, player_col])
     df_tracking = df_tracking[df_tracking[x_col].notna() & df_tracking[y_col].notna()]
+
+    with st.spinner("Sorting..."):
+        df_tracking = df_tracking.sort_values([frame_col, team_col, player_col])
 
     for col in [frame_col, x_col, y_col, player_col, team_col]:
         assert col in df_tracking.columns, f"{col} not in df.columns ({df_tracking.columns})"
@@ -94,18 +74,19 @@ def detect_formation(
     dfs = []
 
     for team_nr, (team, df_team) in enumerate(df_tracking.groupby(team_col)):
+        if plot_formation:
+            columns = st.columns(2)
         team_name = df_team[team_name_col].iloc[0]
-        for in_possession in [True, False]:
+        for in_possession_nr, in_possession in enumerate([True, False]):
             in_poss_str = "off" if in_possession else "def"
             formation_instance = f"{team_name}_{in_poss_str}"
 
-            st.write("##", formation_instance)
             if in_possession:
                 df = df_team[df_team["ball_poss_team_id"] == team]
             else:
                 df = df_team[df_team["ball_poss_team_id"] != team]
-                df["x_norm"] *= -1
-                df["y_norm"] *= -1
+                df[x_col] *= -1
+                df[x_col] *= -1
 
             assert len(df) > 0
 
@@ -115,13 +96,75 @@ def detect_formation(
 
             binsize = 1.5
 
+            def get_default_role_assignment(df, frame_col, player_col, x_col="x_norm", y_col="y_norm", role_prefix=""):
+                df_configuration = pd.pivot_table(df, index=frame_col, columns=player_col, values=x_col, aggfunc="count")
+                df_configuration["configuration_id"] = pd.factorize(df_configuration.apply(tuple, axis=1))[0]
+
+                unique_configurations = df_configuration.drop_duplicates("configuration_id").reset_index(drop=True)
+                unique_configuration_lists = unique_configurations[[col for col in unique_configurations.columns if col != "configuration_id"]].apply(lambda row: row.index[row == 1].tolist(), axis=1).tolist()
+
+                with st.spinner("Mapping..."):
+                    df["configuration_id"] = df[frame_col].map(df_configuration["configuration_id"])
+
+                dfg_player_means = df.groupby(player_col).agg(x_mean=(x_col, "mean"), y_mean=(y_col, "mean"))
+
+                current_config = set(unique_configuration_lists[0])
+                current_config_id = unique_configurations["configuration_id"].iloc[0]
+                current_player2role = {player: player_nr for player_nr, player in enumerate(current_config)}
+                i_current_configuration = df["configuration_id"] == current_config_id
+                df.loc[i_current_configuration, "role"] = df.loc[i_current_configuration, player_col].map(current_player2role)
+
+                for config_nr, next_config in enumerate(unique_configuration_lists[1:]):
+                    next_config = set(next_config)
+                    current_config_id = unique_configurations["configuration_id"].iloc[config_nr + 1]
+                    out_subs = list(current_config - next_config)
+                    in_subs = list(next_config - current_config)
+                    assert all([out_sub in current_player2role for out_sub in out_subs])
+                    assert not any([in_sub in current_player2role for in_sub in in_subs])
+
+                    if len(in_subs) == 1:
+                        assert in_subs[0] not in current_player2role
+                        assert len(current_player2role) == 11
+                        current_player2role[in_subs[0]] = current_player2role.pop(out_subs[0])
+                        assert len(current_player2role) == 11
+                    elif len(in_subs) > 1:
+                        in_sub_pos_means = dfg_player_means.loc[in_subs, ["x_mean", "y_mean"]]
+                        out_sub_pos_means = dfg_player_means.loc[out_subs, ["x_mean", "y_mean"]]
+                        cost_matrix = np.linalg.norm(in_sub_pos_means.values[:, np.newaxis, :] - out_sub_pos_means.values[np.newaxis, :, :], axis=-1)
+                        optimal_insub, optimal_outsub = scipy.optimize.linear_sum_assignment(cost_matrix, maximize=True)
+                        for in_sub_index, out_sub_index in zip(optimal_insub, optimal_outsub):
+                            in_sub = in_subs[in_sub_index]
+                            out_sub = out_subs[out_sub_index]
+                            assert out_sub in current_player2role
+                            current_player2role[in_sub] = current_player2role.pop(out_sub)
+                    else:
+                        raise NotImplementedError(f"len(in_subs) == {len(in_subs)}")
+
+                    i_config = df["configuration_id"] == current_config_id
+                    df.loc[i_config, "role"] = df.loc[i_config, player_col].map(current_player2role)
+                    assert df.loc[i_config, "role"].notna().all()
+
+                    current_config = next_config
+
+                df["role"] = role_prefix + df["role"].astype(str)
+                return df["role"]
+
             df["role"] = get_default_role_assignment(df, frame_col, player_col, x_col, y_col, role_prefix=formation_instance)
 
             role2players = df.groupby("role")[player_name_col].apply(set).to_dict()
-            role2role_name = {role: '/'.join([player.split(". ")[-1] for player in list(players)]) for role, players in role2players.items()}
+
+            # check if some player is nan
+            if any([pd.isna(player) for players in role2players.values() for player in players]):
+                st.warning(f"Some players are missing in the role2players mapping: {role2players}")
+
+            role2role_name = {role: '/'.join([player.split(". ")[-1] for player in list(players) if not pd.isna(player)]) for role, players in role2players.items()}
             df["role_name"] = df["role"].map(role2role_name)
             df["formation_instance"] = formation_instance
-            plot_roles(df)
+            if plot_formation:
+                with columns[in_possession_nr]:
+                    st.write(f"#### {formation_instance}")
+                    st.write(_plot_roles(df))
+                plt.close()
 
             df_tracking.loc[df.index, "role"] = df["role"]
             df_tracking.loc[df.index, "role_name"] = df["role_name"]
@@ -134,114 +177,9 @@ def detect_formation(
     assert len(df[[frame_col, player_col]].drop_duplicates()) == len(df)
 
     # df_tracking = df_tracking.merge(df, on=[frame_col, player_col], how="left")
+    df_tracking["role_category"] = get_role_category(df_tracking)
 
-    return FormationResult(df_tracking["role"], df_tracking["role_name"], df_tracking["formation_instance"])
-
-        # def test():
-        #     st.write("role2role_name")
-        #     st.write(role2role_name)
-        #
-        #     xy_mean = df.groupby([team_col]).agg(x_mean=(x_col, "mean"), y_mean=(y_col, "mean"))
-        #     st.write("xy_mean")
-        #     st.write(xy_mean)
-        #
-        #     df = df.merge(xy_mean, on=team_col, how="left")
-        #     # df["x_mean"] = 0
-        #     # df["y_mean"] = 0
-        #
-        #     # df["x_adj"] = df[x_col] - df["x_mean"]
-        #     # df["y_adj"] = df[y_col] - df["y_mean"]
-        #     # df["x_bin"] = df["x_adj"] // binsize * binsize
-        #     # df["y_bin"] = df["y_adj"] // binsize * binsize
-        #     # df["xy_bin"] = df["x_bin"].astype(str) + "_" + df["y_bin"].astype(str)
-        #
-        #     # players = df[player_col].unique()
-        #     # df["player_index"] = df[player_col].apply(lambda x: list(players).index(x))
-        #     # player2role = {player: player_nr for player_nr, player in enumerate(players)}
-        #     # df["role"] = df[player_col].map(player2role)
-        #     # roles = df["role"].unique().tolist()
-        #     # N = len(roles)
-        #     # df = df.sort_values(frame_col)
-        #
-        #     # plot
-        #
-        #     plot_roles(df)
-        #
-        #     def get_FPC(df, rows=frame_col, cols=player_col):
-        #         pivoted = df.pivot(index=rows, columns=cols, values=[x_col, y_col])
-        #         pivoted = pivoted.sort_index(axis=1)
-        #         pivoted = pivoted.fillna(0)
-        #         numpy_array = pivoted.to_numpy()
-        #         F, P = pivoted.index.size, len(pivoted.columns.levels[1])
-        #         numpy_array = numpy_array.reshape(F, P, 2)
-        #         return numpy_array
-        #
-        #     def df2matrix(df):
-        #         frames = sorted(df['frame'].unique())
-        #         players = sorted(df['player'].unique())
-        #         roles = sorted(df['role'].unique())
-        #
-        #         # Create a mapping for indexing
-        #         frame_idx = {frame: i for i, frame in enumerate(frames)}
-        #         player_idx = {player: i for i, player in enumerate(players)}
-        #         role_idx = {role: i for i, role in enumerate(roles)}
-        #
-        #         # Initialize an empty array with NaN
-        #         result = np.full((len(frames), len(players), len(roles), 2), np.nan)
-        #
-        #         # Populate the array
-        #         for _, row in df.iterrows():
-        #             f = frame_idx[row['frame']]
-        #             p = player_idx[row['player']]
-        #             r = role_idx[row['role']]
-        #             result[f, p, r, :] = [row['x'], row['y']]
-        #
-        #         # Resulting array
-        #         return result
-        #
-        #     PLAYER_ROLES = df.pivot(index=frame_col, columns=player_col, values="role").to_numpy()  # F x P (Ri)
-        #
-        #     for i in defensive_network.utility.progress_bar(range(1)):
-        #         POSITIONS = get_FPC(df)  # F x P x C
-        #
-        #         cost_function = "distance_to_role_mean"
-        #
-        #         F_range = list(range(POSITIONS.shape[0]))
-        #
-        #         ROLE_POSITIONS = np.empty_like(POSITIONS)  # F x P x C
-        #         for i in range(POSITIONS.shape[0]):
-        #             ROLE_POSITIONS[i, :, :] = POSITIONS[i, PLAYER_ROLES[i], :]  # Reorder second axis for each row
-        #
-        #         ROLE_MEANS = ROLE_POSITIONS.mean(axis=0)  # R x C
-        #
-        #         if cost_function == "distance_to_role_mean":
-        #             COST_MATRICES = np.linalg.norm(POSITIONS[:, :, np.newaxis, :] - ROLE_MEANS[np.newaxis, np.newaxis, :, :], axis=-1)  # F x P x R
-        #         elif cost_function == "entropy":
-        #             pass
-        #         else:
-        #             raise NotImplementedError(f"{cost_function}")
-        #
-        #         all_optimal_roles = []
-        #         for frame in range(COST_MATRICES.shape[0]):
-        #             COST_MATRIX = COST_MATRICES[frame, :, :]  # P x R
-        #             optimal_players, optimal_roles = scipy.optimize.linear_sum_assignment(COST_MATRIX, maximize=True)  # R
-        #             assert list(optimal_players) == list(range(len(optimal_players)))
-        #             all_optimal_roles.append(optimal_roles)
-        #
-        #         ALL_OPTIMAL_ROLES = np.array(all_optimal_roles)  # F x R
-        #         PLAYER_ROLES = ALL_OPTIMAL_ROLES  # F x R
-        #
-        #         df["role"] = df[[frame_col, "player_index"]].apply(lambda x: PLAYER_ROLES[int(x[frame_col]), int(x["player_index"])], axis=1)
-        #
-        #     df["player_index"] = df[player_col].apply(lambda x: list(players).index(x))
-        #     df["role"] = df[[frame_col, "player_index"]].apply(lambda x: PLAYER_ROLES[int(x[frame_col]), int(x["player_index"])], axis=1)
-        #     plot_roles(df)
-        #
-        #     dfs.append(df)
-        #
-        #     break
-
-#    return dfs
+    return FormationResult(df_tracking["role"], df_tracking["role_name"], df_tracking["formation_instance"], df_tracking["role_category"])
 
 
 @st.cache_resource
@@ -249,15 +187,133 @@ def _read_parquet(fpath):
     return pd.read_parquet(fpath)
 
 
-if __name__ == '__main__':
-    df = _read_parquet("C:/Users/Jonas/Downloads/dfl_test_data/2324/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet")
-    # C:\Users\Jonas\Downloads\dfl_test_data\2324\preprocessed\tracking
-    df = df.drop(columns=["role", "role_name", "formation_instance"])
-    assert "role" not in df.columns
-    res = detect_formation(df)
-    df["role"] = res.role
-    df["role_name"] = res.role_name
-    df["formation_instance"] = res.formation_instance
+def get_role_category(df_tracking, role_col="role", formation_col="formation_instance", x_col="x_norm", y_col="y_norm"):
+    df_tracking = df_tracking.copy()
+    original_index = df_tracking.index
+    assert (original_index == df_tracking.index).all()
 
-    for formation, df_formation in df.groupby("formation_instance"):
-        plot_roles(df_formation)
+    df_tracking["is_def_formation"] = df_tracking[formation_col].str.endswith("_def")
+    df_tracking["x_norm_form"] = df_tracking[x_col] * (1 - 2 * df_tracking["is_def_formation"])
+    df_tracking["y_norm_form"] = df_tracking[y_col] * (1 - 2 * df_tracking["is_def_formation"])
+    del x_col, y_col  # do not use anymore
+
+    # Identify and remove goalkeepers
+    dfg_gk_role = df_tracking.groupby([formation_col, role_col]).agg({"x_norm_form": "mean", "y_norm_form": "mean"}).reset_index()
+    # with st.spinner("Getting gk (likely the bottleneck)"):
+    #     dfg_gk_role = dfg_gk_role.groupby(formation_col).apply(lambda x: x[x["x_norm_form"] == x["x_norm_form"].min()])[role_col].reset_index().drop(columns="level_1")
+
+    dfg_gk_role = dfg_gk_role.groupby(formation_col).apply(lambda x: x[x["x_norm_form"] == x["x_norm_form"].min()])[role_col].reset_index().drop(columns="level_1")
+    dfg_gk_role["role_category"] = "goalkeeper"
+    dfg_gk_role["is_gk"] = dfg_gk_role["role_category"] == "goalkeeper"
+    gk_roles = dfg_gk_role[role_col].unique()
+    # TODO bottleneck 1
+    assert (original_index == df_tracking.index).all()
+
+    # assert dfg_gk_role has no duplicates
+    assert len(dfg_gk_role) == len(dfg_gk_role.drop_duplicates(subset=[formation_col, role_col]))
+
+    df_tracking = df_tracking.reset_index().merge(dfg_gk_role[[formation_col, role_col, "is_gk"]], on=[formation_col, role_col], how="left")
+    df_tracking = df_tracking.set_index("index")  # somehow merge doesnt preserve index
+    assert (original_index == df_tracking.index).all()
+
+    df_tracking["is_gk"] = df_tracking["is_gk"].fillna(False)
+    # assert len(df_tracking["is_gk"].dropna().unique()) == 2
+    # df_tracking["is_gk"] = df_tracking[[formation_col, role_col]].apply(tuple, axis=1).map(dfg_gk_role.set_index([formation_col, role_col])["role_category"]) == "goalkeeper"
+
+    dfg_roles = df_tracking[~df_tracking["is_gk"]].groupby([formation_col, role_col]).agg({"x_norm_form": "mean", "y_norm_form": "mean"}).reset_index()
+    dfg_centroid = dfg_roles.groupby(formation_col).agg(x_centroid=("x_norm_form", "mean"), y_centroid=("y_norm_form", "mean"), x_min=("x_norm_form", "min"), x_max=("x_norm_form", "max"), y_min=("y_norm_form", "min"), y_max=("y_norm_form", "max"))
+
+    dfg_centroid["x_formation_0.2_percentile"] = dfg_centroid["x_min"] + 0.15 * (dfg_centroid["x_max"] - dfg_centroid["x_min"])
+    dfg_centroid["x_formation_0.4_percentile"] = dfg_centroid["x_min"] + 0.4 * (dfg_centroid["x_max"] - dfg_centroid["x_min"])
+    dfg_centroid["x_formation_0.6_percentile"] = dfg_centroid["x_min"] + 0.6 * (dfg_centroid["x_max"] - dfg_centroid["x_min"])
+    dfg_centroid["x_formation_0.8_percentile"] = dfg_centroid["x_min"] + 0.8 * (dfg_centroid["x_max"] - dfg_centroid["x_min"])
+    dfg_centroid["y_formation_0.2_percentile"] = dfg_centroid["y_min"] + 0.2 * (dfg_centroid["y_max"] - dfg_centroid["y_min"])
+    dfg_centroid["y_formation_0.4_percentile"] = dfg_centroid["y_min"] + 0.4 * (dfg_centroid["y_max"] - dfg_centroid["y_min"])
+    dfg_centroid["y_formation_0.6_percentile"] = dfg_centroid["y_min"] + 0.6 * (dfg_centroid["y_max"] - dfg_centroid["y_min"])
+    dfg_centroid["y_formation_0.8_percentile"] = dfg_centroid["y_min"] + 0.85 * (dfg_centroid["y_max"] - dfg_centroid["y_min"])
+
+    dfg_roles = dfg_roles.merge(dfg_centroid, on=formation_col, how="left")
+
+    with st.spinner("Calculating lane numbers (likely not the bottleneck)"):
+        dfg_roles["horizontal_lane_number"] = dfg_roles.apply(lambda x: 1 if x["x_norm_form"] < x["x_formation_0.2_percentile"] else 2 if x["x_norm_form"] < x["x_formation_0.4_percentile"] else 3 if x["x_norm_form"] < x["x_formation_0.6_percentile"] else 4 if x["x_norm_form"] < x["x_formation_0.8_percentile"] else 5, axis=1)
+        dfg_roles["vertical_lane_number"] = dfg_roles.apply(lambda x: 1 if x["y_norm_form"] < x["y_formation_0.2_percentile"] else 2 if x["y_norm_form"] < x["y_formation_0.4_percentile"] else 3 if x["y_norm_form"] < x["y_formation_0.6_percentile"] else 4 if x["y_norm_form"] < x["y_formation_0.8_percentile"] else 5, axis=1)
+
+    lane_numbers_to_position_labels = {
+        (1, 1): "right_defender",
+        (1, 2): "central_defender",
+        (1, 3): "central_defender",
+        (1, 4): "central_defender",
+        (1, 5): "left_defender",
+
+        (2, 1): "right_defender",
+        (2, 2): "central_midfield",
+        (2, 3): "central_midfield",
+        (2, 4): "central_midfield",
+        (2, 5): "left_defender",
+
+        (3, 1): "right_winger",
+        (3, 2): "central_midfield",
+        (3, 3): "central_midfield",
+        (3, 4): "central_midfield",
+        (3, 5): "left_winger",
+
+        (4, 1): "right_winger",
+        (4, 2): "central_midfield",
+        (4, 3): "central_midfield",
+        (4, 4): "central_midfield",
+        (4, 5): "left_winger",
+
+        (5, 1): "right_winger",
+        (5, 2): "striker",
+        (5, 3): "striker",
+        (5, 4): "striker",
+        (5, 5): "left_winger",
+    }
+    dfg_roles["role_category"] = dfg_roles.apply(lambda x: lane_numbers_to_position_labels[(x["horizontal_lane_number"], x["vertical_lane_number"])], axis=1)
+    assert (original_index == df_tracking.index).all()
+
+    # add gk role
+    dfg_roles = pd.concat([dfg_roles, dfg_gk_role], axis=0).reset_index(drop=True)
+
+    # TODO bottleneck 2
+    # df_tracking["role_category"] = df_tracking[[formation_col, role_col]].apply(tuple, axis=1).map(dfg_roles.set_index([formation_col, role_col])["role_category"])
+    # st.write("df_tracking")
+    # st.write(df_tracking[[formation_col, role_col]].head(5))
+    # st.write(dfg_roles[[formation_col, role_col, "role_category"]])
+    df_tracking = df_tracking.reset_index().merge(dfg_roles[[formation_col, role_col, "role_category"]], on=[formation_col, role_col], how="left").set_index("index")  # somehow merge doesnt preserve index
+    # st.write(df_tracking.head(5))
+    assert "role_category" in df_tracking.columns
+    # df_tracking = df_tracking.merge(dfg_gk_role[[formation_col, role_col, "role_category", "is_gk"]], on=[formation_col, role_col], how="left")
+    # df_tracking = df_tracking.set_index("index")
+
+    # st.write(df_tracking[[formation_col, role_col, "role_category"]].value_counts())
+
+    assert "goalkeeper" in df_tracking["role_category"].unique()
+    assert set(df_tracking.loc[df_tracking["role_category"] == "goalkeeper", "role"]) == set(gk_roles)
+
+    # assert that every role has a unique category
+    assert (original_index == df_tracking.index).all()
+
+    return df_tracking["role_category"]
+
+
+if __name__ == '__main__':
+    defensive_network.utility.general.start_streamlit_profiler()
+
+    # df = _read_parquet("C:/Users/Jonas/Downloads/dfl_test_data/2324/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet")
+    df_tracking = _read_parquet(os.path.join(os.path.dirname(__file__), "../../data_reduced/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet"))
+    df_tracking = df_tracking.drop(columns=["role", "role_name", "formation_instance"])
+    assert "role" not in df_tracking.columns
+    res = detect_formation(df_tracking)
+    df_tracking["role"] = res.role
+    df_tracking["role_name"] = res.role_name
+    df_tracking["formation_instance"] = res.formation_instance
+    df_tracking["role_category"] = res.role_category
+    defensive_network.utility.general.stop_streamlit_profiler()
+
+    for formation, df_tracking_formation in df_tracking.groupby("formation_instance"):
+        st.write("-------------")
+        st.write(formation)
+        st.write(_plot_roles(df_tracking_formation, role_name_col="role_category"))
+        st.write(_plot_roles(df_tracking_formation, role_name_col="role"))
+        st.write("-------------")

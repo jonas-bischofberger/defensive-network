@@ -165,45 +165,26 @@ def plot_position_arrow(start_position: str, end_position: str, label: str = "",
         plot_position(end_position, color=position_color)
 
 
-def plot_pass(
-    p4ss, df_tracking,
-    pass_x_col="x_event", pass_y_col="y_event", pass_end_x_col="x_target", pass_end_y_col="y_target",
-    pass_frame_col="full_frame", pass_team_col="team_id_1", pass_player_name_col="player_name_1",
+def plot_tracking_frame(
+    df_frame, attacking_team,
     tracking_team_col="team_id", tracking_player_col="player_id", tracking_x_col="x_tracking",
     tracking_y_col="y_tracking", tracking_frame_col="full_frame", tracking_player_name_col="player_name",
     tracking_vx_col=None, tracking_vy_col=None, ball_tracking_player_id="BALL", plot_defenders=True,
-    plot_expected_receiver=True,
 ):
-
-    # if ball_tracking_player_id not in df_tracking[tracking_player_col]:
-    #     return
-    accessible_space.interface._check_ball_in_tracking_data(df_tracking, tracking_player_col, ball_tracking_player_id)
-
-    plt.figure()
-    # plot penalty boxse
-    # left penalty box
-    y_box = 16.5 + 7.32 / 2
-    x0 = -52.5
-    x_box = -52.5+16.5
-    plt.plot([x0, x_box], [y_box, y_box], color='grey')
-    plt.plot([x_box, x_box], [-y_box, y_box], color='grey')
-    plt.plot([x0, x_box], [-y_box, -y_box], color='grey')
-
-    # right penalty box
-    x0 = 52.5
-    x_box = 52.5-16.5
-    plt.plot([x0, x_box], [y_box, y_box], color='grey')
-    plt.plot([x_box, x_box], [-y_box, y_box], color='grey')
-    plt.plot([x0, x_box], [-y_box, -y_box], color='grey')
-
-    df_frame = df_tracking[df_tracking[tracking_frame_col] == p4ss[pass_frame_col]]
+    """
+    >>> df_tracking = pd.DataFrame({"player_id": ["a", "b", "c", "d", "BALL"], "player_name": ["Player AT", "Player BT", "Player CT", "Player DT", None], "team_id": ["H", "H", "A", "A", None], "x_tracking": [0, 15, -15, 0, 2], "y_tracking": [0, 0, 0, 20, 0], "full_frame": [0]*5})
+    >>> plot_tracking_frame(df_tracking, "H")
+    <Figure size 640x480 with 1 Axes>
+    >>> plt.show()
+    """
+    _plot_pitch()
 
     df_frame_without_ball = df_frame[df_frame[tracking_player_col] != ball_tracking_player_id]
 
-    factor=1
+    factor = 1
 
     for team, df_frame_team in df_frame_without_ball.groupby(tracking_team_col):
-        is_defending_team = team != p4ss[pass_team_col]
+        is_defending_team = team != attacking_team
         if is_defending_team and not plot_defenders:
             continue
         x = df_frame_team[tracking_x_col].tolist()
@@ -224,9 +205,6 @@ def plot_pass(
             for i, txt in enumerate(df_frame_team[tracking_player_name_col]):
                 plt.annotate(txt, (x[i], y[i]-2.25), fontsize=5*factor, ha="center", va="center", color=color)
 
-    # plot passing start point with colored X
-    plt.scatter(p4ss[pass_x_col], p4ss[pass_y_col], c="red", marker="x", s=30*factor)
-
     # plot ball position
     try:
         df_frame_ball = df_frame[df_frame[tracking_player_col] == ball_tracking_player_id]
@@ -237,15 +215,31 @@ def plot_pass(
     except AssertionError as e:
         st.write(e)
 
-    if plot_expected_receiver and "expected_receiver" in p4ss:
-        expected_receiver = p4ss["expected_receiver"]
-        if not pd.isna(expected_receiver):
-            df_tracking_expected_receiver = df_frame[df_frame[tracking_player_col] == expected_receiver]
-            assert len(df_tracking_expected_receiver) > 0
-            x = df_tracking_expected_receiver[tracking_x_col].iloc[0]
-            y = df_tracking_expected_receiver[tracking_y_col].iloc[0]
-            plt.scatter(x, y, c="yellow", marker="x", s=25*factor, label="expected receiver")
-            plt.legend()
+    return plt.gcf()
+
+
+
+def _plot_pitch():
+    """
+    >>> _plot_pitch()
+    >>> plt.show()
+    """
+    plt.figure()
+
+    # left penalty box
+    y_box = 16.5 + 7.32 / 2
+    x0 = -52.5
+    x_box = -52.5+16.5
+    plt.plot([x0, x_box], [y_box, y_box], color='grey')
+    plt.plot([x_box, x_box], [-y_box, y_box], color='grey')
+    plt.plot([x0, x_box], [-y_box, -y_box], color='grey')
+
+    # right penalty box
+    x0 = 52.5
+    x_box = 52.5-16.5
+    plt.plot([x0, x_box], [y_box, y_box], color='grey')
+    plt.plot([x_box, x_box], [-y_box, y_box], color='grey')
+    plt.plot([x0, x_box], [-y_box, -y_box], color='grey')
 
     plt.plot([-52.5, 52.5], [-34, -34], c="grey")
     plt.plot([-52.5, 52.5], [34, 34], c="grey")
@@ -266,9 +260,79 @@ def plot_pass(
     plt.xlim(-52.5-5, 52.5+5)
     plt.ylim(-34-5, 34+5)
 
+
+def plot_pass(
+    p4ss, df_frame,
+    pass_x_col="x_event", pass_y_col="y_event", pass_end_x_col="x_target", pass_end_y_col="y_target",
+    pass_frame_col="full_frame", pass_team_col="team_id_1", pass_player_name_col="player_name_1",
+    tracking_team_col="team_id", tracking_player_col="player_id", tracking_x_col="x_tracking",
+    tracking_y_col="y_tracking", tracking_frame_col="full_frame", tracking_player_name_col="player_name",
+    tracking_vx_col=None, tracking_vy_col=None, ball_tracking_player_id="BALL", plot_defenders=True,
+    plot_expected_receiver=True, make_pass_transparent=False,
+):
+    """
+    >>> p4ss = pd.Series({"x_event": 0, "y_event": 0, "x_target": 30, "y_target": -10, "full_frame": 0, "team_id_1": "H", "player_name_1": "Player A", })
+    >>> df_tracking = pd.DataFrame({"player_id": ["a", "b", "c", "d", "BALL"], "player_name": ["Player AT", "Player BT", "Player CT", "Player DT", None], "team_id": ["H", "H", "A", "A", None], "x_tracking": [0, 15, -15, 0, 2], "y_tracking": [0, 0, 0, 20, 0], "full_frame": [0]*5})
+    >>> plot_pass(p4ss, df_tracking)
+    <Figure size 640x480 with 1 Axes>
+    >>> plt.show()
+    """
+
+    # if ball_tracking_player_id not in df_tracking[tracking_player_col]:
+    #     return
+    accessible_space.interface._check_ball_in_tracking_data(df_frame, tracking_player_col, ball_tracking_player_id)
+
+    # _plot_pitch()
+
+    # df_frame = df_tracking[df_tracking[tracking_frame_col] == p4ss[pass_frame_col]]
+
+    # df_frame_without_ball = df_frame[df_frame[tracking_player_col] != ball_tracking_player_id]
+
+    factor=1
+
+    plot_tracking_frame(df_frame, p4ss[pass_team_col])
+
+    # for team, df_frame_team in df_frame_without_ball.groupby(tracking_team_col):
+    #     is_defending_team = team != p4ss[pass_team_col]
+    #     if is_defending_team and not plot_defenders:
+    #         continue
+    #     x = df_frame_team[tracking_x_col].tolist()
+    #     y = df_frame_team[tracking_y_col].tolist()
+    #     color = "red" if not is_defending_team else "blue"
+    #     plt.scatter(x, y, c=color)
+    #
+    #     if tracking_vx_col is not None and tracking_vy_col is not None:
+    #         try:
+    #             vx = df_frame_team["vx"].tolist()
+    #             vy = df_frame_team["vy"].tolist()
+    #             for i in range(len(x)):
+    #                 plt.arrow(x=x[i], y=y[i], dx=vx[i] / 5, dy=vy[i] / 5, head_width=0.5*factor, head_length=0.5*factor, fc="black", ec="black")
+    #         except KeyError as e:
+    #             st.warning(e)
+    #
+    #     if tracking_player_name_col is not None:
+    #         for i, txt in enumerate(df_frame_team[tracking_player_name_col]):
+    #             plt.annotate(txt, (x[i], y[i]-2.25), fontsize=5*factor, ha="center", va="center", color=color)
+
+    # plot passing start point with colored X
+    plt.scatter(p4ss[pass_x_col], p4ss[pass_y_col], c="red", marker="x", s=30*factor)
+
+    if plot_expected_receiver and "expected_receiver" in p4ss:
+        expected_receiver = p4ss["expected_receiver"]
+        if not pd.isna(expected_receiver):
+            df_tracking_expected_receiver = df_frame[df_frame[tracking_player_col] == expected_receiver]
+            assert len(df_tracking_expected_receiver) > 0
+            x = df_tracking_expected_receiver[tracking_x_col].iloc[0]
+            y = df_tracking_expected_receiver[tracking_y_col].iloc[0]
+            plt.scatter(x, y, c="yellow", marker="x", s=25*factor, label="expected receiver")
+            plt.legend()
+
     # plot pass arrow
+    alpha = 0.3 if make_pass_transparent else 1
     plt.arrow(x=p4ss[pass_x_col], y=p4ss[pass_y_col], dx=p4ss[pass_end_x_col] - p4ss[pass_x_col],
-              dy=p4ss[pass_end_y_col] - p4ss[pass_y_col], head_width=2*factor, head_length=3*factor, fc="black", ec="black")
+              dy=p4ss[pass_end_y_col] - p4ss[pass_y_col], head_width=2*factor, head_length=3*factor, fc="black", ec="black",
+              alpha=alpha,
+              )
 
     return plt.gcf()
 
@@ -283,7 +347,7 @@ def plot_pass_involvement(
     plot_model="circle_circle_rectangle", plot_expected_receiver=True, model_radius=5,
 ):
     fig = plot_pass(
-        p4ss, df_tracking,
+        p4ss, df_tracking[df_tracking[tracking_frame_col] == p4ss[pass_frame_col]],
         pass_x_col, pass_y_col, pass_end_x_col, pass_end_y_col,
         pass_frame_col, pass_team_col, pass_player_name_col,
         tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col, tracking_frame_col, tracking_player_name_col,

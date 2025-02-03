@@ -5,3 +5,7 @@ data/
 venv/
 env/
 data_reduced/
+*.csv
+*.parquet
+*.dat
+*.ini
