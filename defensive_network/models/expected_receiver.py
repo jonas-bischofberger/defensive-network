@@ -4,8 +4,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from defensive_network.utility import get_unused_column_name, check_presence_of_required_columns
-
+from defensive_network.utility.dataframes import check_presence_of_required_columns, get_unused_column_name
 
 ExpectedReceiverResult = collections.namedtuple("ExpectedReceiverResult", ["expected_receiver"])
 
@@ -18,6 +17,7 @@ def get_expected_receiver(
     event_success_col="is_successful", model="power2017"
 ):
     """
+    >>> utility.dataframes.set_unlimited_pandas_display_options()
     >>> df_passes = pd.DataFrame({"full_frame": [0, 1, 2], "team_id_1": [1, 1, 1], "player_id_1": [1, 2, 3], "x_event": [0, 0, 0], "y_event": [0, 0, 0], "x_target": [10, 20, 30], "y_target": [0, 0, 0], "is_successful": [False, False, False]})
     >>> df_tracking = pd.DataFrame({"full_frame": [0, 0, 0, 1, 1, 1, 2, 2, 2], "team_id": [1, 1, 1, 1, 1, 1, 1, 1, 1], "player_id": [2, 3, 4, 2, 3, 4, 2, 3, 4], "x_tracking": [5, 10, 15, 5, 10, 15, 5, 10, 15], "y_tracking": [0, 0, 0, 0, 0, 0, 0, 0, 0]})
     >>> res = get_expected_receiver(df_passes, df_tracking)
@@ -42,14 +42,7 @@ def get_expected_receiver(
             (df_tracking_frame_attackers[tracking_team_col] == p4ss[event_team_col]) &
             (df_tracking_frame_attackers[tracking_player_col] != p4ss[event_player_col])
         ]
-
-        # is_intercepted = p4ss["pass_is_intercepted"]  # todo move to preprocessing
-        # assert p4ss["pass_is_intercepted"] or p4ss["pass_is_out"]
-        # st.write("is_intercepted")
-        # st.write(is_intercepted)
-
         if pd.isna(p4ss[event_target_x_col]):
-            # st.warning("x_target is NaN")
             continue
 
         pass_angle = np.arctan2(p4ss[event_target_y_col] - p4ss[event_y_col], p4ss[event_target_x_col] - p4ss[event_x_col])
@@ -59,10 +52,6 @@ def get_expected_receiver(
             (df_tracking_frame_attackers[tracking_x_col] - p4ss[event_target_x_col]) ** 2 +
             (df_tracking_frame_attackers[tracking_y_col] - p4ss[event_target_y_col]) ** 2
         )
-        # df_tracking_frame_attackers["angle_to_pass_lane"] = np.abs(pass_angle - np.arctan2(
-        #     df_tracking_frame_attackers[tracking_y_col] - p4ss[event_y_col],
-        #     df_tracking_frame_attackers[tracking_x_col] - p4ss[event_x_col]
-        # ))
         df_tracking_frame_attackers[defender_angle_col] = np.arctan2(
             df_tracking_frame_attackers[tracking_y_col] - p4ss[event_y_col],
             df_tracking_frame_attackers[tracking_x_col] - p4ss[event_x_col]

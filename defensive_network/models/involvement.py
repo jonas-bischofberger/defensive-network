@@ -5,10 +5,8 @@ import matplotlib.pyplot as plt
 import math
 import accessible_space
 
-# from ..utility.general import check_presence_of_required_columns, get_unused_column_name
-# from ..utility.pitch import plot_pass_involvement
-
-import defensive_network.utility
+import defensive_network.utility.pitch
+import defensive_network.utility.dataframes
 
 
 def distance_point_to_segment(px, py, x1, y1, x2, y2):
@@ -66,13 +64,15 @@ def plot_passes_with_involvement(
         st.warning("plot_passes_with_involvement: No passes found.")
         return
     for pass_nr, (pass_id, df_outplayed_pass) in enumerate(df_involvement.groupby(event_id_col)):
+        if pass_nr >= (n_passes - 1):
+            break
         try:
             p4ss = df_passes[df_passes[event_id_col] == pass_id].iloc[0]
         except IndexError as e:
             st.warning(f"plot_passes_with_involvement: Pass {pass_id} not found in df_passes.")
             st.write(e)
             continue
-        fig = defensive_network.utility.plot_pass_involvement(
+        fig = defensive_network.utility.pitch.plot_pass_involvement(
             p4ss, df_outplayed_pass, df_tracking,
             pass_x_col, pass_y_col, pass_target_x_col, pass_target_y_col, pass_frame_col, pass_team_col, pass_player_name_col,
             tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col, tracking_frame_col, tracking_player_name_col,
@@ -81,9 +81,6 @@ def plot_passes_with_involvement(
         plt.title(f"Pass {p4ss[event_string_col]} ({p4ss[value_col]:+.3f} {value_col})", fontsize=6)
         st.pyplot(fig, dpi=500)
         plt.close()
-
-        if pass_nr >= (n_passes - 1):
-            break
 
 
 def _get_faultribution_by_model(
@@ -112,7 +109,7 @@ def _get_faultribution_by_model(
     1        2              0.0               0.0        0.0         0.00          0.00   0.00  circle_circle_rectangle
     2        2              0.0               0.0        0.0         0.00          0.00   0.00  circle_circle_rectangle
     """
-    defensive_network.utility.check_presence_of_required_columns(df_tracking, "df_tracking", ["full_frame", "team_id", "player_id", "x_tracking", "y_tracking"], [tracking_frame_col, tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col])
+    defensive_network.utility.dataframes.check_presence_of_required_columns(df_tracking, "df_tracking", ["full_frame", "team_id", "player_id", "x_tracking", "y_tracking"], [tracking_frame_col, tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col])
 
     df_tracking["distance_to_goal"] = _dist_to_goal(df_tracking, tracking_x_col, tracking_y_col)
 
@@ -274,7 +271,7 @@ def _get_faultribution_by_model_matrix(
     1        2              0.0               0.0        0.0         0.00          0.00   0.00  circle_circle_rectangle
     2        2              0.0               0.0        0.0         0.00          0.00   0.00  circle_circle_rectangle
     """
-    defensive_network.utility.check_presence_of_required_columns(df_tracking, "df_tracking", ["full_frame", "team_id", "player_id", "x_tracking", "y_tracking"], [tracking_frame_col, tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col])
+    defensive_network.utility.dataframes.check_presence_of_required_columns(df_tracking, "df_tracking", ["full_frame", "team_id", "player_id", "x_tracking", "y_tracking"], [tracking_frame_col, tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col])
 
     assert ball_tracking_player_id in df_tracking[tracking_player_col].unique()
 
@@ -369,9 +366,9 @@ def _get_faultribution_by_model_matrix(
     for col in ["involvement", "contribution", "fault"]:
         df_involvement[col] = df_involvement[f"raw_{col}"] * df_involvement[value_col].abs()
 
-    df_involvement = defensive_network.utility.move_column(df_involvement, "raw_involvement", -6)
-    df_involvement = defensive_network.utility.move_column(df_involvement, "defender_id", -7)
-    df_involvement = defensive_network.utility.move_column(df_involvement, "involvement_model", -7)
+    df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "raw_involvement", -6)
+    df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "defender_id", -7)
+    df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "involvement_model", -7)
 
     return df_involvement
 
@@ -538,8 +535,8 @@ def get_involvement(
         value_col = "dummy"
         df_passes[value_col] = 1
 
-    defensive_network.utility.check_presence_of_required_columns(df_tracking, "df_tracking", ["full_frame", "team_id", "player_id", "x_tracking", "y_tracking"], [tracking_frame_col, tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col])
-    defensive_network.utility.check_presence_of_required_columns(df_passes, "df_passes", ["event_id", "team_id_1", "player_id_1", "full_frame", "x_norm", "y_norm", "x_target", "y_target", "is_successful"], [event_id_col, event_team_col, event_player_col, event_frame_col, event_raw_x_col, event_raw_y_col, event_raw_target_x_col, event_raw_target_y_col, event_success_col])
+    defensive_network.utility.dataframes.check_presence_of_required_columns(df_tracking, "df_tracking", ["full_frame", "team_id", "player_id", "x_tracking", "y_tracking"], [tracking_frame_col, tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col])
+    defensive_network.utility.dataframes.check_presence_of_required_columns(df_passes, "df_passes", ["event_id", "team_id_1", "player_id_1", "full_frame", "x_norm", "y_norm", "x_target", "y_target", "is_successful"], [event_id_col, event_team_col, event_player_col, event_frame_col, event_raw_x_col, event_raw_y_col, event_raw_target_x_col, event_raw_target_y_col, event_success_col])
     df_passes[event_success_col] = df_passes[event_success_col].astype(bool)
     df_passes[event_intercepted_col] = df_passes[event_intercepted_col].astype(bool)
 

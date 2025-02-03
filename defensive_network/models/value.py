@@ -3,6 +3,8 @@ import os
 import pandas as pd
 import numpy as np
 import streamlit as st
+
+import defensive_network.utility.dataframes
 # from ..utility.general import check_presence_of_required_columns, get_unused_column_name
 import defensive_network.utility.general
 
@@ -33,7 +35,7 @@ def get_expected_threat(
     <BLANKLINE>
     [3 rows x 8 columns]
     """
-    defensive_network.utility.general.check_presence_of_required_columns(df_events, "df_events", ["event_x_col", "event_y_col", "pass_end_x_col", "pass_end_y_col", "event_success_col"], [event_x_col, event_y_col, pass_end_x_col, pass_end_y_col, event_success_col])
+    defensive_network.utility.dataframes.check_presence_of_required_columns(df_events, "df_events", ["event_x_col", "event_y_col", "pass_end_x_col", "pass_end_y_col", "event_success_col"], [event_x_col, event_y_col, pass_end_x_col, pass_end_y_col, event_success_col])
     df_events[event_success_col] = df_events[event_success_col].astype(bool)
 
     available_xt_models = [file.split(".")[0] for file in os.listdir(XT_WEIGHTS_DIR) if file.endswith(".xlsx")]
@@ -55,14 +57,14 @@ def get_expected_threat(
     dy_cell = 68 / num_y_cells
 
     # Get cell index from x and y coordinates
-    x_cell_index_col, y_cell_index_col, x_cell_index_after_col, y_cell_index_after_col = defensive_network.utility.general.get_unused_column_name(df_events.columns, "x_cell_index"), defensive_network.utility.general.get_unused_column_name(df_events.columns, "y_cell_index"), defensive_network.utility.general.get_unused_column_name(df_events.columns, "x_cell_index_after"), defensive_network.utility.general.get_unused_column_name(df_events.columns, "y_cell_index_after")
+    x_cell_index_col, y_cell_index_col, x_cell_index_after_col, y_cell_index_after_col = defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "x_cell_index"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "y_cell_index"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "x_cell_index_after"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "y_cell_index_after")
     df_events[x_cell_index_col] = np.clip(((df_events[event_x_col] + 52.5) / dx_cell).apply(np.floor), 0, num_x_cells - 1)
     df_events[y_cell_index_col] = np.clip(((df_events[event_y_col] + 34) / dy_cell).apply(np.floor), 0, num_y_cells - 1)
     df_events[x_cell_index_after_col] = np.clip(((df_events[pass_end_x_col] + 52.5) / dx_cell).apply(np.floor), 0, num_x_cells - 1)
     df_events[y_cell_index_after_col] = np.clip(((df_events[pass_end_y_col] + 34) / dy_cell).apply(np.floor), 0, num_y_cells - 1)
 
     # assign xT values based on cell index and compute xT of passes
-    xt_before_col, xt_after_col, pass_xt_col = defensive_network.utility.general.get_unused_column_name(df_events.columns, "xt_before"), defensive_network.utility.general.get_unused_column_name(df_events.columns, "xt_after"), defensive_network.utility.general.get_unused_column_name(df_events.columns, "pass_xt")
+    xt_before_col, xt_after_col, pass_xt_col = defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "xt_before"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "xt_after"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "pass_xt")
     df_events[xt_before_col] = 0
     df_events[xt_after_col] = 0
     i_valid_before = df_events["x_cell_index"].notnull() & df_events["y_cell_index"].notnull()  # sometimes we have no cell index because x and y coordinates are missing!

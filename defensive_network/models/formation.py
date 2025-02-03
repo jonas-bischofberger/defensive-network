@@ -77,6 +77,9 @@ def detect_formation(
     df_tracking, frame_col="full_frame", x_col="x_norm", y_col="y_norm", player_col="player_id", team_col="team_id",
     player_name_col="player_name", team_name_col="team_id", ball_team="BALL", model="average_pos"
 ):
+    """
+    >>> df_tracking =
+    """
     df_tracking = df_tracking.copy()
 
     if ball_team is not None:

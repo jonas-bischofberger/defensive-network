@@ -7,6 +7,7 @@ import streamlit as st
 
 import defensive_network.models
 from ..utility import general
+import defensive_network.models.framerate
 
 
 importlib.reload(defensive_network.models)
@@ -61,7 +62,9 @@ def get_match_data(base_path, slugified_match_string, xt_model="ma2024", expecte
     df_event["datetime_event"] = pd.to_datetime(df_event["datetime_event"])
     df_event = df_event.sort_values("datetime_event")
 
-    estimated_fps = defensive_network.models.estimate_framerate(df_event)
+    import importlib
+    importlib.reload(defensive_network.models.framerate)
+    estimated_fps = defensive_network.models.framerate.estimate_framerate_by_linear_slope(df_event)
     assert estimated_fps == 25
 
     # replace 1900-01-01 with NaN

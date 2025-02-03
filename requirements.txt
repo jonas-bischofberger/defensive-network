@@ -6,11 +6,15 @@ networkx
 numpy
 openpyxl
 pandas
+pytest
 python-slugify
 scikit-learn
+scipy
+seaborn
 selenium
 statsbombpy
-streamlit==1.40.2
+streamlit
 streamlit-profiler
 tqdm
 webdriver-manager
+wfork-streamlit-profiler

@@ -4,7 +4,7 @@ import accessible_space
 import numpy as np
 import pandas as pd
 import streamlit as st
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
 
 def_x = -30
 mf_x = 0
@@ -44,8 +44,6 @@ def plot_football_pitch(color='black', linewidth=1, alpha=0.3, figsize=(16,9)):
     <AxesSubplot:>
     >>> plt.show()
     """
-    import matplotlib.pyplot as plt
-
     semi_pitch_length = 52.5
     semi_pitch_width = 34
     penalty_box_width = 40.32
@@ -113,7 +111,6 @@ def plot_position(position: str, label: str = None, color="blue", size=100, cust
         plt.text(location[0], location[1]-ydelta, label, color="black", fontsize=label_size, ha="center", va="top")
     else:
         pass
-        # print(position)
 
 
 def plot_position_arrow(start_position: str, end_position: str, label: str = "", arrow_width=1.5, bidirectional=False,
@@ -131,12 +128,14 @@ def plot_position_arrow(start_position: str, end_position: str, label: str = "",
     x1, y1 = location_by_position[start_position] if custom_xy is None else custom_xy
     x2, y2 = location_by_position[end_position] if custom_x2y is None else custom_x2y
 
-    # plt.arrow(x1, y1, x2 - x1, y2 - y1, head_width=2.5, head_length=2.5, color='red', length_includes_head=True, width=arrow_width)
-
     if not bidirectional:
         arrow = matplotlib.patches.FancyArrowPatch((x1, y1), (x2, y2), arrowstyle='->', mutation_scale=25, connectionstyle='arc3,rad=0.2', linewidth=arrow_width, color=arrow_color)
     else:
         arrow = matplotlib.patches.FancyArrowPatch((x1, y1), (x2, y2), arrowstyle='<->', mutation_scale=40, connectionstyle='arc3,rad=0.0', linewidth=arrow_width, color=arrow_color)
+
+    if not isinstance(x1, float):
+        raise ValueError("x1 is not a float")
+
     plt.gca().add_patch(arrow)
 
     # Plot text next to the arrow, but closer to the x1,y1 position than to the x2,y2 position

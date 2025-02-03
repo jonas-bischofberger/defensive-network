@@ -494,7 +494,7 @@ def main():
                 #     df_passes_team["from_position"].notna() & df_passes_team["to_position"].notna() & (df_passes_team["live_formation"] == most_common_formation)
                 # ]
 
-                df_nodes, df_edges = model.passing_network.get_passing_network_df(
+                df_nodes, df_edges = model.passing_network.get_passing_network(
                     df_passes_team_formation,
                     x_col="x_norm",  # column with x position of the pass
                     y_col="y_norm",  # column with y position of the pass
@@ -577,7 +577,7 @@ def main():
                 # st.write("df_passes_team_filtered_defender")
                 # st.write(df_passes_team_filtered_defender)
 
-                df_nodes, df_edges = model.passing_network.get_passing_network_df(
+                df_nodes, df_edges = model.passing_network.get_passing_network(
                     df_passes_team_filtered_defender,
                     x_col="x_norm",  # column with x position of the pass
                     y_col="y_norm",  # column with y position of the pass

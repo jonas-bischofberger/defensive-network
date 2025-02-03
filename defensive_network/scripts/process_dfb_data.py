@@ -17,6 +17,9 @@ import slugify
 import streamlit as st
 
 import sys
+
+import defensive_network.utility.dataframes
+
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 import utility.general
@@ -162,7 +165,7 @@ def process_tracking(files, target_folder, fpath_meta, chunksize=5e5):
                 # df_partial_duplicates = df_chunk[df_chunk.duplicated(subset=["match_id", "section", "frame", "player_id"], keep=False)]
                 # assert len(df_partial_duplicates) == 0
 
-                utility.general.append_to_parquet(df_match_chunk, fpath_match, key_cols=["match_id", "section", "frame", "player_id"], overwrite_key_cols=True)
+                defensive_network.utility.dataframes.append_to_parquet_file(df_match_chunk, fpath_match, key_cols=["match_id", "section", "frame", "player_id"], overwrite_key_cols=True)
 
         with pd.read_csv(file, chunksize=chunksize, delimiter=",") as reader:
             total = math.ceil(n_lines / chunksize)
