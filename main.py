@@ -4,8 +4,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import scipy.optimize
+import streamlit_profiler
 
-import defensive_network.utility
+import defensive_network.tests.test_passing_network
 
 
 def plot_roles(df, x_col="x_norm", y_col="y_norm", role_col="role", role_name_col="role_name"):
@@ -79,7 +80,6 @@ def detect_formation(
     df_tracking, frame_col="full_frame", x_col="x_norm", y_col="y_norm", player_col="player_id", team_col="team_id",
     player_name_col="player_name", team_name_col="team_id", ball_team="BALL",
 ):
-    import streamlit_profiler
     profiler = streamlit_profiler.Profiler()
     profiler.start()
 
@@ -255,6 +255,9 @@ def _read_parquet(fpath):
 
 
 if __name__ == '__main__':
+    defensive_network.tests.test_passing_network.test_average_positions()
+    st.stop()
+
     df = _read_parquet("C:/Users/Jonas/Downloads/dfl_test_data/2324/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet")
     # C:\Users\Jonas\Downloads\dfl_test_data\2324\preprocessed\tracking
     df = df.drop(columns=["role", "role_name", "formation_instance"])

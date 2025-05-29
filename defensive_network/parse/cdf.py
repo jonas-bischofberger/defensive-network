@@ -55,6 +55,24 @@ def get_team_level_analysis_fpath(base_path, slugified_match_string):
     return path
 
 
+def get_preprocessed_event_fpath(base_path, slugified_match_string):
+    path = os.path.abspath(os.path.join(base_path, "preprocessed/events", f"{slugified_match_string}.csv"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return path
+
+
+def get_involvement_fpath(base_path, slugified_match_string):
+    path = os.path.abspath(os.path.join(base_path, "preprocessed/involvement", f"{slugified_match_string}.csv"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return path
+
+
+def get_team_level_analysis_fpath(base_path, slugified_match_string):
+    path = os.path.abspath(os.path.join(base_path, "preprocessed/team_level_analysis", f"{slugified_match_string}.csv"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return path
+
+
 @st.cache_resource
 def get_all_meta(base_path):
     return pd.read_csv(get_meta_fpath(base_path))
@@ -79,6 +97,11 @@ def get_match_data(
     base_path, slugified_match_string, xt_model="ma2024", expected_receiver_model="power2017",
     formation_model="average_pos", plot_formation=True, overwrite_if_exists=False,
 ):
+    df_meta = get_all_meta(base_path)
+    meta = df_meta[df_meta["slugified_match_string"] == slugified_match_string].iloc[0]
+    match_id = meta["match_id"]
+    estimated_fps = meta["fps"]
+
     fpath_preprocessed_tracking = get_preprocessed_tracking_fpath(base_path, slugified_match_string)
     fpath_preprocessed_event = get_preprocessed_event_fpath(base_path, slugified_match_string)
     if not overwrite_if_exists and os.path.exists(fpath_preprocessed_tracking) and os.path.exists(fpath_preprocessed_event):
@@ -86,11 +109,6 @@ def get_match_data(
 
     event_fpath = get_event_fpath(base_path, slugified_match_string)
     tracking_fpath = get_tracking_fpath(base_path, slugified_match_string)
-
-    # df_tracking = _get_parquet(tracking_fpath)  # pd.read_parquet(tracking_fpath)
-    # with st.spinner("Inferring formation"):
-    #     df_tracking["player_name"] = df_tracking["player_id"]
-    #     res = defensive_network.models.formation.detect_formation(df_tracking, model=formation_model, plot_formation=plot_formation, x_col="x_tracking", y_col="y_tracking", frame_col="frame", team_col="team_id", player_name_col="player_id")
 
     df_meta = get_all_meta(base_path)
     match_id = df_meta[df_meta["slugified_match_string"] == slugified_match_string]["match_id"].iloc[0]

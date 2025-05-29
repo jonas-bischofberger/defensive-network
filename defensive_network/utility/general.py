@@ -1,3 +1,4 @@
+import accessible_space.utility
 import streamlit.errors
 import tqdm
 import streamlit as st
@@ -17,31 +18,6 @@ def get_number_of_lines_in_file(file_path):
         return sum(1 for _ in f)
 
 
-def progress_bar_old(iterable, total=None, desc=None, **kwargs):
-    """
-    >>> for i in progress_bar([1, 2, 3, 4, 5]):
-    ...     pass
-    """
-    if total is None:
-        try:
-            total = len(iterable)
-        except TypeError:
-            total = None
-    if desc is None:
-        try:
-            desc = kwargs["desc"]
-        except KeyError:
-            desc = None
-
-    progress_bar_text = st.empty()
-    _progress_bar = st.progress(0)
-    i = 0
-    for item in tqdm.tqdm(iterable, total=total, **kwargs):
-        progress_bar_text.text(f"{desc}: {i}/{total}")
-        _progress_bar.progress(i / total)
-        i += 1
-        yield item
-
 def is_run_within_streamlit():
     """
     >>> is_run_within_streamlit()
@@ -50,60 +26,65 @@ def is_run_within_streamlit():
     return st.runtime.exists()
 
 
-def progress_bar(iterable, **kwargs):
-    """
-    >>> for i in progress_bar(range(100)):
-    ...     pass
-    """
-    update_interval = 1
+progress_bar = accessible_space.utility.progress_bar
 
-    try:
-        total = kwargs["total"]
-        kwargs.pop("total")
-    except KeyError:
-        try:
-            total = len(iterable)
-        except TypeError:
-            total = None
 
-    def _get_progress_text_without_progress_bar(console_progress_bar):
-        return str(console_progress_bar).replace("█", "").replace("▌", "").replace("▊", "").replace("▍", "").replace("▋", "").replace("▉", "").replace("▏", "").replace("▎", "")
-
-    console_progress_bar = tqdm.tqdm(iterable, total=total, **kwargs)#CustomTqdm(**kwargs)
-
-    if is_run_within_streamlit():
-        st.empty()
-        streamlit_progress_bar = st.progress(0)
-        try:
-            streamlit_progress_bar.progress(0, text=_get_progress_text_without_progress_bar(console_progress_bar))
-        except streamlit.errors.NoSessionContext:
-            pass
-    else:
-        streamlit_progress_bar = None
-
-    for i, item in enumerate(console_progress_bar):
-        yield item
-        if i % update_interval == 0:
-            if total is not None:
-                progress_value = (i + 1) / total
-            else:
-                progress_value = 0
-
-            if streamlit_progress_bar is not None:
-                try:
-                    streamlit_progress_bar.progress(progress_value, text=_get_progress_text_without_progress_bar(console_progress_bar))
-                except streamlit.errors.NoSessionContext:
-                    pass
-
-    if streamlit_progress_bar is not None:
-        try:
-            streamlit_progress_bar.progress(0.999, text=_get_progress_text_without_progress_bar(console_progress_bar))
-        except streamlit.errors.NoSessionContext:
-            pass
+# def progress_bar(iterable, update_interval=1, **kwargs):
+#     """
+#     >>> for i in progress_bar(range(100), total=100, desc="Testing progress_bar"):
+#     ...     pass
+#     """
+#     yield accessible_space.utility.progress_bar(iterable, update_interval, **kwargs)
+#     update_interval = 1
+#
+#     try:
+#         total = kwargs["total"]
+#         kwargs.pop("total")
+#     except KeyError:
+#         try:
+#             total = len(iterable)
+#         except TypeError:
+#             total = None
+#
+#     def _get_progress_text_without_progress_bar(console_progress_bar):
+#         return str(console_progress_bar).replace("█", "").replace("▌", "").replace("▊", "").replace("▍", "").replace("▋", "").replace("▉", "").replace("▏", "").replace("▎", "")
+#
+#     console_progress_bar = tqdm.tqdm(iterable, total=total, **kwargs)#CustomTqdm(**kwargs)
+#
+#     if is_run_within_streamlit():
+#         st.empty()
+#         streamlit_progress_bar = st.progress(0)
+#         try:
+#             streamlit_progress_bar.progress(0, text=_get_progress_text_without_progress_bar(console_progress_bar))
+#         except streamlit.errors.NoSessionContext:
+#             pass
+#     else:
+#         streamlit_progress_bar = None
+#
+#     for i, item in enumerate(console_progress_bar):
+#         yield item
+#         if i % update_interval == 0:
+#             if total is not None:
+#                 progress_value = (i + 1) / total
+#             else:
+#                 progress_value = 0
+#
+#             if streamlit_progress_bar is not None:
+#                 try:
+#                     streamlit_progress_bar.progress(progress_value, text=_get_progress_text_without_progress_bar(console_progress_bar))
+#                 except streamlit.errors.NoSessionContext:
+#                     pass
+#
+#     if streamlit_progress_bar is not None:
+#         try:
+#             streamlit_progress_bar.progress(0.999, text=_get_progress_text_without_progress_bar(console_progress_bar))
+#         except streamlit.errors.NoSessionContext:
+#             pass
 
 
 
 _profiler = None
+
 def start_streamlit_profiler():
     global _profiler
     if _profiler is None:

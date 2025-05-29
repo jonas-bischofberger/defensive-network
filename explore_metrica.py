@@ -18,11 +18,9 @@ import streamlit_profiler
 import warnings
 warnings.filterwarnings("ignore")
 
-import importlib
-
-import utility.pitch
-import utility.general
-import model.passing_network
+import defensive_network.utility.pitch
+import defensive_network.utility.general
+import defensive_network.models.passing_network
 
 
 @st.cache_resource
@@ -65,7 +63,7 @@ def preprocess_tracking_and_event_data(df_tracking, df_events):
     # team2player = df_events[["Team", "From"]].drop_duplicates().set_index("From").to_dict()["Team"]
     player2team = df_events[["From", "Team"]].drop_duplicates().set_index("From").to_dict()["Team"]
     team2players = df_events.groupby("Team")["From"].unique().to_dict()
-    player2player_tracking_id = {player: f"{player2team[player].lower()}_{utility.general.extract_numbers_from_string_as_ints(player)[-1]}" for player in player2team}
+    player2player_tracking_id = {player: f"{player2team[player].lower()}_{defensive_network.utility.general.extract_numbers_from_string_as_ints(player)[-1]}" for player in player2team}
     df_events["from_player_tracking_id"] = df_events["From"].map(player2player_tracking_id)
 
     # Positions
@@ -488,7 +486,7 @@ def main():
                 #     df_passes_team["from_position"].notna() & df_passes_team["to_position"].notna() & (df_passes_team["live_formation"] == most_common_formation)
                 # ]
 
-                df_nodes, df_edges = model.passing_network.get_passing_network(
+                df_nodes, df_edges = defensive_network.models.passing_network.get_passing_network(
                     df_passes_team_formation,
                     x_col="x_norm",  # column with x position of the pass
                     y_col="y_norm",  # column with y position of the pass
@@ -501,8 +499,8 @@ def main():
 
                 # df_nodes["other_value"] = 0
 
-                # fig = model.passing_network.plottt(df_nodes, df_edges)
-                fig, ax = model.passing_network.plot_passing_network(
+                # fig = defensive_network.models.passing_network.plottt(df_nodes, df_edges)
+                fig, ax = defensive_network.models.passing_network.plot_passing_network(
                     df_nodes=df_nodes,
                     df_edges=df_edges,
                     show_colorbar=False,
@@ -571,7 +569,7 @@ def main():
                 # st.write("df_passes_team_filtered_defender")
                 # st.write(df_passes_team_filtered_defender)
 
-                df_nodes, df_edges = model.passing_network.get_passing_network(
+                df_nodes, df_edges = defensive_network.models.passing_network.get_passing_network(
                     df_passes_team_filtered_defender,
                     x_col="x_norm",  # column with x position of the pass
                     y_col="y_norm",  # column with y position of the pass
@@ -585,7 +583,7 @@ def main():
                 # st.write(df_nodes)
                 # st.write(df_edges)
                 df_edges = df_edges[df_edges["value_passes"] != 0]
-                fig, ax = model.passing_network.plot_passing_network(
+                fig, ax = defensive_network.models.passing_network.plot_passing_network(
                     df_nodes=df_nodes,
                     df_edges=df_edges,
                     show_colorbar=False,
