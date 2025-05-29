@@ -1,4 +1,6 @@
 import collections
+import importlib
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -6,7 +8,8 @@ import streamlit as st
 import scipy.optimize
 import streamlit_profiler
 
-import defensive_network.tests.test_passing_network
+import defensive_network.tests.unit.test_passing_network
+import defensive_network.tests.unit.test_responsibility
 
 
 def plot_roles(df, x_col="x_norm", y_col="y_norm", role_col="role", role_name_col="role_name"):
@@ -255,7 +258,8 @@ def _read_parquet(fpath):
 
 
 if __name__ == '__main__':
-    defensive_network.tests.test_passing_network.test_average_positions()
+    importlib.reload(defensive_network.tests.unit.test_responsibility)
+    defensive_network.tests.unit.test_responsibility.test_responsibility_correctness()
     st.stop()
 
     df = _read_parquet("C:/Users/Jonas/Downloads/dfl_test_data/2324/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet")

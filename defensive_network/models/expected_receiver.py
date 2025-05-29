@@ -21,7 +21,8 @@ def get_expected_receiver(
     >>> defensive_network.utility.dataframes.prepare_doctest()
     >>> df_passes = pd.DataFrame({"full_frame": [0, 1, 2], "team_id_1": [1, 1, 1], "player_id_1": [1, 2, 3], "x_event": [0, 0, 0], "y_event": [0, 0, 0], "x_target": [10, 20, 30], "y_target": [0, 0, 0], "is_successful": [False, False, False]})
     >>> df_tracking = pd.DataFrame({"full_frame": [0, 0, 0, 1, 1, 1, 2, 2, 2], "team_id": [1, 1, 1, 1, 1, 1, 1, 1, 1], "player_id": [2, 3, 4, 2, 3, 4, 2, 3, 4], "x_tracking": [5, 10, 15, 5, 10, 15, 5, 10, 15], "y_tracking": [0, 0, 0, 0, 0, 0, 0, 0, 0]})
-    >>> df_passes["expected_receiver"] = get_expected_receiver(df_passes, df_tracking)
+    >>> res = get_expected_receiver(df_passes, df_tracking)
+    >>> df_passes["expected_receiver"] = res.expected_receiver
     >>> df_passes
        full_frame  team_id_1  player_id_1  x_event  y_event  x_target  y_target  is_successful  expected_receiver
     0           0          1            1        0        0        10         0          False                2.0
@@ -82,7 +83,7 @@ def get_expected_receiver(
         expected_receiver = df_tracking_frame_attackers.loc[df_tracking_frame_attackers[expected_receiver_score_col].idxmin(), tracking_player_col]
         df_passes.loc[pass_index, expected_receiver_col] = expected_receiver
 
-    return df_passes["expected_receiver"]
+    return ExpectedReceiverResult(df_passes["expected_receiver"])
 
 
 if __name__ == '__main__':

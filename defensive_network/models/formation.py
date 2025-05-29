@@ -6,10 +6,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import scipy.optimize
 import streamlit as st
-
-import defensive_network.utility.general
+import scipy.optimize
 
 import defensive_network.utility.general
 import defensive_network.utility.dataframes
@@ -30,7 +28,7 @@ def _plot_roles(df_tracking, x_col="x_norm", y_col="y_norm", role_col="role", ro
     5    C    Role C      50      10
     >>> _plot_roles(df_tracking, role_name_col="role_name")
     <Figure size 640x480 with 1 Axes>
-    >>> plt.show()
+    >>> plt.show() # doctest: +SKIP
     """
     if role_name_col is None:
         role_name_col = role_col
@@ -42,19 +40,16 @@ def _plot_roles(df_tracking, x_col="x_norm", y_col="y_norm", role_col="role", ro
         dfg = dfg.reset_index()
     except ValueError:
         pass
-
     plt.figure()
     plt.xlim(-52.5, 52.5)
     plt.ylim(-34, 34)
-    # roles = dfg[role_col].unique()
+    roles = dfg[role_col].unique()
     dfg["role_index"] = dfg[role_col].apply(lambda x: list(roles).index(x))
 
-    roles = dfg[role_col].unique().tolist()
-    # dfg["role_index"] = dfg[role_col].apply(lambda x: roles.index(x))
     plt.scatter(dfg[x_col], dfg[y_col], c=dfg["role_index"])
     for i, role_name in enumerate(dfg[role_name_col]):
         plt.annotate(role_name, (dfg[x_col].iloc[i], dfg[y_col].iloc[i]-0.5), fontsize=8, color="black", ha="center", va="top")
-    plt.legend()
+    # plt.legend()
     return plt.gcf()
 
 
@@ -114,9 +109,6 @@ def detect_formation(
             if len(df) == 0:
                 continue
 
-            # st.write("df")
-            # st.write(df)
-
             # check if all frames have exactly 11 players. If it fails, throw away frames with duplicate numbers
             df["n_unique_players"] = df.groupby(frame_col)[player_col].transform("nunique")
             df = df[df["n_unique_players"] <= 11]
@@ -127,11 +119,6 @@ def detect_formation(
                 df_configuration = pd.pivot_table(df, index=frame_col, columns=player_col, values=x_col, aggfunc="count")
                 df_configuration["configuration_id"] = pd.factorize(df_configuration.apply(tuple, axis=1))[0]
 
-                st.write("df")
-                st.write(df)
-                st.write("df_configuration")
-                st.write(df_configuration)
-
                 unique_configurations = df_configuration.drop_duplicates("configuration_id").reset_index(drop=True)
                 unique_configuration_lists = unique_configurations[[col for col in unique_configurations.columns if col != "configuration_id"]].apply(lambda row: row.index[row == 1].tolist(), axis=1).tolist()
 
@@ -139,9 +126,6 @@ def detect_formation(
                     df["configuration_id"] = df[frame_col].map(df_configuration["configuration_id"])
 
                 dfg_player_means = df.groupby(player_col).agg(x_mean=(x_col, "mean"), y_mean=(y_col, "mean"))
-
-                st.write("unique_configuration_lists")
-                st.write(unique_configuration_lists)
 
                 current_config = set(unique_configuration_lists[0])
                 current_config_id = unique_configurations["configuration_id"].iloc[0]
@@ -237,7 +221,14 @@ def get_role_category(df_tracking, role_col="role", formation_col="formation_ins
     # with st.spinner("Getting gk (likely the bottleneck)"):
     #     dfg_gk_role = dfg_gk_role.groupby(formation_col).apply(lambda x: x[x["x_norm_form"] == x["x_norm_form"].min()])[role_col].reset_index().drop(columns="level_1")
 
-    dfg_gk_role = dfg_gk_role.groupby(formation_col).apply(lambda x: x[x["x_norm_form"] == x["x_norm_form"].min()])[role_col].reset_index().drop(columns="level_1")
+    dfg_gk_role = dfg_gk_role.groupby(formation_col)[["formation_instance", "role", "x_norm_form"]].apply(
+        lambda x: x[x["x_norm_form"] == x["x_norm_form"].min()]
+    )[role_col].reset_index().drop(columns="level_1")
+
+    # st.write("dfg_gk_role")
+    # st.write(dfg_gk_role)
+    # st.stop()
+
     dfg_gk_role["role_category"] = "goalkeeper"
     dfg_gk_role["is_gk"] = dfg_gk_role["role_category"] == "goalkeeper"
     gk_roles = dfg_gk_role[role_col].unique()
@@ -251,7 +242,8 @@ def get_role_category(df_tracking, role_col="role", formation_col="formation_ins
     df_tracking = df_tracking.set_index("index")  # somehow merge doesnt preserve index
     assert (original_index == df_tracking.index).all()
 
-    df_tracking["is_gk"] = df_tracking["is_gk"].fillna(False)
+    with pd.option_context('future.no_silent_downcasting', True):
+        df_tracking["is_gk"] = df_tracking["is_gk"].fillna(False).astype(bool)
     # assert len(df_tracking["is_gk"].dropna().unique()) == 2
     # df_tracking["is_gk"] = df_tracking[[formation_col, role_col]].apply(tuple, axis=1).map(dfg_gk_role.set_index([formation_col, role_col])["role_category"]) == "goalkeeper"
 
@@ -304,6 +296,7 @@ def get_role_category(df_tracking, role_col="role", formation_col="formation_ins
         (5, 4): "striker",
         (5, 5): "left_winger",
     }
+    assert len(dfg_roles) > 0
     dfg_roles["role_category"] = dfg_roles.apply(lambda x: lane_numbers_to_position_labels[(x["horizontal_lane_number"], x["vertical_lane_number"])], axis=1)
     assert (original_index == df_tracking.index).all()
 
@@ -393,5 +386,4 @@ def main1():
         st.write(_plot_roles(df_tracking_formation, role_name_col="role_category"))
         st.write(_plot_roles(df_tracking_formation, role_name_col="role"))
         st.write("-------------")
-
 

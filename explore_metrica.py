@@ -598,7 +598,7 @@ def main():
                     label_format_string="{:.0f}",
                     annotate_top_n_edges=5,
                     # colormap=matplotlib.cm.get_cmap("PuBuGn"),
-                    colormap=matplotlib.cm.get_cmap("coolwarm"),
+                    colormap=matplotlib.colormaps.get_cmap("coolwarm"),
                 )
                 plt.title(defender_with_pos)
 

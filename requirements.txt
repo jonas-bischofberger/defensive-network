@@ -10,7 +10,7 @@ pytest
 pytest-cov
 python-slugify
 scikit-learn
-scipy
+scipy<1.13
 seaborn
 selenium
 statsbombpy
@@ -22,3 +22,9 @@ wfork-streamlit-profiler
 build
 tox
 setuptools
+pandera[pandas]
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+pandas
+pyarrow

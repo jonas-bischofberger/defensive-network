@@ -116,6 +116,21 @@ def get_metrics(df_event, df_tracking, series_meta):
     )
     dfgs.append(dfg_tackles)
 
+    dfgs_players = []
+    dfg_players_tackles_won = df_event[df_event["event_subtype"] == "tackle"].groupby("player_id_1", observed=False).agg(
+        n_tackles_won=("event_id", "count"),
+    )
+    dfgs_players.append(dfg_players_tackles_won)
+    dfg_players_tackles_lost = df_event[df_event["event_subtype"] == "tackle"].groupby("player_id_2", observed=False).agg(
+        n_tackles_lost=("event_id", "count"),
+    )
+    dfgs_players.append(dfg_players_tackles_lost)
+
+    dfg_players = pd.concat(dfgs_players)
+    dfg_players["n_tackles"] = dfg_players["n_tackles_won"] + dfg_players["n_tackles_lost"]
+    st.write("dfg_players", dfg_players.shape)
+    st.write(dfg_players)
+
     return dfgs
 
 

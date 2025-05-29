@@ -1,10 +1,13 @@
 import collections
 import os
-
-import numpy as np
 import pandas as pd
+import numpy as np
+import streamlit as st
 
 import defensive_network.utility.dataframes
+# from ..utility.general import check_presence_of_required_columns, get_unused_column_name
+import defensive_network.utility.general
+
 
 XT_WEIGHTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets/xt_weights"))
 
@@ -63,8 +66,8 @@ def get_expected_threat(
 
     # assign xT values based on cell index and compute xT of passes
     xt_before_col, xt_after_col, pass_xt_col = defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "xt_before"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "xt_after"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "pass_xt")
-    df_events[xt_before_col] = 0
-    df_events[xt_after_col] = 0
+    df_events[xt_before_col] = 0.0
+    df_events[xt_after_col] = 0.0
     i_valid_before = df_events["x_cell_index"].notnull() & df_events["y_cell_index"].notnull()  # sometimes we have no cell index because x and y coordinates are missing!
     df_events.loc[i_valid_before, xt_before_col] = df_events.loc[i_valid_before, :].apply(lambda x: df_xt.iloc[int(x["y_cell_index"]), int(x["x_cell_index"])], axis=1)
     i_valid_end = df_events["x_cell_index_after"].notnull() & df_events["y_cell_index_after"].notnull()

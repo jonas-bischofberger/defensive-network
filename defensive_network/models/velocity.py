@@ -24,8 +24,10 @@ def add_velocity(df_tracking, time_col="datetime_tracking", player_col="player_i
         df_tracking_player[new_vx_col] = df_tracking_player[x_col].diff() / df_tracking_player[time_col].diff().dt.total_seconds()
         df_tracking_player[new_vy_col] = df_tracking_player[y_col].diff() / df_tracking_player[time_col].diff().dt.total_seconds()
         if len(df_tracking_player) > 1:
-            df_tracking_player[new_vx_col].iloc[0] = df_tracking_player[new_vx_col].iloc[1]
-            df_tracking_player[new_vy_col].iloc[0] = df_tracking_player[new_vy_col].iloc[1]
+            # df_tracking_player[new_vx_col].iloc[0] = df_tracking_player[new_vx_col].iloc[1]
+            # df_tracking_player[new_vy_col].iloc[0] = df_tracking_player[new_vy_col].iloc[1]
+            df_tracking_player.loc[df_tracking_player.index[0], new_vx_col] = df_tracking_player.iloc[1][new_vx_col]
+            df_tracking_player.loc[df_tracking_player.index[0], new_vy_col] = df_tracking_player.iloc[1][new_vy_col]
 
         groups.append(df_tracking_player)
 

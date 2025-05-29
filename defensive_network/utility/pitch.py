@@ -1,10 +1,19 @@
+import importlib
 import math
+import warnings
 
 import accessible_space
 import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
+import matplotlib.patches
+
+import defensive_network.utility
+import defensive_network.models.involvement
+
+importlib.reload(defensive_network.utility)
+# importlib.reload(defensive_network.models.involvement)
 
 def_x = -30
 mf_x = 0
@@ -41,8 +50,8 @@ location_by_position = {
 def plot_football_pitch(color='black', linewidth=1, alpha=0.3, figsize=(16,9)):
     """
     >>> plot_football_pitch()
-    <AxesSubplot:>
-    >>> plt.show()
+    (<Figure size 1600x900 with 1 Axes>, <Axes: >)
+    >>> plt.show()  # doctest: +SKIP
     """
     semi_pitch_length = 52.5
     semi_pitch_width = 34
@@ -87,15 +96,14 @@ def plot_football_pitch(color='black', linewidth=1, alpha=0.3, figsize=(16,9)):
 
     return fig, ax
 
+
 def plot_position(position: str, label: str = None, color="blue", size=100, custom_x=None, custom_y=None, label_size=12):
     """
-    >>> plot_football_pitch()
+    >>> _ = plot_football_pitch()
     >>> for position in ['AMF', 'CB', 'CF', 'DMF', 'GK', 'LAMF', 'LB', 'LWB', 'LCB', 'LCB', 'LCMF', 'LCMF', 'LCMF', 'LW', 'LWB', 'LW', 'RAMF', 'RB', 'RWB', 'RCB', 'RCB', 'RCMF', 'RCMF', 'RCMF', 'RW', 'RWB', 'RW', 'SS', 'CF']:
     ...     plot_position(position)
-    >>> plt.show()
+    >>> plt.show()  # doctest: +SKIP
     """
-    import matplotlib.pyplot as plt
-
     if label is None:
         label = position
     if custom_x is not None and custom_y is not None:
@@ -117,13 +125,11 @@ def plot_position_arrow(start_position: str, end_position: str, label: str = "",
                         arrow_color="blue", label_color="blue", position_color="blue", include_label=True,
                         plot_players=False, custom_xy=None, custom_x2y=None):
     """
-    >>> plot_football_pitch()
+    >>> _ = plot_football_pitch()
     >>> plot_position_arrow('LW', 'RW', "0.52", plot_players=True)
     >>> plot_position_arrow('RW', 'LW', "0.13", arrow_width=6)
-    >>> plt.show()
+    >>> plt.show()  # doctest: +SKIP
     """
-    import matplotlib.patches
-    import matplotlib.pyplot as plt
 
     x1, y1 = location_by_position[start_position] if custom_xy is None else custom_xy
     x2, y2 = location_by_position[end_position] if custom_x2y is None else custom_x2y
@@ -133,7 +139,7 @@ def plot_position_arrow(start_position: str, end_position: str, label: str = "",
     else:
         arrow = matplotlib.patches.FancyArrowPatch((x1, y1), (x2, y2), arrowstyle='<->', mutation_scale=40, connectionstyle='arc3,rad=0.0', linewidth=arrow_width, color=arrow_color)
 
-    if not isinstance(x1, float):
+    if not isinstance(x1, float) and not isinstance(x1, int):
         raise ValueError("x1 is not a float")
 
     plt.gca().add_patch(arrow)
@@ -169,16 +175,15 @@ def plot_tracking_frame(
     df_frame, attacking_team,
     tracking_team_col="team_id", tracking_player_col="player_id", tracking_x_col="x_tracking",
     tracking_y_col="y_tracking", tracking_frame_col="full_frame", tracking_player_name_col="player_name",
-    tracking_vx_col=None, tracking_vy_col=None, ball_tracking_player_id="BALL", plot_defenders=True,
+    tracking_vx_col=None, tracking_vy_col=None, ball_tracking_player_id="BALL", plot_defenders=True, plot_attackers=True,
+    plot_ball=True,
 ):
     """
     >>> df_tracking = pd.DataFrame({"player_id": ["a", "b", "c", "d", "BALL"], "player_name": ["Player AT", "Player BT", "Player CT", "Player DT", None], "team_id": ["H", "H", "A", "A", None], "x_tracking": [0, 15, -15, 0, 2], "y_tracking": [0, 0, 0, 20, 0], "full_frame": [0]*5})
     >>> plot_tracking_frame(df_tracking, "H")
-    <Figure size 640x480 with 1 Axes>
-    >>> plt.show()
+    <Figure size 1600x900 with 1 Axes>
+    >>> plt.show()  # doctest: +SKIP
     """
-    _plot_pitch()
-
     df_frame_without_ball = df_frame[df_frame[tracking_player_col] != ball_tracking_player_id]
 
     factor = 1
@@ -186,6 +191,8 @@ def plot_tracking_frame(
     for team, df_frame_team in df_frame_without_ball.groupby(tracking_team_col):
         is_defending_team = team != attacking_team
         if is_defending_team and not plot_defenders:
+            continue
+        if not is_defending_team and not plot_attackers:
             continue
         x = df_frame_team[tracking_x_col].tolist()
         y = df_frame_team[tracking_y_col].tolist()
@@ -206,14 +213,15 @@ def plot_tracking_frame(
                 plt.annotate(txt, (x[i], y[i]-2.25), fontsize=5*factor, ha="center", va="center", color=color)
 
     # plot ball position
-    try:
+    if plot_ball:
         df_frame_ball = df_frame[df_frame[tracking_player_col] == ball_tracking_player_id]
-        assert len(df_frame_ball) == 1, f"Expected exactly one ball position, got {len(df_frame_ball)}"  # sanity check
-        x_ball = df_frame_ball[tracking_x_col].iloc[0]
-        y_ball = df_frame_ball[tracking_y_col].iloc[0]
-        plt.scatter(x_ball, y_ball, c="black", marker="x", s=50*factor)
-    except AssertionError as e:
-        st.write(e)
+        if len(df_frame_ball) != 1:
+            warnings.warn(f"Expected exactly one ball position, got {len(df_frame_ball)}")  # sanity check
+            st.warning(f"Expected exactly one ball position, got {len(df_frame_ball)}")
+        if len(df_frame_ball) > 0:
+            x_ball = df_frame_ball[tracking_x_col].iloc[0]
+            y_ball = df_frame_ball[tracking_y_col].iloc[0]
+            plt.scatter(x_ball, y_ball, c="black", marker="x", s=50*factor)
 
     return plt.gcf()
 
@@ -222,7 +230,7 @@ def plot_tracking_frame(
 def _plot_pitch():
     """
     >>> _plot_pitch()
-    >>> plt.show()
+    >>> plt.show()  # doctest: +SKIP
     """
     plt.figure()
 
@@ -261,26 +269,36 @@ def _plot_pitch():
     plt.ylim(-34-5, 34+5)
 
 
+def plot_passes(df_passes, df_tracking, n_cols=2):  # TODO add params
+    columns = st.columns(n_cols)
+    for i, (_, p4ss) in enumerate(df_passes.iterrows()):
+        df_frame = df_tracking[df_tracking["frame_id"] == p4ss["frame_id"]]
+        st.write(p4ss["player_id_1"], "->", p4ss["player_id_2"])
+        fig = defensive_network.utility.pitch.plot_pass(p4ss, df_frame)
+        columns[i%n_cols].write(fig)
+
+
 def plot_pass(
-    p4ss, df_frame,
+    p4ss, df_frame=None,
     pass_x_col="x_event", pass_y_col="y_event", pass_end_x_col="x_target", pass_end_y_col="y_target",
     pass_frame_col="full_frame", pass_team_col="team_id_1", pass_player_name_col="player_name_1",
     tracking_team_col="team_id", tracking_player_col="player_id", tracking_x_col="x_tracking",
     tracking_y_col="y_tracking", tracking_frame_col="full_frame", tracking_player_name_col="player_name",
     tracking_vx_col=None, tracking_vy_col=None, ball_tracking_player_id="BALL", plot_defenders=True,
-    plot_expected_receiver=True, make_pass_transparent=False,
+    plot_expected_receiver=True, make_pass_transparent=False, plot_tracking_data=True, plot_ball=True,
 ):
     """
     >>> p4ss = pd.Series({"x_event": 0, "y_event": 0, "x_target": 30, "y_target": -10, "full_frame": 0, "team_id_1": "H", "player_name_1": "Player A", })
     >>> df_tracking = pd.DataFrame({"player_id": ["a", "b", "c", "d", "BALL"], "player_name": ["Player AT", "Player BT", "Player CT", "Player DT", None], "team_id": ["H", "H", "A", "A", None], "x_tracking": [0, 15, -15, 0, 2], "y_tracking": [0, 0, 0, 20, 0], "full_frame": [0]*5})
     >>> plot_pass(p4ss, df_tracking)
     <Figure size 640x480 with 1 Axes>
-    >>> plt.show()
+    >>> plt.show()  # doctest: +SKIP
     """
-
+    # st.write("df_frame", df_frame.shape)
+    # st.write(df_frame)
     # if ball_tracking_player_id not in df_tracking[tracking_player_col]:
     #     return
-    accessible_space.interface._check_ball_in_tracking_data(df_frame, tracking_player_col, ball_tracking_player_id)
+    # accessible_space.interface._check_ball_in_tracking_data(df_frame, tracking_player_col, ball_tracking_player_id)
 
     # _plot_pitch()
 
@@ -290,7 +308,10 @@ def plot_pass(
 
     factor=1
 
-    plot_tracking_frame(df_frame, p4ss[pass_team_col])
+    _plot_pitch()
+
+    if plot_tracking_data and df_frame is not None:
+        plot_tracking_frame(df_frame, p4ss[pass_team_col], plot_defenders=plot_defenders, plot_ball=plot_ball)
 
     # for team, df_frame_team in df_frame_without_ball.groupby(tracking_team_col):
     #     is_defending_team = team != p4ss[pass_team_col]
@@ -315,23 +336,27 @@ def plot_pass(
     #             plt.annotate(txt, (x[i], y[i]-2.25), fontsize=5*factor, ha="center", va="center", color=color)
 
     # plot passing start point with colored X
-    plt.scatter(p4ss[pass_x_col], p4ss[pass_y_col], c="red", marker="x", s=30*factor)
+    # plt.scatter(p4ss[pass_x_col], p4ss[pass_y_col], c="red", marker="x", s=30*factor)
 
     if plot_expected_receiver and "expected_receiver" in p4ss:
         expected_receiver = p4ss["expected_receiver"]
-        if not pd.isna(expected_receiver):
+        # st.write("df_frame", df_frame.shape)
+        # st.write(df_frame)
+        if not pd.isna(expected_receiver) and df_frame is not None:
             df_tracking_expected_receiver = df_frame[df_frame[tracking_player_col] == expected_receiver]
-            assert len(df_tracking_expected_receiver) > 0
-            x = df_tracking_expected_receiver[tracking_x_col].iloc[0]
-            y = df_tracking_expected_receiver[tracking_y_col].iloc[0]
-            plt.scatter(x, y, c="yellow", marker="x", s=25*factor, label="expected receiver")
-            plt.legend()
+            if not len(df_tracking_expected_receiver) > 0:
+                warnings.warn("TODO")
+            else:
+                x = df_tracking_expected_receiver[tracking_x_col].iloc[0]
+                y = df_tracking_expected_receiver[tracking_y_col].iloc[0]
+                plt.scatter(x, y, c="yellow", marker="x", s=25*factor, label="expected receiver")
+                plt.legend()
 
     # plot pass arrow
     alpha = 0.3 if make_pass_transparent else 1
     plt.arrow(x=p4ss[pass_x_col], y=p4ss[pass_y_col], dx=p4ss[pass_end_x_col] - p4ss[pass_x_col],
               dy=p4ss[pass_end_y_col] - p4ss[pass_y_col], head_width=2*factor, head_length=3*factor, fc="black", ec="black",
-              alpha=alpha,
+              alpha=alpha, length_includes_head=True,
               )
 
     return plt.gcf()
@@ -345,15 +370,19 @@ def plot_pass_involvement(
     tracking_y_col="y_tracking", tracking_frame_col="full_frame", tracking_player_name_col="player_name",
     tracking_vx_col=None, tracking_vy_col=None, ball_tracking_player_id="BALL",
     plot_model="circle_circle_rectangle", plot_expected_receiver=True, model_radius=5,
+    responsibility_col=None,
 ):
     fig = plot_pass(
-        p4ss, df_tracking[df_tracking[tracking_frame_col] == p4ss[pass_frame_col]],
+        p4ss, df_tracking[df_tracking[tracking_frame_col] == p4ss[pass_frame_col] ],
         pass_x_col, pass_y_col, pass_end_x_col, pass_end_y_col,
         pass_frame_col, pass_team_col, pass_player_name_col,
         tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col, tracking_frame_col, tracking_player_name_col,
         tracking_vx_col, tracking_vy_col, ball_tracking_player_id,
-        plot_defenders=False, plot_expected_receiver=plot_expected_receiver
+        plot_expected_receiver=plot_expected_receiver, plot_ball=False, plot_tracking_data=True, plot_defenders=False,
+        # plot_defenders=, plot_expected_receiver=plot_expected_receiver, plot_tracking_data=False,
     )
+    player2name = df_tracking.set_index(tracking_player_col)[tracking_player_name_col].to_dict()
+
     for _, row in df_involvement.iterrows():
         involvement = row["raw_involvement"]
 
@@ -370,10 +399,16 @@ def plot_pass_involvement(
             st.write(e)
 
         # add number to involvement
-        plt.annotate(f"{involvement:.2f}", (row["defender_x"], row["defender_y"]), fontsize=3, ha="center", va="center", color="black")
+        color = "white" if involvement > 0.45 else "black"
+        plt.annotate(f"{involvement:.2f}", (row["defender_x"], row["defender_y"]), fontsize=3, ha="center", va="center", color=color)
+
+        # add number to responsibility
+        if responsibility_col is not None:  # and responsibility_col in row:
+            responsibility = row[responsibility_col] if row[responsibility_col] is not None else np.nan
+            plt.annotate(f"Resp: {responsibility:.2f}", (row["defender_x"], row["defender_y"]+2.25), fontsize=3, ha="center", va="center", color="black")
 
         # add defender name
-        plt.annotate(row[f"defender_name"], (row["defender_x"], row["defender_y"]-2.25), fontsize=5, ha="center", va="center", color="blue")
+        plt.annotate(player2name.get(row["defender_id"], row["defender_id"]), (row["defender_x"], row["defender_y"]-2.25), fontsize=5, ha="center", va="center", color="blue")
 
     def _plot_passer_circle(model_radius):
         circle = plt.Circle((p4ss[pass_x_col], p4ss[pass_y_col]), model_radius, color='blue', fill=False)
@@ -404,3 +439,62 @@ def plot_pass_involvement(
         plt.plot([p4ss[pass_x_col] - perpendicular_vec[0], p4ss[pass_end_x_col] - perpendicular_vec[0]], [p4ss[pass_y_col] - perpendicular_vec[1], p4ss[pass_end_y_col] - perpendicular_vec[1]], color='blue')
 
     return fig
+
+
+def plot_passes_with_involvement(
+    df_involvement, #model, model_radius,
+    df_tracking,
+    event_id_col="involvement_pass_id",
+    pass_x_col="x_event", pass_y_col="y_event", pass_target_x_col="x_target", pass_target_y_col="y_target",
+    pass_frame_col="full_frame", pass_team_col="team_id_1", pass_player_name_col="player_id_1",
+    tracking_team_col="team_id", tracking_player_col="player_id", tracking_x_col="x_tracking", tracking_y_col="y_tracking",
+    tracking_frame_col="full_frame", tracking_player_name_col="player_name", tracking_vx_col="vx", tracking_vy_col="vy",
+    event_string_col="event_string", value_col="pass_xt", ball_tracking_player_id="BALL", n_passes=2,
+    responsibility_col=None, n_cols=2,
+):
+    """
+    >>> df_event = pd.DataFrame({"event_id": [0, 1, 2], "team_id_1": [2, 2, 2], "full_frame": [0, 1, 2], "x_event": [0, 0, 0], "y_event": [0, 0, 0], "x_target": [10, 20, 30], "y_target": [0, 0, 0], "pass_is_successful": [True, False, False], "player_id_2": [2, 3, 4], "full_frame_rec": [1, 2, 3], "player_id_1": [1, 2, 3], "event_string": ["pass", "pass", "pass"], "pass_xt": [0.1, -0.1, -0.1], "pass_is_intercepted": [False, False, True], "player_name_1": ["A", "B", "C"]})
+    >>> df_tracking = pd.DataFrame({"full_frame": [0, 0, 0, 1, 1, 1, 0, 1, 2], "team_id": [1, 1, 1, 1, 1, 1, 2, 2, 2], "player_id": [2, 3, 4, 2, 3, 4, "BALL", "BALL", "BALL"], "x_tracking": [5, 10, 15, 5, 10, 15, 5, 10, 15], "y_tracking": [0, 0, 0, 0, 0, 0, 0, 0, 0], "player_name": ["A", "B", "C", "A", "B", "C", "BALL", "BALL", "BALL"]})
+    >>> df_involvement = defensive_network.models.involvement.get_involvement(df_event, df_tracking)
+    >>> plot_passes_with_involvement(df_involvement, df_tracking)
+    [<Figure size 640x480 with 1 Axes>]
+    >>> plt.show()  # doctest: +SKIP
+    """
+    if len(df_involvement) == 0:
+        st.warning("plot_passes_with_involvement: No passes found.")
+        return
+
+    figs = []
+    columns = st.columns(n_cols)
+    for pass_nr, (pass_id, df_outplayed_pass) in enumerate(df_involvement.groupby(event_id_col)):
+        if pass_nr >= (n_passes - 1):
+            break
+        try:
+            # p4ss = df_passes[df_passes[event_id_col] == pass_id].iloc[0]
+            p4ss = df_outplayed_pass.iloc[0]
+        except IndexError as e:
+            st.warning(f"plot_passes_with_involvement: Pass {pass_id} not found in df_passes.")
+            st.write(e)
+            continue
+        model = p4ss["involvement_model"]
+        model_radius = p4ss["model_radius"]
+        fig = defensive_network.utility.pitch.plot_pass_involvement(
+            p4ss, df_outplayed_pass, df_tracking,
+            pass_x_col, pass_y_col, pass_target_x_col, pass_target_y_col, pass_frame_col, pass_team_col, pass_player_name_col,
+            tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col, tracking_frame_col, tracking_player_name_col,
+            tracking_vx_col, tracking_vy_col, ball_tracking_player_id, plot_model=model, model_radius=model_radius,
+            responsibility_col=responsibility_col,
+        )
+        event_string = p4ss[event_string_col] if event_string_col is not None and event_string_col in p4ss else f"{p4ss[pass_player_name_col]}"
+        plt.title(f"Pass {event_string} ({p4ss[value_col]:+.3f} {value_col})", fontsize=6)
+        columns[pass_nr % n_cols].pyplot(fig, dpi=500)
+        plt.close()
+        figs.append(fig)
+    return figs
+
+
+if __name__ == '__main__':
+    _ = plot_football_pitch()
+    plot_position_arrow('LW', 'RW', "0.52", plot_players=True)
+    plot_position_arrow('RW', 'LW', "0.13", arrow_width=6)
+    plt.show()

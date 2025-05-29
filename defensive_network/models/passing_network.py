@@ -92,11 +92,11 @@ def get_defensive_networks(
         value_col = "dummy"
 
     if player_name_col is None:
-        warnings.warn("TODO")
+    #     warnings.warn("TODO")
         player_name_col = player_col
-
+    #
     if receiver_name_col is None:
-        warnings.warn("TODO")
+    #     warnings.warn("TODO")
         receiver_name_col = receiver_col
 
     aggregates = {
@@ -164,6 +164,8 @@ def get_defensive_networks(
     )
     off_network_only_positive = Network(df_nodes_only_positive, df_edges_only_positive)
 
+    st.write("df_passes_defender_sums[involvement_type_col]")
+    st.write(df_passes_defender_sums[involvement_type_col])
     df_nodes_off_inv, df_edges_off_inv = get_passing_network(
         df_passes_defender_sums.reset_index(),
         x_col=x_col, y_col=y_col, from_col=player_col, to_col=receiver_col, from_name_col=player_name_col,
@@ -356,7 +358,7 @@ def plot_passing_network(
     >>> plt.show()  # doctest: +SKIP
     """
     if colormap is None:
-        colormap = matplotlib.cm.get_cmap("YlOrBr")
+        colormap = matplotlib.colormaps.get_cmap("YlOrBr")
 
     fig, ax = defensive_network.utility.pitch.plot_football_pitch(color="black", figsize=(14 / 1.5, 9 / 1.5))
 
@@ -631,7 +633,7 @@ def analyse_defensive_networks(networks: DefensiveNetworks) -> DefensiveNetworkM
     return DefensiveNetworkMetrics(df_metrics_off, df_metrics_off_only_positive, df_metrics_off_involvement_type, def_metrics, df_def_sums, df_def_team_sums, df_def_team_means)
 
 
-def plot_defensive_networks(networks: DefensiveNetworks, max_value=5):
+def plot_defensive_networks(networks: DefensiveNetworks, max_color_value=None):
     fig = plot_passing_network(df_nodes=networks.off_network.df_nodes, df_edges=networks.off_network.df_edges, node_color_col="value_passes_and_receptions", arrow_color_col="value_passes")
     st.write(fig)
     st.write(networks.off_network.df_nodes)
@@ -640,13 +642,13 @@ def plot_defensive_networks(networks: DefensiveNetworks, max_value=5):
     # max_nodes_involvement = max(networks.off_involvement_type_network.df_nodes["value_passes"])
     # max_edges_involvement = max(networks.off_involvement_type_network.df_edges["value_passes"])
 
-    fig = plot_passing_network(df_nodes=networks.off_involvement_type_network.df_nodes, df_edges=networks.off_involvement_type_network.df_edges, max_color_value_nodes=max_value, max_color_value_edges=max_value, node_color_col="value_passes", arrow_color_col="value_passes")
+    fig = plot_passing_network(df_nodes=networks.off_involvement_type_network.df_nodes, df_edges=networks.off_involvement_type_network.df_edges, max_color_value_nodes=max_color_value, max_color_value_edges=max_color_value, node_color_col="value_passes", arrow_color_col="value_passes")
     st.write(fig)
     st.write(networks.off_involvement_type_network.df_nodes)
     st.write(networks.off_involvement_type_network.df_edges)
 
     for defender, network in networks.def_networks.items():
-        fig = plot_passing_network(df_nodes=network.df_nodes, df_edges=network.df_edges, max_color_value_nodes=max_value, max_color_value_edges=max_value, node_color_col="value_passes", arrow_color_col="value_passes")
+        fig = plot_passing_network(df_nodes=network.df_nodes, df_edges=network.df_edges, max_color_value_nodes=max_color_value, max_color_value_edges=max_color_value, node_color_col="value_passes", arrow_color_col="value_passes")
         st.write("#### " + defender)
         st.write(fig)
         st.write(network.df_nodes)
@@ -681,7 +683,7 @@ plot_defensive_network = functools.partial(plot_passing_network,    arrow_width_
 
     show_colorbar=False, node_size_multiplier=200, arrow_width_multiplier=3,
     # colormap=matplotlib.cm.get_cmap("PuBuGn"),
-    colormap=matplotlib.cm.get_cmap("coolwarm"), min_color_value_edges=-0.05, max_color_value_edges=0.05,
+    colormap=matplotlib.colormaps.get_cmap("coolwarm"), min_color_value_edges=-0.05, max_color_value_edges=0.05,
     min_color_value_nodes=-0.5, max_color_value_nodes=0.2, annotate_top_n_edges=5, label_col="edge_label",
     label_format_string="{:.3f}", arrow_color_col="value_passes_per_time", ignore_nodes_without_position=False, node_color_col="value_passes_per_time",
     ignore_nodes_without_passes_or_receptions=True,

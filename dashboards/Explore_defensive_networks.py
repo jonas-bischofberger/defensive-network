@@ -10,6 +10,7 @@ import defensive_network.models.average_position
 import defensive_network.models.expected_receiver
 import defensive_network.models.involvement
 import defensive_network.models.passing_network
+import defensive_network.models.responsibility
 import defensive_network.parse.cdf
 import defensive_network.utility.dataframes
 import defensive_network.utility.general
@@ -17,6 +18,9 @@ import defensive_network.utility.pitch
 import defensive_network.utility.dashboards
 import defensive_network.models.formation
 import defensive_network.utility.video
+
+importlib.reload(defensive_network.models.involvement)
+importlib.reload(defensive_network.utility.pitch)
 
 
 # import defensive_network.scripts.create_dfb_tracking_animations
@@ -108,6 +112,8 @@ def defensive_network_dashboard():
             base_path, slugified_match_string, xt_model=xt_model,
             expected_receiver_model=expected_receiver_model, formation_model=formation_model
         )
+        st.write("df_tracking")
+        st.write(df_tracking.head(5))
         defensive_network.utility.general.stop_streamlit_profiler()
         # st.stop()
 
@@ -146,22 +152,37 @@ def defensive_network_dashboard():
             period_minutes = (df_period["datetime_tracking"].max() - df_period["datetime_tracking"].min()).total_seconds() / 60
             total_minutes += period_minutes
 
-        @st.cache_resource
+        # @st.cache_resource
         def _get_involvement(
             value_col, receiver_col, tracking_player_col, tracking_player_name_col, involvement_model_success_pos_value,
             involvement_model_success_neg_value, involvement_model_out, involvement_model_intercepted,
             model_radius
         ):
+            importlib.reload(defensive_network.models.involvement)
             df_involvement = defensive_network.models.involvement.get_involvement(
                 df_passes, df_tracking, event_receiver_col=receiver_col,
                 tracking_player_col=tracking_player_col, involvement_model_success_pos_value=involvement_model_success_pos_value,
                 involvement_model_success_neg_value=involvement_model_success_neg_value,
                 involvement_model_out=involvement_model_out, involvement_model_intercepted=involvement_model_intercepted,
                 model_radius=model_radius, event_value_col=value_col, tracking_player_name_col=tracking_player_name_col,
+                tracking_defender_meta_cols=["role"],
             )
             return df_involvement
 
         df_involvement = _get_involvement(selected_value_col, selected_receiver_col, selected_tracking_player_col, selected_tracking_player_name_col, involvement_model_success_pos_value, involvement_model_success_neg_value, involvement_model_out, involvement_model_intercepted, model_radius)
+
+        if st.toggle("Calculate intrinsic responsibility", True):
+            st.write("df_involvement")
+            st.write(df_involvement)
+            dfg_responsibility = defensive_network.models.responsibility.get_responsibility_model(df_involvement, ["role_1", "network_receiver", "defender_id"])
+            st.write("dfg_responsibility")
+            st.write(dfg_responsibility)
+
+            df_involvement["responsibility"] = defensive_network.models.responsibility.get_responsibility(df_involvement, dfg_responsibility)
+            st.write("df_involvement")
+            st.write(df_involvement)
+            n_passes_to_plot_responsibility = st.number_input("Responsibility # Passes to plot", min_value=0, value=10)
+            defensive_network.utility.pitch.plot_passes_with_involvement(df_involvement, df_tracking, n_passes=n_passes_to_plot_responsibility)
 
         defensive_network.utility.general.stop_streamlit_profiler()
 
@@ -172,8 +193,8 @@ def defensive_network_dashboard():
                 st.write(f"### {involvement_type}")
                 with st.expander(f"### {involvement_type}"):
                     defensive_network.utility.pitch.plot_passes_with_involvement(
-                        df_involvement_type, df_involvement_type["involvement_model"].iloc[0], model_radius, df_passes, df_tracking,
-                        n_passes=n_examples_per_type
+                        df_involvement_type, df_involvement_type["involvement_model"].iloc[0], model_radius, df_tracking,
+                        n_passes=n_examples_per_type,
                     )
 
         st.write("---")
@@ -181,12 +202,21 @@ def defensive_network_dashboard():
         for team, df_involvement_team in df_involvement.groupby("team_id_1"):
             team_name = df_involvement_team["team_name_1"].iloc[0]
             st.write(f"### {team_name}")
-            for involvement_type_col in ["involvement", "contribution", "fault"]:
+            for involvement_type_col in ["responsibility", "involvement", "contribution", "fault"]:
+                if involvement_type_col not in df_involvement.columns:
+                    st.warning(involvement_type_col)
+                    continue
                 st.write(f"## {involvement_type_col.capitalize()} networks {'(xT > 0)' if involvement_type_col == 'fault' else '(xT < 0)' if involvement_type_col == 'contribution' else ''}")
                 with st.expander(involvement_type_col.capitalize()):
                     # df_involvement_team["network_receiver"] = df_involvement_team[selected_expected_receiver_col].where(df_involvement_team[selected_expected_receiver_col].notna(), df_involvement_team[selected_receiver_col])
                     # df_involvement_team["network_receiver_name"] = df_involvement_team[selected_expected_receiver_name_col].where(df_involvement_team[selected_expected_receiver_name_col].notna(), df_involvement_team[selected_receiver_name_col])
 
+                    st.write("selected_value_col")
+                    st.write(selected_value_col)
+                    st.write("involvement_type_col")
+                    st.write(involvement_type_col)
+
+                    importlib.reload(defensive_network.models.passing_network)
                     networks = defensive_network.models.passing_network.get_defensive_networks(
                         df_involvement_team, value_col=selected_value_col, involvement_type_col=involvement_type_col,
                         player_col=selected_player_col, player_name_col=selected_player_name_col,
