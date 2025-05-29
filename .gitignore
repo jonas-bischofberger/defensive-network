@@ -2,10 +2,14 @@
 data/
 *.png
 *.mp4
+*.dat
+*.xlsx
+*.csv
 venv/
 env/
 data_reduced/
-*.csv
+dist/
+.coverage
 *.parquet
-*.dat
+*.egg-info
 *.ini

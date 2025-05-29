@@ -1,4 +1,5 @@
 ## Installation
+
 1. Clone the repository:
 
 ```
@@ -21,5 +22,5 @@ pip install -r requirements.txt
 4. Run the Streamlit app!
 
 ```
-streamlit run analyze_defensive_network.py
+streamlit run dashboards/Explore_defensive_network.py
 ```

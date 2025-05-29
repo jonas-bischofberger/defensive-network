@@ -2,7 +2,7 @@ import os
 
 import collections
 import streamlit as st
-import defensive_network.parse.dfb
+import defensive_network.parse.cdf
 
 StreamlitDefensiveNetworkOptions = collections.namedtuple("StreamlitDefensiveNetworkOptions", [
     "base_path", "selected_tracking_matches", "xt_model", "expected_receiver_model", "formation_model",
@@ -15,10 +15,10 @@ StreamlitDefensiveNetworkOptions = collections.namedtuple("StreamlitDefensiveNet
 ])
 
 def _select_matches(base_path):
-    df_meta = defensive_network.parse.dfb.get_all_meta(base_path)
-    # df_lineups = defensive_network.parse.dfb.get_all_lineups(base_path)
-    all_tracking_files = os.listdir(os.path.dirname(defensive_network.parse.dfb.get_tracking_fpath(base_path, "")))
-    all_event_files = os.listdir(os.path.dirname(defensive_network.parse.dfb.get_event_fpath(base_path, "")))
+    df_meta = defensive_network.parse.cdf.get_all_meta(base_path)
+    # df_lineups = defensive_network.parse.cdf.get_all_lineups(base_path)
+    all_tracking_files = os.listdir(os.path.dirname(defensive_network.parse.cdf.get_tracking_fpath(base_path, "")))
+    all_event_files = os.listdir(os.path.dirname(defensive_network.parse.cdf.get_event_fpath(base_path, "")))
 
     all_files = [file for file in all_tracking_files if file.replace("parquet", "csv") in all_event_files]
     all_slugified_match_strings = [os.path.splitext(file)[0] for file in all_files]

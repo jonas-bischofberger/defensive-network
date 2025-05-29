@@ -78,9 +78,14 @@ def get_defensive_networks(
     4         3          DB          0.5   5 -25           B  C  0.142857                True
     >>> networks = get_defensive_networks(df, x_col="x", y_col="y", x_to_col=None, y_to_col=None, receiver_col="to", receiver_name_col="to", total_minutes=3)
     >>> networks.off_involvement_type_network.df_nodes
-
+      entity name  x_avg      y_avg  num_passes  num_passes_per_time  num_receptions  num_receptions_per_time  num_passes_and_receptions  num_passes_and_receptions_per_time  value_passes  value_passes_per_time  value_receptions  value_receptions_per_time  value_passes_and_receptions  value_passes_and_receptions_per_time  value_per_pass  value_per_reception  value_per_pass_and_reception
+    0      A    A   -5.0   3.333333         3.0                 90.0             0.0                      0.0                        3.0                                90.0           1.0                   30.0               0.0                        0.0                          1.0                                  30.0        0.333333             0.000000                      0.333333
+    1      B    B    5.0 -25.000000         1.0                 30.0             3.0                     90.0                        4.0                               120.0           0.5                   15.0               1.0                       30.0                          1.5                                  45.0        0.500000             0.333333                      0.375000
+    2      C    C    NaN        NaN         0.0                  0.0             1.0                     30.0                        1.0                                30.0           0.0                    0.0               0.5                       15.0                          0.5                                  15.0        0.000000             0.500000                      0.500000
     >>> networks.off_involvement_type_network.df_edges
-
+      from to from_name to_name  num_passes  num_passes_per_time  value_passes  value_passes_per_time  value_per_pass
+    0    A  B         A       B           3                 90.0           1.0                   30.0        0.333333
+    1    B  C         B       C           1                 30.0           0.5                   15.0        0.500000
     """
     if value_col is None:
         df_passes_with_defenders["dummy"] = 1
@@ -348,7 +353,7 @@ def plot_passing_network(
     >>> df_nodes, df_edges = get_passing_network(df, "from", "to", "x", "y", value_col="xT", total_minutes=5, norm_minutes=90)
     >>> plot_passing_network(df_nodes=df_nodes, df_edges=df_edges, show_colorbar=False)
     <Figure size 933.333x600 with 1 Axes>
-    >>> plt.show()
+    >>> plt.show()  # doctest: +SKIP
     """
     if colormap is None:
         colormap = matplotlib.cm.get_cmap("YlOrBr")
@@ -486,13 +491,13 @@ def analyse_network(df_nodes, df_edges, silent=True):
     >>> df_nodes, df_edges = get_passing_network(df, "from", "to", "x", "y", value_col="xT", total_minutes=5, norm_minutes=90)
     >>> df_player_metrics, team_metrics = analyse_network(df_nodes, df_edges)
     >>> df_player_metrics
-       Reciprocity  Average Neighbor Degree  Clustering coefficient  Eigenvector centrality  Closeness centrality  Betweenness centrality  Degree centrality  In-degree centrality  Out-degree centrality name
-    A          0.0                      1.0                       0                0.000014              0.000000                     0.0           0.214286              0.000000               0.214286    A
-    B          0.0                      0.0                       0                0.006443              0.107143                     0.5           0.357143              0.214286               0.142857    B
-    C          0.0                      0.0                       0                0.999979              0.107143                     0.0           0.142857              0.142857               0.000000    C
+       Reciprocity  Average Neighbor Degree  Clustering coefficient Eigenvector centrality  Closeness centrality  Betweenness centrality  Degree centrality  In-degree centrality  Out-degree centrality name
+    A          0.0                      1.0                       0                   None              0.000000                     0.0           0.214286              0.000000               0.214286    A
+    B          0.0                      0.0                       0                   None              0.107143                     0.5           0.357143              0.214286               0.142857    B
+    C          0.0                      0.0                       0                   None              0.107143                     0.0           0.142857              0.142857               0.000000    C
     >>> team_metrics
-    Unweighted Density    0.333333
-    Weighted Density      0.059524
+    Unweighted Density    0.018182
+    Weighted Density      0.003247
     Team reciprocity      0.000000
     Total Degree          0.714286
     dtype: float64
@@ -579,13 +584,34 @@ def analyse_network(df_nodes, df_edges, silent=True):
     return Metrics(player=df_player_metrics, team=team_metrics)
 
 
-def analyse_defensive_networks(networks: DefensiveNetworks):
+def analyse_defensive_networks(networks: DefensiveNetworks) -> DefensiveNetworkMetrics:
     """
     >>> defensive_network.utility.dataframes.prepare_doctest()
-    >>> df = pd.DataFrame({"x": [-10] * 3 + [5, 5, 0], "y": [0] * 3 + [10, -25, 0], "from": ["A"] * 3 + ["A", "B", "B"], "to": ["B"] * 3 + ["B", "C", "A"], "xT": list(np.arange(6) / 28)})
-    >>> networks = get_defensive_networks(df, value_col="xT", total_minutes=5)
-    >>> analyse_defensive_networks(networks)
-
+    >>> df = pd.DataFrame({"event_id": [0, 1, 1, 2, 3], "defender_id": ["DA", "DA", "DB", "DA", "DB"], "involvement": [0.2, 0.3, 0.1, 0.4, 0.5], "x": [-10] * 3 + [5, 5], "y": [0] * 3 + [10, -25], "player_id_1": ["A"] * 3 + ["A", "B"], "to": ["B"] * 3 + ["B", "C"], "pass_xt": list(np.arange(5) / 28), "pass_is_successful": [True] * 5})
+    >>> networks = get_defensive_networks(df, x_col="x", y_col="y", x_to_col=None, y_to_col=None, receiver_col="to", receiver_name_col="to", total_minutes=3)
+    >>> metrics = analyse_defensive_networks(networks)
+    >>> metrics.off_network.player
+       Reciprocity  Average Neighbor Degree  Clustering coefficient Eigenvector centrality  Closeness centrality  Betweenness centrality  Degree centrality  In-degree centrality  Out-degree centrality name
+    A          0.0                      1.0                       0                   None              0.000000                     0.0                3.0                   0.0                    3.0    A
+    B          0.0                      0.0                       0                   None              1.500000                     0.5                4.0                   3.0                    1.0    B
+    C          0.0                      0.0                       0                   None              0.857143                     0.0                1.0                   1.0                    0.0    C
+    >>> metrics.off_network.team
+    Unweighted Density    0.018182
+    Weighted Density      0.036364
+    Team reciprocity      0.000000
+    Total Degree          8.000000
+    dtype: float64
+    >>> metrics.off_involvement_type_network.player
+       Reciprocity  Average Neighbor Degree  Clustering coefficient Eigenvector centrality  Closeness centrality  Betweenness centrality  Degree centrality  In-degree centrality  Out-degree centrality name
+    A          0.0                      1.0                       0                   None                   0.0                     0.0                1.0                   0.0                    1.0    A
+    B          0.0                      0.0                       0                   None                   0.5                     0.5                1.5                   1.0                    0.5    B
+    C          0.0                      0.0                       0                   None                   0.4                     0.0                0.5                   0.5                    0.0    C
+    >>> metrics.def_networks["DA"].team
+    Unweighted Density    0.009091
+    Weighted Density      0.008182
+    Team reciprocity      0.000000
+    Total Degree          1.800000
+    dtype: float64
     """
     df_metrics_off = analyse_network(networks.off_network.df_nodes, networks.off_network.df_edges)
     df_metrics_off_only_positive = analyse_network(networks.off_network_only_positive.df_nodes, networks.off_network_only_positive.df_edges)
@@ -594,13 +620,10 @@ def analyse_defensive_networks(networks: DefensiveNetworks):
     def_sums = {}
     for defender, def_network in networks.def_networks.items():
         df_metrics_player_def, team_metrics_def = analyse_network(def_network.df_nodes, def_network.df_edges)
-        def_metrics[defender] = (df_metrics_player_def, team_metrics_def)
-        # def_sums[defender] = df_metrics_player_def.sum()
+        def_metrics[defender] = Metrics(df_metrics_player_def, team_metrics_def)
         def_sums[defender] = team_metrics_def
 
     df_def_sums = pd.DataFrame(def_sums).T
-    # df_def_sums["player_name"] = df_def_sums.index.map(selectedtrackingplayer2name)
-    # df_def_sums = df_def_sums.set_index("player_name")
 
     df_def_team_sums = df_def_sums.sum()
     df_def_team_means = df_def_sums.mean()

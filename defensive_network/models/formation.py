@@ -1,6 +1,7 @@
 import collections
 import os.path
 import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,7 +11,8 @@ import streamlit as st
 
 import defensive_network.utility.general
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+import defensive_network.utility.general
+import defensive_network.utility.dataframes
 
 FormationResult = collections.namedtuple("FormationResult", ["role", "role_name", "formation_instance", "role_category"])
 
@@ -42,11 +44,16 @@ def _plot_roles(df_tracking, x_col="x_norm", y_col="y_norm", role_col="role", ro
         pass
 
     plt.figure()
+    plt.xlim(-52.5, 52.5)
+    plt.ylim(-34, 34)
+    # roles = dfg[role_col].unique()
+    dfg["role_index"] = dfg[role_col].apply(lambda x: list(roles).index(x))
+
     roles = dfg[role_col].unique().tolist()
-    dfg["role_index"] = dfg[role_col].apply(lambda x: roles.index(x))
+    # dfg["role_index"] = dfg[role_col].apply(lambda x: roles.index(x))
     plt.scatter(dfg[x_col], dfg[y_col], c=dfg["role_index"])
-    for i, txt in enumerate(dfg[role_name_col]):
-        plt.annotate(txt, (dfg[x_col].iloc[i], dfg[y_col].iloc[i]-0.5), fontsize=8, color="black", ha="center", va="top")
+    for i, role_name in enumerate(dfg[role_name_col]):
+        plt.annotate(role_name, (dfg[x_col].iloc[i], dfg[y_col].iloc[i]-0.5), fontsize=8, color="black", ha="center", va="top")
     plt.legend()
     return plt.gcf()
 
@@ -56,7 +63,23 @@ def detect_formation(
     player_name_col="player_name", team_name_col="team_id", ball_team="BALL", model="average_pos", plot_formation=False,
 ):
     """
-    >>> df_tracking =
+    >>> defensive_network.utility.dataframes.prepare_doctest()
+    >>> df_tracking = pd.DataFrame({"full_frame": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], "x_norm": [10, 20, 30, 40, 50, -10, -20, -30, -40, -50, 0], "y_norm": [10, -10, 30, -30, 0, -10, -20, -30, -5, -25, 15], "player_id": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], "team_id": ["A", "A", "A", "A", "A", "B", "B", "B", "B", "B", "B"], "player_name": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11"], "ball_poss_team_id": ["A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A"]})
+    >>> result = detect_formation(df_tracking)
+    >>> df_tracking["role"], df_tracking["role_name"], df_tracking["formation_instance"], df_tracking["role_category"] = result.role, result.role_name, result.formation_instance, result.role_category
+    >>> df_tracking
+        full_frame  x_norm  y_norm  player_id team_id player_name ball_poss_team_id      role role_name formation_instance     role_category
+    0            1      10      10          1       A          P1                 A  A_off0.0        P1              A_off        goalkeeper
+    1            1      20     -10          2       A          P2                 A  A_off1.0        P2              A_off  central_defender
+    2            1      30      30          3       A          P3                 A  A_off2.0        P3              A_off     left_defender
+    3            1      40     -30          4       A          P4                 A  A_off3.0        P4              A_off      right_winger
+    4            1      50       0          5       A          P5                 A  A_off4.0        P5              A_off           striker
+    5            1     -10     -10          6       B          P6                 A  B_def0.0        P6              B_def  central_defender
+    6            1     -20     -20          7       B          P7                 A  B_def1.0        P7              B_def  central_midfield
+    7            1     -30     -30          8       B          P8                 A  B_def2.0        P8              B_def       left_winger
+    8            1     -40      -5          9       B          P9                 A  B_def3.0        P9              B_def      right_winger
+    9            1     -50     -25         10       B         P10                 A  B_def4.0       P10              B_def           striker
+    10           1       0      15         11       B         P11                 A  B_def5.0       P11              B_def        goalkeeper
     """
     df_tracking = df_tracking.copy()
 
@@ -88,17 +111,27 @@ def detect_formation(
                 df[x_col] *= -1
                 df[x_col] *= -1
 
-            assert len(df) > 0
+            if len(df) == 0:
+                continue
+    return plt.gcf()
 
-            # check if all frames have exactly 11. If it fails, throw away frames with duplicate numbers
+            # st.write("df")
+            # st.write(df)
+
+            # check if all frames have exactly 11 players. If it fails, throw away frames with duplicate numbers
             df["n_unique_players"] = df.groupby(frame_col)[player_col].transform("nunique")
-            df = df[df["n_unique_players"] == 11]
+            df = df[df["n_unique_players"] <= 11]
 
             binsize = 1.5
 
             def get_default_role_assignment(df, frame_col, player_col, x_col="x_norm", y_col="y_norm", role_prefix=""):
                 df_configuration = pd.pivot_table(df, index=frame_col, columns=player_col, values=x_col, aggfunc="count")
                 df_configuration["configuration_id"] = pd.factorize(df_configuration.apply(tuple, axis=1))[0]
+
+                st.write("df")
+                st.write(df)
+                st.write("df_configuration")
+                st.write(df_configuration)
 
                 unique_configurations = df_configuration.drop_duplicates("configuration_id").reset_index(drop=True)
                 unique_configuration_lists = unique_configurations[[col for col in unique_configurations.columns if col != "configuration_id"]].apply(lambda row: row.index[row == 1].tolist(), axis=1).tolist()
@@ -107,6 +140,9 @@ def detect_formation(
                     df["configuration_id"] = df[frame_col].map(df_configuration["configuration_id"])
 
                 dfg_player_means = df.groupby(player_col).agg(x_mean=(x_col, "mean"), y_mean=(y_col, "mean"))
+
+                st.write("unique_configuration_lists")
+                st.write(unique_configuration_lists)
 
                 current_config = set(unique_configuration_lists[0])
                 current_config_id = unique_configurations["configuration_id"].iloc[0]
@@ -297,8 +333,60 @@ def get_role_category(df_tracking, role_col="role", formation_col="formation_ins
     return df_tracking["role_category"]
 
 
+def main2():
+    data = {
+        "full_frame": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        "x_norm": [10, 20, 30, 40, 50, -10, -20, -30, -40, -50, 0],
+        "y_norm": [10, -10, 30, -30, 0, -10, -20, -30, -5, -25, 15],
+        "player_id": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "team_id": ["A", "A", "A", "A", "A", "B", "B", "B", "B", "B", "B"],
+        "player_name": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11"],
+        "ball_poss_team_id": ["A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A"],
+    }
+    df_tracking = pd.DataFrame(data)
+    result = detect_formation(df_tracking)
+    df_tracking["role"] = result.role
+    df_tracking["role_name"] = result.role_name
+    df_tracking["formation_instance"] = result.formation_instance
+    df_tracking["role_category"] = result.role_category
+    # get_formation_plots(df_tracking, role_name_col="role_name")
+    plots = get_formation_plots(df_tracking)
+
+    for formation, fig in plots.items():
+        st.write("formation", formation)
+        st.write(fig)
+
+
+def get_formation_plots(df_tracking, formation_col="formation_instance", x_col="x_norm", y_col="y_norm", role_col="role", role_name_col="role_category"):
+    plots = {}
+    for formation, df_formation in df_tracking.groupby(formation_col):
+        # st.write("-------------")
+        # st.write(formation)
+        fig = _plot_roles(df_formation, x_col=x_col, y_col=y_col, role_col=role_col, role_name_col=role_name_col)
+        # st.write(_plot_roles(df_formation, x_col=x_col, y_col=y_col, role_col=role_col, role_name_col=role_col))
+        # st.write("-------------")
+        plots[formation] = fig
+    return plots
+
+
 if __name__ == '__main__':
     defensive_network.utility.general.start_streamlit_profiler()
+    main2()
+
+
+def main1():
+    defensive_network.utility.general.start_streamlit_profiler()
+
+    # df = _read_parquet("C:/Users/Jonas/Downloads/dfl_test_data/2324/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet")
+    df = _read_parquet(os.path.join(os.path.dirname(__file__), "../../data_reduced/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet"))
+    df = df.drop(columns=["role", "role_name", "formation_instance"])
+    assert "role" not in df.columns
+    res = detect_formation(df)
+    df["role"] = res.role
+    df["role_name"] = res.role_name
+    df["formation_instance"] = res.formation_instance
+    df["role_category"] = res.role_category
+    defensive_network.utility.general.stop_streamlit_profiler()
 
     # df = _read_parquet("C:/Users/Jonas/Downloads/dfl_test_data/2324/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet")
     df_tracking = _read_parquet(os.path.join(os.path.dirname(__file__), "../../data_reduced/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet"))
@@ -316,4 +404,10 @@ if __name__ == '__main__':
         st.write(formation)
         st.write(_plot_roles(df_tracking_formation, role_name_col="role_category"))
         st.write(_plot_roles(df_tracking_formation, role_name_col="role"))
+        st.write("-------------")
+    for formation, df_formation in df.groupby("formation_instance"):
+        st.write("-------------")
+        st.write(formation)
+        st.write(_plot_roles(df_formation, role_name_col="role_category"))
+        st.write(_plot_roles(df_formation, role_name_col="role"))
         st.write("-------------")

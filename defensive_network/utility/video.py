@@ -1,12 +1,13 @@
 import importlib
 import os
+import cv2
 
 import pandas as pd
 import streamlit as st
 from matplotlib import pyplot as plt
 
 import defensive_network.utility
-from defensive_network.utility.pitch import plot_pass
+import defensive_network.utility.pitch
 
 
 def pass_video(df_tracking, df_passes, out_fpath, frame_col="full_frame", frame_rec_col="full_frame_rec", event_time_col="datetime_event", tracking_time_col="datetime_tracking", padding_seconds=5, overwrite_if_exists=False):
@@ -121,7 +122,7 @@ def pass_video(df_tracking, df_passes, out_fpath, frame_col="full_frame", frame_
             mmss = df_tracking_frame["mmss"].iloc[0]
             subtype_str = f"{current_pass['event_subtype']} " if not pd.isna(current_pass["event_subtype"]) else ""
 
-            plot_pass(current_pass, df_tracking_frame, make_pass_transparent=not is_during_pass)
+            defensive_network.utility.pitch.plot_pass(current_pass, df_tracking_frame, make_pass_transparent=not is_during_pass)
             plt.title(f"{match_string} {mmss}\n{subtype_str}{current_pass['outcome']} {current_pass['pass_xt']:.3f} xT, {current_pass['xpass']:.1%} xPass {current_pass['player_name_1']} -> {current_pass['player_name_2']}")
 
             plt.savefig(path)
@@ -132,21 +133,20 @@ def pass_video(df_tracking, df_passes, out_fpath, frame_col="full_frame", frame_
             # st.write(f"Skipped {path}")
         img_files.append(path)
 
-    create_video(sorted(img_files), out_fpath)
+    _assemble_video(sorted(img_files), out_fpath)
 
 
-def create_video(fpaths, target_fpath):
-    import cv2
-    first_frame = cv2.imread(fpaths[0])
+def _assemble_video(image_fpaths, video_fpath):
+    first_frame = cv2.imread(image_fpaths[0])
     height, width, layers = first_frame.shape
 
-    video = cv2.VideoWriter(target_fpath, cv2.VideoWriter_fourcc(*"mp4v"), 25, (width, height))
+    video = cv2.VideoWriter(video_fpath, cv2.VideoWriter_fourcc(*"mp4v"), 25, (width, height))
 
-    for image_file in fpaths:
+    for image_file in image_fpaths:
         frame = cv2.imread(image_file)
         video.write(frame)
 
     video.release()
     cv2.destroyAllWindows()
-    st.write(f"Done {target_fpath}")
+    st.write(f"Done {video_fpath}")
     return

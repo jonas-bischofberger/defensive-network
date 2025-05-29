@@ -14,7 +14,6 @@ def get_new_unused_column_name(df, prefix):
     'new'
     >>> get_new_unused_column_name(df, "a")
     'a_1'
-    >>>
     """
     column_names = df.columns
     i = 1
