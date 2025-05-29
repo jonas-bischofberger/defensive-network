@@ -377,17 +377,6 @@ def main1():
     defensive_network.utility.general.start_streamlit_profiler()
 
     # df = _read_parquet("C:/Users/Jonas/Downloads/dfl_test_data/2324/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet")
-    df = _read_parquet(os.path.join(os.path.dirname(__file__), "../../data_reduced/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet"))
-    df = df.drop(columns=["role", "role_name", "formation_instance"])
-    assert "role" not in df.columns
-    res = detect_formation(df)
-    df["role"] = res.role
-    df["role_name"] = res.role_name
-    df["formation_instance"] = res.formation_instance
-    df["role_category"] = res.role_category
-    defensive_network.utility.general.stop_streamlit_profiler()
-
-    # df = _read_parquet("C:/Users/Jonas/Downloads/dfl_test_data/2324/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet")
     df_tracking = _read_parquet(os.path.join(os.path.dirname(__file__), "../../data_reduced/preprocessed/tracking/3-liga-2023-2024-20-st-sc-verl-viktoria-koln.parquet"))
     df_tracking = df_tracking.drop(columns=["role", "role_name", "formation_instance"])
     assert "role" not in df_tracking.columns
@@ -403,10 +392,4 @@ def main1():
         st.write(formation)
         st.write(_plot_roles(df_tracking_formation, role_name_col="role_category"))
         st.write(_plot_roles(df_tracking_formation, role_name_col="role"))
-        st.write("-------------")
-    for formation, df_formation in df.groupby("formation_instance"):
-        st.write("-------------")
-        st.write(formation)
-        st.write(_plot_roles(df_formation, role_name_col="role_category"))
-        st.write(_plot_roles(df_formation, role_name_col="role"))
         st.write("-------------")
