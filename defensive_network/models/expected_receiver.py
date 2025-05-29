@@ -3,6 +3,7 @@ import pandas as pd
 
 import streamlit as st
 import defensive_network.utility.dataframes
+import collections
 
 ExpectedReceiverResult = collections.namedtuple("ExpectedReceiverResult", ["expected_receiver"])
 

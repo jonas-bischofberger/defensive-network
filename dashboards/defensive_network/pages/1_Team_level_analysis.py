@@ -24,7 +24,7 @@ def custom_write(*args):
 
 # st.write = custom_write
 
-import defensive_network.parse.dfb
+import 'defensive_network.parse.cdf
 import defensive_network.utility.general
 import defensive_network.models.formation
 import defensive_network.models.involvement
@@ -35,7 +35,7 @@ import defensive_network.utility.stats
 
 pd.options.mode.chained_assignment = None
 
-importlib.reload(defensive_network.parse.dfb)
+importlib.reload('defensive_network.parse.cdf)
 
 def get_metrics(df_event, df_tracking, series_meta):
     dfgs = []
@@ -179,19 +179,19 @@ def _get_data(all_slugified_match_strings, base_path, xt_model, expected_receive
 
     overwrite_if_exists = False
 
-    df_meta = defensive_network.parse.dfb.get_all_meta(base_path)
+    df_meta = 'defensive_network.parse.cdf.get_all_meta(base_path)
     st.write("df_meta")
     st.write(df_meta)
 
     stichtag = None  # datetime.datetime(year=2025, month=2, day=27, hour=0, minute=0, second=0)
 
     datas = []
-    fpaths = {sms: defensive_network.parse.dfb.get_team_level_analysis_fpath(base_path, sms) for sms in all_slugified_match_strings}
+    fpaths = {sms: 'defensive_network.parse.cdf.get_team_level_analysis_fpath(base_path, sms) for sms in all_slugified_match_strings}
     # all_slugified_match_strings = [sms for sms in all_slugified_match_strings if not os.path.exists(fpaths[sms]) or overwrite_if_exists]
     for match_nr, slugified_match_string in defensive_network.utility.general.progress_bar(enumerate(all_slugified_match_strings), total=len(all_slugified_match_strings), desc="Team level analysis", unit="match"):
         series_meta = df_meta[df_meta["slugified_match_string"] == slugified_match_string]
 
-        fpath = fpaths[slugified_match_string]  # defensive_network.parse.dfb.get_team_level_analysis_fpath(base_path, slugified_match_string)
+        fpath = fpaths[slugified_match_string]  # 'defensive_network.parse.cdf.get_team_level_analysis_fpath(base_path, slugified_match_string)
         # if not os.path.exists(fpath):  # todo remove
         #     continue
 
@@ -221,9 +221,9 @@ def _get_data(all_slugified_match_strings, base_path, xt_model, expected_receive
         # df_tracking, df_event = run_as_subprocess(get_match_data, {"base_path": base_path, "slugified_match_string": slugified_match_string, "xt_model": xt_model, "expected_receiver_model": expected_receiver_model, "formation_model": formation_model, "plot_formation": False})  # subprocess to avoid memory issues
         try:
             if use_subprocess:
-                df_tracking, df_event = run_as_subprocess(defensive_network.parse.dfb.get_match_data, {"base_path": base_path, "slugified_match_string": slugified_match_string, "xt_model": xt_model, "expected_receiver_model": expected_receiver_model, "formation_model": formation_model, "plot_formation": False, "overwrite_if_exists": False})  # subprocess to avoid memory issues
+                df_tracking, df_event = run_as_subprocess('defensive_network.parse.cdf.get_match_data, {"base_path": base_path, "slugified_match_string": slugified_match_string, "xt_model": xt_model, "expected_receiver_model": expected_receiver_model, "formation_model": formation_model, "plot_formation": False, "overwrite_if_exists": False})  # subprocess to avoid memory issues
             else:
-                df_tracking, df_event = defensive_network.parse.dfb.get_match_data(
+                df_tracking, df_event = 'defensive_network.parse.cdf.get_match_data(
                     base_path, slugified_match_string, xt_model=xt_model,
                     expected_receiver_model=expected_receiver_model, formation_model=formation_model, plot_formation=False,
                 )
@@ -298,7 +298,7 @@ def _get_data(all_slugified_match_strings, base_path, xt_model, expected_receive
             involvement_model_success_neg_value, involvement_model_out, involvement_model_intercepted,
             model_radius, overwrite_if_exists=False,
         ):
-            # fpath = defensive_network.parse.dfb.get_involvement_fpath(base_path, slugified_match_string + involvement_model_success_pos_value + involvement_model_success_neg_value + involvement_model_out + involvement_model_intercepted + str(model_radius))
+            # fpath = 'defensive_network.parse.cdf.get_involvement_fpath(base_path, slugified_match_string + involvement_model_success_pos_value + involvement_model_success_neg_value + involvement_model_out + involvement_model_intercepted + str(model_radius))
             # if not overwrite_if_exists and os.path.exists(fpath):
             #     return pd.read_csv(fpath)
             df_involvement = defensive_network.models.involvement.get_involvement(
@@ -425,10 +425,10 @@ default_fpath = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../
 def team_level_analysis_dashboard():
     with st.expander("Settings"):
         base_path = st.text_input("Base path", default_fpath)
-        df_meta = defensive_network.parse.dfb.get_all_meta(base_path)
-        df_lineups = defensive_network.parse.dfb.get_all_lineups(base_path)
-        all_tracking_files = os.listdir(os.path.dirname(defensive_network.parse.dfb.get_tracking_fpath(base_path, "")))
-        all_event_files = os.listdir(os.path.dirname(defensive_network.parse.dfb.get_event_fpath(base_path, "")))
+        df_meta = 'defensive_network.parse.cdf.get_all_meta(base_path)
+        df_lineups = 'defensive_network.parse.cdf.get_all_lineups(base_path)
+        all_tracking_files = os.listdir(os.path.dirname('defensive_network.parse.cdf.get_tracking_fpath(base_path, "")))
+        all_event_files = os.listdir(os.path.dirname('defensive_network.parse.cdf.get_event_fpath(base_path, "")))
 
         all_files = [file for file in all_tracking_files if file.replace("parquet", "csv") in all_event_files]
         all_slugified_match_strings = [os.path.splitext(file)[0] for file in all_files]

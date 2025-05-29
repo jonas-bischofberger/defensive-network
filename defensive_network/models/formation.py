@@ -113,7 +113,6 @@ def detect_formation(
 
             if len(df) == 0:
                 continue
-    return plt.gcf()
 
             # st.write("df")
             # st.write(df)

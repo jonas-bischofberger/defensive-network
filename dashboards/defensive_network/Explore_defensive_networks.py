@@ -10,7 +10,7 @@ import defensive_network.models.average_position
 import defensive_network.models.expected_receiver
 import defensive_network.models.involvement
 import defensive_network.models.passing_network
-import defensive_network.parse.dfb
+import 'defensive_network.parse.cdf
 import defensive_network.utility.dataframes
 import defensive_network.utility.general
 import defensive_network.utility.pitch
@@ -104,7 +104,7 @@ def defensive_network_dashboard():
     remove_throw_ins = st.toggle("Remove throw-ins", value=True)
 
     for slugified_match_string in selected_tracking_matches:
-        df_tracking, df_event = defensive_network.parse.dfb.get_match_data(
+        df_tracking, df_event = 'defensive_network.parse.cdf.get_match_data(
             base_path, slugified_match_string, xt_model=xt_model,
             expected_receiver_model=expected_receiver_model, formation_model=formation_model
         )
