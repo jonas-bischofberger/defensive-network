@@ -19,22 +19,21 @@ fps_tracking = 25
 
 
 # @st.cache_resource
-def _get_csv(fpath):
-    return defensive_network.parse.drive.download_csv_from_drive(fpath)
-
-@st.cache_resource
-def _get_parquet(fpath):
-    return defensive_network.parse.drive.download_parquet_from_drive(fpath)
-
-@st.cache_resource
-def _get_local_parquet(fpath):
-    return pd.read_parquet(fpath)
+# def _get_csv(fpath):
+#     return defensive_network.parse.drive.download_csv_from_drive(fpath)
+#
+# @st.cache_resource
+# def _get_parquet(fpath):
+#     return defensive_network.parse.drive.download_parquet_from_drive(fpath)
+#
+# @st.cache_resource
+# def _get_local_parquet(fpath):
+#     return pd.read_parquet(fpath)
 
 
 SynchronizationResult = collections.namedtuple("SynchronizationResult", ["matched_frames", "scores"])
 
 
-@st.cache_resource
 def synchronize(df_events, df_tracking):
     df_events = df_events[
         (df_events["event_type"] != "referee") &
@@ -62,8 +61,8 @@ def synchronize(df_events, df_tracking):
 
     # df_events = df_events[df_events["frame"] < 5000].reset_index(drop=True)
     # df_tracking = df_tracking[df_tracking["frame"] < 5000].reset_index(drop=True)
-    df_events = df_events[df_events["frame"] < 300].reset_index(drop=True)
-    df_tracking = df_tracking[df_tracking["frame"] < 300].reset_index(drop=True)
+    df_events = df_events.reset_index(drop=True)
+    df_tracking = df_tracking.reset_index(drop=True)
 
     # Initialize event-tracking synchronizer with given event data (df_events),
     # tracking data (df_tracking), and recording frequency of the tracking data (fps_tracking)

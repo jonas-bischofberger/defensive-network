@@ -1,3 +1,4 @@
+import collections
 import sys
 import os
 
@@ -18,29 +19,34 @@ importlib.reload(defensive_network.models.involvement)
 importlib.reload(defensive_network.utility.pitch)
 
 
-def get_responsibility_model(df_involvement, responsibility_context_cols, involvement_col="raw_involvement", value_col="pass_xt"):
+ResponsibilityResult = collections.namedtuple("ResponsibilityResult", ["responsibility", "n_passes"])
+
+
+def get_responsibility_model(df_involvement, responsibility_context_cols=["role_category_1", "network_receiver_role_category", "defender_role_category"], involvement_col="raw_involvement", value_col="pass_xt"):
     """
     >>> from defensive_network.tests.test_data import df_events, df_tracking
     >>> df_involvement = defensive_network.models.involvement.get_involvement(df_events, df_tracking, tracking_frame_col="frame_id", event_frame_col="frame_id", model_radius=10, tracking_defender_meta_cols=["player_name", "player_position"])
     >>> get_responsibility_model(df_involvement, ["player_position", "unified_receiver_position", "defender_player_position"])
-    player_position  unified_receiver_position  defender_player_position
-    DF               MF                         MF                          0.500000
-                                                ST                          0.500000
-    MF               ST                         DF                          0.000000
-                                                MF                          0.573490
-                                                ST                          0.148903
-    ST               MF                         DF                          0.000000
-                                                MF                          0.416905
-                                                ST                          0.416905
-                     ST                         DF                          1.000000
-                                                MF                          0.000000
-                                                ST                          0.000000
-    Name: raw_involvement, dtype: float64
+                                                                        responsibility  n_passes
+    player_position unified_receiver_position defender_player_position
+    DF              MF                        MF                              0.500000         1
+                                              ST                              0.500000         2
+    MF              ST                        DF                              0.000000         3
+                                              MF                              0.573490         4
+                                              ST                              0.148903         5
+    ST              MF                        DF                              0.000000         1
+                                              MF                              0.416905         1
+                                              ST                              0.416905         1
+                    ST                        DF                              1.000000         1
+                                              MF                              0.000000         1
+                                              ST                              0.000000         1
     """
-    dfg_responsibility_model = df_involvement.groupby(responsibility_context_cols).agg({
-        involvement_col: "mean",
-        # value_col: "mean",
-    })[involvement_col]
+    dfg_responsibility_model = df_involvement.groupby(responsibility_context_cols).agg(
+        responsibility=(involvement_col, "mean"),
+        n_passes=(involvement_col, "count"),
+        value=(value_col, "mean")
+    )
+    dfg_responsibility_model["valued_responsibility"] = dfg_responsibility_model["responsibility"] * dfg_responsibility_model["value"]
     return dfg_responsibility_model
 
 
@@ -50,12 +56,12 @@ def get_responsibility(df_passes, dfg_responsibility_model):
     >>> from defensive_network.tests.test_data import df_events, df_tracking
     >>> df_involvement = defensive_network.models.involvement.get_involvement(df_events, df_tracking, tracking_frame_col="frame_id", event_frame_col="frame_id", model_radius=10, tracking_defender_meta_cols=["player_name", "player_position"])
     >>> dfg_responsibility = get_responsibility_model(df_involvement, ["player_position", "unified_receiver_position", "defender_player_position"])
-    >>> df_involvement["responsibility"] = get_responsibility(df_involvement, dfg_responsibility)
+    >>> df_involvement["responsibility"], df_involvement["sample_size_for_responsibility"] = get_responsibility(df_involvement, dfg_responsibility)
     >>> df_involvement.head(3)
-       involvement_pass_id defender_id  raw_involvement  raw_contribution  raw_fault  involvement  contribution  fault  frame_id  frame_id_rec  x_event  y_event player_id_1 player_position player_id_2 receiver_position team_id_1 team_id_2  pass_is_successful  pass_xt  pass_is_intercepted  x_target  y_target expected_receiver defender_name  defender_x  defender_y        involvement_model expected_receiver_position unified_receiver unified_receiver_position      event_string       involvement_type defender_player_name defender_player_position  model_radius  responsibility
-    0                    0           x              0.5               0.0        0.5          0.1           0.0    0.1         0             3        0        0           a              MF           b                ST         H         H                True      0.2                False        10         0               NaN         x(ST)           5          -5  circle_circle_rectangle                        NaN                b                        ST  a (MF) -> b (ST)  success_and_pos_value                x(ST)                       ST            10        0.148903
-    1                    0           y              0.5               0.0        0.5          0.1           0.0    0.1         0             3        0        0           a              MF           b                ST         H         H                True      0.2                False        10         0               NaN         y(MF)           5           5  circle_circle_rectangle                        NaN                b                        ST  a (MF) -> b (ST)  success_and_pos_value                y(MF)                       MF            10        0.573490
-    2                    0           z              0.0               0.0        0.0          0.0           0.0    0.0         0             3        0        0           a              MF           b                ST         H         H                True      0.2                False        10         0               NaN         z(DF)          40           0  circle_circle_rectangle                        NaN                b                        ST  a (MF) -> b (ST)  success_and_pos_value                z(DF)                       DF            10        0.000000
+       involvement_pass_id defender_id  raw_involvement  raw_contribution  raw_fault  involvement  contribution  fault  frame_id  frame_id_rec  x_event  y_event player_id_1 player_position player_id_2 receiver_position team_id_1 team_id_2  pass_is_successful  pass_xt  pass_is_intercepted  x_target  y_target expected_receiver defender_name  defender_x  defender_y        involvement_model expected_receiver_position unified_receiver unified_receiver_position      event_string       involvement_type defender_player_name defender_player_position  model_radius  responsibility  sample_size_for_responsibility
+    0                    0           x              0.5               0.0        0.5          0.1           0.0    0.1         0             3        0        0           a              MF           b                ST         H         H                True      0.2                False        10         0               NaN         x(ST)           5          -5  circle_circle_rectangle                        NaN                b                        ST  a (MF) -> b (ST)  success_and_pos_value                x(ST)                       ST            10        0.148903                             5.0
+    1                    0           y              0.5               0.0        0.5          0.1           0.0    0.1         0             3        0        0           a              MF           b                ST         H         H                True      0.2                False        10         0               NaN         y(MF)           5           5  circle_circle_rectangle                        NaN                b                        ST  a (MF) -> b (ST)  success_and_pos_value                y(MF)                       MF            10        0.573490                             4.0
+    2                    0           z              0.0               0.0        0.0          0.0           0.0    0.0         0             3        0        0           a              MF           b                ST         H         H                True      0.2                False        10         0               NaN         z(DF)          40           0  circle_circle_rectangle                        NaN                b                        ST  a (MF) -> b (ST)  success_and_pos_value                z(DF)                       DF            10        0.000000                             3.0
     >>> defensive_network.utility.pitch.plot_passes_with_involvement(df_involvement, df_tracking, tracking_frame_col="frame_id", pass_frame_col="frame_id", n_passes=1000000)
     [<Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>]
     """
@@ -67,7 +73,8 @@ def get_responsibility(df_passes, dfg_responsibility_model):
             return None
 
     responsibility = df_passes[dfg_responsibility_model.index.names].apply(lambda row: foo(row), axis=1)
-    return responsibility
+
+    return ResponsibilityResult(responsibility["responsibility"], responsibility["n_passes"])
 
 def main():
     from defensive_network.tests.test_data import df_events, df_tracking

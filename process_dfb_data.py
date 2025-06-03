@@ -154,6 +154,7 @@ def process_tracking(files, target_folder, fpath_meta, chunksize=5e5):
             for match_id, df_match_chunk in _df_chunk.groupby("match_id"):
                 slugified_match_string = df_meta[df_meta["match_id"] == match_id]["slugified_match_string"].iloc[0]
                 fpath_match = os.path.join(_target_folder, f"{slugified_match_string}.parquet")
+                st.write(f"Processing match {match_id} ({fpath_match})")
 
                 ### Assertions that take too much time
                 # df_nan = df_match_chunk[df_match_chunk[["frame", "player_id"]].isna().all(axis=1)]

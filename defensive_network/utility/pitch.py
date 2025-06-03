@@ -215,9 +215,9 @@ def plot_tracking_frame(
     # plot ball position
     if plot_ball:
         df_frame_ball = df_frame[df_frame[tracking_player_col] == ball_tracking_player_id]
-        if len(df_frame_ball) != 1:
-            warnings.warn(f"Expected exactly one ball position, got {len(df_frame_ball)}")  # sanity check
-            st.warning(f"Expected exactly one ball position, got {len(df_frame_ball)}")
+        # if len(df_frame_ball) != 1:
+        #     warnings.warn(f"Expected exactly one ball position, got {len(df_frame_ball)}")  # sanity check
+        #     st.warning(f"Expected exactly one ball position, got {len(df_frame_ball)}")
         if len(df_frame_ball) > 0:
             x_ball = df_frame_ball[tracking_x_col].iloc[0]
             y_ball = df_frame_ball[tracking_y_col].iloc[0]
@@ -467,7 +467,7 @@ def plot_passes_with_involvement(
     figs = []
     columns = st.columns(n_cols)
     for pass_nr, (pass_id, df_outplayed_pass) in enumerate(df_involvement.groupby(event_id_col)):
-        if pass_nr >= (n_passes - 1):
+        if pass_nr >= n_passes:
             break
         try:
             # p4ss = df_passes[df_passes[event_id_col] == pass_id].iloc[0]
@@ -486,7 +486,7 @@ def plot_passes_with_involvement(
             responsibility_col=responsibility_col,
         )
         event_string = p4ss[event_string_col] if event_string_col is not None and event_string_col in p4ss else f"{p4ss[pass_player_name_col]}"
-        plt.title(f"Pass {event_string} ({p4ss[value_col]:+.3f} {value_col})", fontsize=6)
+        plt.title(f"Pass {event_string} ({p4ss[pass_frame_col]}) ({p4ss[value_col]:+.3f} {value_col})", fontsize=6)
         columns[pass_nr % n_cols].pyplot(fig, dpi=500)
         plt.close()
         figs.append(fig)

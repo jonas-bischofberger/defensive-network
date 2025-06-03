@@ -4,6 +4,8 @@ import tqdm
 import streamlit as st
 import wfork_streamlit_profiler as streamlit_profiler
 
+import defensive_network.utility.general
+
 
 class _Sentinel:
     def __eq__(self, other):
@@ -14,8 +16,20 @@ _unset = _Sentinel()  # To explicitly differentiate between a default None and a
 
 
 def get_number_of_lines_in_file(file_path):
-    with open(file_path) as f:
-        return sum(1 for _ in f)
+    def blocks(files, size=1024 * 1024):
+        while True:
+            b = files.read(size)
+            if not b: break
+            yield b
+
+    with open(file_path, "r", errors='ignore') as f:
+        return sum(bl.count("\n") for bl in blocks(f))
+
+    # with open(file_path, "rb") as f:
+    #     sum = 0
+    #     for _ in f:
+    #         sum += 1
+    #     return sum
 
 
 def is_run_within_streamlit():

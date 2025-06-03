@@ -77,7 +77,6 @@ def detect_formation(
     10           1       0      15         11       B         P11                 A  B_def5.0       P11              B_def        goalkeeper
     """
     df_tracking = df_tracking.copy()
-
     if ball_team is not None:
         df_tracking = df_tracking[df_tracking[team_col] != ball_team]
 
@@ -90,6 +89,9 @@ def detect_formation(
         assert col in df_tracking.columns, f"{col} not in df.columns ({df_tracking.columns})"
 
     dfs = []
+
+    if len(df_tracking["ball_poss_team_id"].unique()) < 2:
+        st.warning("Only one team in possession in the data. Will report misleading formations.")
 
     for team_nr, (team, df_team) in enumerate(df_tracking.groupby(team_col)):
         if plot_formation:
@@ -107,6 +109,7 @@ def detect_formation(
                 df[x_col] *= -1
 
             if len(df) == 0:
+                st.warning(f"No data for team {team} in possession {in_possession}. Skipping formation detection.")
                 continue
 
             # check if all frames have exactly 11 players. If it fails, throw away frames with duplicate numbers
@@ -143,9 +146,9 @@ def detect_formation(
 
                     if len(in_subs) == 1:
                         assert in_subs[0] not in current_player2role
-                        assert len(current_player2role) == 11
+                        n_players_before = len(current_player2role)
                         current_player2role[in_subs[0]] = current_player2role.pop(out_subs[0])
-                        assert len(current_player2role) == 11
+                        assert len(current_player2role) == n_players_before, f"Expected {n_players_before}, but got {len(current_player2role)}"
                     elif len(in_subs) > 1:
                         in_sub_pos_means = dfg_player_means.loc[in_subs, ["x_mean", "y_mean"]]
                         out_sub_pos_means = dfg_player_means.loc[out_subs, ["x_mean", "y_mean"]]
@@ -156,6 +159,10 @@ def detect_formation(
                             out_sub = out_subs[out_sub_index]
                             assert out_sub in current_player2role
                             current_player2role[in_sub] = current_player2role.pop(out_sub)
+                    elif len(in_subs) == 0:
+                        # Players left (red card etc.), but no new players came in
+                        for out_sub in out_subs:
+                            current_player2role.pop(out_sub)
                     else:
                         raise NotImplementedError(f"len(in_subs) == {len(in_subs)}")
 
@@ -179,11 +186,11 @@ def detect_formation(
             role2role_name = {role: '/'.join([player.split(". ")[-1] for player in list(players) if not pd.isna(player)]) for role, players in role2players.items()}
             df["role_name"] = df["role"].map(role2role_name)
             df["formation_instance"] = formation_instance
-            if plot_formation:
-                with columns[in_possession_nr]:
-                    st.write(f"#### {formation_instance}")
-                    st.write(_plot_roles(df))
-                plt.close()
+            # if plot_formation:
+                # with columns[in_possession_nr]:
+                #     st.write(f"#### {formation_instance}")
+                #     st.write(_plot_roles(df, role_name_col="role_name"))
+                # plt.close()
 
             df_tracking.loc[df.index, "role"] = df["role"]
             df_tracking.loc[df.index, "role_name"] = df["role_name"]
@@ -197,6 +204,19 @@ def detect_formation(
 
     # df_tracking = df_tracking.merge(df, on=[frame_col, player_col], how="left")
     df_tracking["role_category"] = get_role_category(df_tracking)
+
+    if plot_formation:
+        for formation, df_tracking_formation in df_tracking.groupby("formation_instance"):
+            st.write(f"-------------")
+            st.write(formation)
+            st.write(_plot_roles(df_tracking_formation, role_name_col="role_category"))
+            st.write(_plot_roles(df_tracking_formation, role_name_col="role_name"))
+            st.write("-------------")
+        plt.close()
+
+    # assert that every role has a name
+    assert df_tracking.loc[df_tracking["role"].notna(), "role_name"].notna().all(), "Some roles have no role_name assigned. Please check the role2players mapping."
+    assert df_tracking.loc[df_tracking["role"].notna(), "role_category"].notna().all(), "Some roles have no role_category assigned."
 
     return FormationResult(df_tracking["role"], df_tracking["role_name"], df_tracking["formation_instance"], df_tracking["role_category"])
 

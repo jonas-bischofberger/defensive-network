@@ -15,7 +15,7 @@ seaborn
 selenium
 statsbombpy
 streamlit
-streamlit-profiler
+# streamlit-profiler
 tqdm
 webdriver-manager
 wfork-streamlit-profiler
@@ -28,3 +28,4 @@ google-auth-httplib2
 google-auth-oauthlib
 pandas
 pyarrow
+git+https://github.com/ML-KULeuven/ETSY.git

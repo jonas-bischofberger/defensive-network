@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 import kloppy.metrica
 
-import streamlit_profiler
+import wfork_streamlit_profiler as streamlit_profiler
 
 import warnings
 warnings.filterwarnings("ignore")

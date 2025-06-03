@@ -30,13 +30,13 @@ def _authenticate():
     if os.path.exists(TOKEN_FPATH):
         creds = Credentials.from_authorized_user_file(TOKEN_FPATH, SCOPES)
     if not creds or not creds.valid:
-        # if creds and creds.expired and creds.refresh_token:
-        #     x = Request()
-        #     creds.refresh(x)
-        # else:
+        if creds and creds.expired and creds.refresh_token:
+            x = Request()
+            creds.refresh(x)
+        else:
             # flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-        flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FPATH, SCOPES)
-        creds = flow.run_local_server(port=0)
+            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FPATH, SCOPES)
+            creds = flow.run_local_server(port=0)
         # Save credentials for future use
         with open(TOKEN_FPATH, 'w') as token:
             token.write(creds.to_json())
@@ -133,7 +133,6 @@ def _get_or_create_drive_folder(path: str, root_folder_id: str, service) -> str:
     Returns:
         str: ID of the final subfolder.
     """
-    st.write("get_or_create_drive_folder")
     parent_id = root_folder_id
     for folder_name in path.strip("/").split("/"):
         query = (
@@ -176,6 +175,8 @@ def upload_file_to_drive(local_path: str, relative_drive_path: str, root_folder_
         creds = _authenticate()
 
     service = build('drive', 'v3', credentials=creds)
+
+    relative_drive_path = relative_drive_path.replace("\\", "/")  # Ensure consistent path separators
 
     # Split relative path into folder path and filename
     path_parts = relative_drive_path.strip("/").split("/")
@@ -224,7 +225,6 @@ def upload_parquet_to_drive(df: pd.DataFrame, fpath: str, folder_id: str = ROOT_
     df.to_parquet(local_path, engine='pyarrow', index=False)
 
     try:
-        st.write(local_path)
         file_id = upload_file_to_drive(local_path, fpath, folder_id)
         streamlit.write(f"Uploaded file with ID: {file_id}")
     finally:
@@ -234,9 +234,9 @@ def upload_parquet_to_drive(df: pd.DataFrame, fpath: str, folder_id: str = ROOT_
                 return
             except PermissionError:
                 streamlit.write(f"PermissionError: File {local_path} is still in use. Retrying...")
-                time.sleep(1)
+                time.sleep(5)
 
-        raise RuntimeError(f"Failed to delete file {local_path} after multiple attempts.")
+        st.warning(f"Failed to delete file {local_path} after multiple attempts.")
 
 
 def upload_csv_to_drive(df: pd.DataFrame, fpath: str, folder_id: str = ROOT_FOLDER_ID):
@@ -252,9 +252,10 @@ def upload_csv_to_drive(df: pd.DataFrame, fpath: str, folder_id: str = ROOT_FOLD
     df.to_csv(local_path, index=False)
 
     try:
-        st.write(local_path)
         file_id = upload_file_to_drive(local_path, fpath, folder_id)
         streamlit.write(f"Uploaded file with ID: {file_id}")
+    except Exception as e:
+        st.write(e)
     finally:
         for i in range(10):
             try:
@@ -267,7 +268,7 @@ def upload_csv_to_drive(df: pd.DataFrame, fpath: str, folder_id: str = ROOT_FOLD
         raise RuntimeError(f"Failed to delete file {local_path} after multiple attempts.")
 
 
-def _get_folder_id_by_path(path: str, root_folder_id: str, service) -> str:
+def _get_folder_id_by_path(path: str, root_folder_id: str, service, create_folder_if_not_exists=True) -> str:
     """
     Recursively find (or return None) the folder ID in Google Drive for a given path starting at root_folder_id.
     """
@@ -283,12 +284,26 @@ def _get_folder_id_by_path(path: str, root_folder_id: str, service) -> str:
             f"'{current_folder_id}' in parents and "
             f"name='{folder_name}' and trashed = false"
         )
-        st.write(f"Query: {query}")
+        # st.write(f"Query: {query}")
         response = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+        # st.write(f"Response: {response}")
         files = response.get('files', [])
+        # st.write(f"Files found: {files}")
         if not files:
-            return None  # folder does not exist
-        current_folder_id = files[0]['id']
+            if not create_folder_if_not_exists:
+                return None
+            file_metadata = {
+                'name': folder_name,
+                'mimeType': 'application/vnd.google-apps.folder',
+                'parents': [current_folder_id]
+            }
+            folder = service.files().create(
+                body=file_metadata,
+                fields='id'
+            ).execute()
+            current_folder_id = folder.get('id')
+        else:
+            current_folder_id = files[0]['id']
     return current_folder_id
 
 
@@ -303,6 +318,7 @@ def download_csv_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDE
     Returns:
         pd.DataFrame
     """
+    relative_path = relative_path.replace("\\", "/")  # Ensure consistent path separators
     creds = _authenticate()
     service = build('drive', 'v3', credentials=creds)
 
@@ -339,6 +355,38 @@ def download_csv_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDE
     return pd.read_csv(fh)
 
 
+def list_files_in_drive_folder(folder_path: str, root_folder_id: str = ROOT_FOLDER_ID) -> list[dict]:
+    # """
+    # >>> list_files_in_drive_folder("tracking")
+    # [{'id': '1TbZiRlJiSRgSmukuabjokec0fTajzMbe', 'name': 'bundesliga-2023-2024-16-st-1-fc-nurnberg-sc-freiburg.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T19:04:49.976Z'}, {'id': '12Wiez23S47zZR_ZZ_W864Fu7NkNB3QR4', 'name': 'bundesliga-2023-2024-12-st-rb-leipzig-1-fc-koln.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T19:04:15.007Z'}, {'id': '1zRPfcoPkdY1Sx5k1SUvcOUDfPW9xqkCP', 'name': 'bundesliga-2023-2024-6-st-1-fc-nurnberg-1-fc-koln.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:17:43.056Z'}, {'id': '1xGUKj6L9eSOwRkURg3HA8AeGu2Ubq85m', 'name': 'bundesliga-2023-2024-10-st-1899-hoffenheim-rb-leipzig.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:17:28.814Z'}, {'id': '1OYckN52_zg6rbtaoevYLwJAzEUWI4WsJ', 'name': 'bundesliga-2023-2024-17-st-rb-leipzig-msv-duisburg.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:16:59.416Z'}, {'id': '1oTWLG7idLG_Htd7Z7-50i2CCINn4v7_b', 'name': 'bundesliga-2023-2024-14-st-werder-bremen-sc-freiburg.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:14:49.319Z'}, {'id': '1XoFZrIbm7VPKk4UtApVeuWM7jMmqX55K', 'name': 'bundesliga-2023-2024-14-st-msv-duisburg-1-fc-koln.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:12:30.403Z'}, {'id': '1PQnLLxJWnYXnz2_KrwDYtpzKzggPNB4U', 'name': 'bundesliga-2023-2024-11-st-sgs-essen-vfl-wolfsburg.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:11:56.517Z'}]
+    # """
+    creds = _authenticate()
+    service = build('drive', 'v3', credentials=creds)
+
+    folder_id = _get_folder_id_by_path(folder_path, root_folder_id, service)
+    if folder_id is None:
+        raise FileNotFoundError(f"Folder path '{folder_path}' not found on Drive.")
+
+    query = (
+        f"'{folder_id}' in parents and trashed = false"
+    )
+
+    files = []
+    page_token = None
+    while True:
+        response = service.files().list(
+            q=query,
+            spaces='drive',
+            fields='nextPageToken, files(id, name, mimeType, modifiedTime)',
+            pageToken=page_token
+        ).execute()
+        files.extend(response.get('files', []))
+        page_token = response.get('nextPageToken', None)
+        if page_token is None:
+            break
+
+    return files
+
 
 def download_parquet_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDER_ID):
     """
@@ -351,6 +399,7 @@ def download_parquet_from_drive(relative_path: str, root_folder_id: str = ROOT_F
     Returns:
         pd.DataFrame
     """
+    relative_path = relative_path.replace("\\", "/")  # Ensure consistent path separators
     creds = _authenticate()
     service = build('drive', 'v3', credentials=creds)
 
@@ -431,7 +480,7 @@ def delete_folder_by_path(folder_path: str, root_folder_id: str=ROOT_FOLDER_ID):
     recursive_delete(service, folder_id)
 
 
-def append_to_parquet_on_drive(df_to_append, fpath: str, key_cols, overwrite_key_cols=True, root_folder_id=ROOT_FOLDER_ID):
+def append_to_parquet_on_drive(df_to_append, fpath: str, key_cols, overwrite_key_cols=True, root_folder_id=ROOT_FOLDER_ID, format="parquet"):
     """
     Append to a Parquet file stored on Google Drive. Deduplicates based on key_cols.
 
@@ -442,6 +491,7 @@ def append_to_parquet_on_drive(df_to_append, fpath: str, key_cols, overwrite_key
         overwrite_key_cols (bool): If True, overwrite matching keys. If False, keep first.
         root_folder_id (str): Google Drive folder ID where the path starts.
     """
+    assert format in ["parquet", "csv"], "Unsupported format. Only 'parquet' and 'csv' are supported."
     from googleapiclient.discovery import build
     import pandas as pd
     import os
@@ -452,13 +502,25 @@ def append_to_parquet_on_drive(df_to_append, fpath: str, key_cols, overwrite_key
     parent_path, fname = os.path.split(fpath)
 
     # --- Resolve folder ID
-    st.write(parent_path, root_folder_id, service)
+    # st.write("parent_path", parent_path, "root_folder_id", root_folder_id, "service", service)
+    # st.write("meta", _get_folder_id_by_path("meta.csv", root_folder_id, service))
+    # st.write("lineups", _get_folder_id_by_path("lineups.csv", root_folder_id, service))
+    # st.write(".", _get_folder_id_by_path(".", root_folder_id, service))
+    # st.write("", _get_folder_id_by_path("", root_folder_id, service))
+    # st.write("tracking/", _get_folder_id_by_path("tracking/", root_folder_id, service))
+    # st.write("tracking: --------- ", _get_folder_id_by_path("tracking", root_folder_id, service))
+    # st.stop()
     folder_id = _get_folder_id_by_path(parent_path, root_folder_id, service)
+    # return None
     assert folder_id is not None, f"Folder path '{parent_path}' not found on Drive."
 
     # --- Download existing file
     try:
-        df_existing = download_parquet_from_drive(fpath, root_folder_id)
+        with st.spinner("Downloading existing file..."):
+            if format == "parquet":
+                df_existing = download_parquet_from_drive(fpath, root_folder_id)
+            else:
+                df_existing = download_csv_from_drive(fpath, root_folder_id)
     except FileNotFoundError:
         df_existing = pd.DataFrame(columns=df_to_append.columns)
 
@@ -477,24 +539,28 @@ def append_to_parquet_on_drive(df_to_append, fpath: str, key_cols, overwrite_key
     assert_no_duplicate_columns(df_existing)
 
     # --- Append and deduplicate
-    df_combined = pd.concat([df_existing, df_to_append], axis=0)
-    df_combined = df_combined[~df_combined.duplicated(key_cols, keep="last" if overwrite_key_cols else "first")]
+    with st.spinner("Combining existing with new file..."):
+        df_combined = pd.concat([df_existing, df_to_append], axis=0)
+        df_combined = df_combined[~df_combined.duplicated(key_cols, keep="last" if overwrite_key_cols else "first")]
 
     assert_no_duplicate_keys(df_combined, key_cols)
     assert_no_duplicate_columns(df_combined)
 
     # --- Save locally
-    local_temp_path = "_temp_append.parquet"
-    df_combined.to_parquet(local_temp_path, index=False)
+    local_temp_path = f"_temp_append.{format}"
+    with st.spinner("Saving combined file locally..."):
+        if format == "parquet":
+            df_combined.to_parquet(local_temp_path, index=False)
+        else:
+            df_combined.to_csv(local_temp_path, index=False)
 
     # --- Upload back to Drive
-    file_id = upload_file_to_drive(local_temp_path, fpath, root_folder_id)
+    with st.spinner("Uploading combined Parquet file to Drive..."):
+        file_id = upload_file_to_drive(local_temp_path, fpath, root_folder_id)
 
     os.remove(local_temp_path)
 
     return file_id
-
-
 
 
 if __name__ == '__main__':
@@ -505,15 +571,11 @@ if __name__ == '__main__':
         "a": [1, 2, 3],
         "b": ["x", "y", "z"]
     })
-    st.write("Source data")
-    st.write(df)
 
     upload_parquet_to_drive(df, "test/output.parquet")
     del df
 
     df = download_parquet_from_drive("test/output.parquet")
-    st.write("Parquet target")
-    st.write(df)
 
     df = pd.DataFrame({
         "a": [1],
