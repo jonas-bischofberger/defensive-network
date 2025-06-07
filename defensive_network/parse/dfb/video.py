@@ -1,13 +1,35 @@
+import importlib
 import os
 
 import matplotlib
 import matplotlib.animation
 import matplotlib.pyplot as plt
 import mplsoccer
+
 import pandas as pd
+import streamlit as st
+
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
+
+import defensive_network.parse.drive
+import defensive_network.utility.video
+import defensive_network.utility.general
+import defensive_network.utility.pitch
+import defensive_network.parse.dfb.cdf
+
+importlib.reload(defensive_network.utility.pitch)
+
+importlib.reload(defensive_network.parse.drive)
+
+base_path = os.path.join(os.path.dirname(__file__), "../../../w_raw/preprocessed")
 
 
 def create_animation(df_tracking, df_events, fpath):
+    """
+    >>>
+    """
     teams = df_tracking["team_id"].unique().tolist()
     ball_team = "BALL"
 
@@ -138,7 +160,8 @@ def create_animation(df_tracking, df_events, fpath):
 def main():
     matplotlib.use('TkAgg')  # make plots show in new window (for animation)
 
-    folder = "C:/Users/Jonas/Downloads/dfl_test_data/2324/"
+    # folder = "C:/Users/Jonas/Downloads/dfl_test_data/2324/"
+    folder = base_path
     if not os.path.exists(folder):
         raise NotADirectoryError(f"Folder {folder} does not exist")
 
@@ -147,14 +170,67 @@ def main():
     folder_animation = os.path.join(folder, "animation")
 
     match_slugified_strings_to_animate = [os.path.splitext(file)[0] for file in os.listdir(folder_tracking)]
-    for match_slugified_string in match_slugified_strings_to_animate:
+
+    existing_matches = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("tracking", st_cache=True)]
+    # existing_matches = [file.split(".")[0] for file in os.listdir(os.path.join(os.path.dirname(__file__), "../../../w_raw/preprocessed/tracking"))]
+    st.write("existing_matches")
+    st.write("existing_matches")
+    st.write(existing_matches)
+    st.write("A")
+
+    for match_slugified_string in existing_matches:  # defensive_network.utility.general.progress_bar(match_slugified_strings_to_animate):
+        st.write(match_slugified_string)
         target_fpath = os.path.join(folder_animation, f"{match_slugified_string}.mp4")
         if os.path.exists(target_fpath):
             print(f"File {target_fpath} already exists, skipping")
             continue
-        df_event = pd.read_csv(os.path.join(folder_events, f"{match_slugified_string}.csv"))
-        df_tracking = pd.read_parquet(os.path.join(folder_tracking, f"{match_slugified_string}.parquet"))
-        create_animation(df_tracking, df_event, target_fpath)
+        # df_event = pd.read_csv(os.path.join(folder_events, f"{match_slugified_string}.csv"))
+        # df_tracking = pd.read_parquet(os.path.join(folder_tracking, f"{match_slugified_string}.parquet"))
+        try:
+            df_event = defensive_network.parse.drive.download_csv_from_drive(f"events/{match_slugified_string}.csv", st_cache=True)
+            # df_event = defensive_network.parse.dfb.cdf.get_events(base_path, match_slugified_string)
+        except FileNotFoundError as e:
+            # st.write(e)
+            continue
+
+        st.write("df_event")
+        st.write(df_event)
+
+        df_tracking = defensive_network.parse.drive.download_parquet_from_drive(f"tracking/{match_slugified_string}.parquet")
+        st.write(f"{match_slugified_string=}")
+        # df_tracking = defensive_network.parse.dfb.cdf.get_tracking(base_path, match_slugified_string)
+        # create_animation(df_tracking, df_event, target_fpath)
+        df_passes = df_event[df_event["event_type"] == "pass"]
+
+# tracking_time_col], p4ss["rec_time
+
+        #replace 1900-01-01 with None
+        st.write(df_passes)
+        st.write(df_tracking["datetime_tracking"])
+        df_passes["datetime_tracking"] = pd.to_datetime(df_passes["datetime_tracking"].replace("1900-01-01 00:00:00.000000+0000", None).replace("1900-01-01 00:00:00+00:00", None), format="ISO8601")
+        st.write(df_passes)
+        st.write(df_tracking["datetime_tracking"])
+
+        df_passes["datetime_event"] = pd.to_datetime(df_passes["datetime_event"], format="ISO8601")
+        df_passes["datetime_tracking"] = pd.to_datetime(df_passes["datetime_tracking"], format="ISO8601")
+        df_passes["datetime_tracking"] = pd.to_datetime(df_passes["datetime_tracking"], format="ISO8601")
+
+        # df_tracking = df_tracking[df_tracking["frame"] < 1000]
+        # df_passes = df_passes[df_passes["frame"] < 1000]
+
+        st.write("df_tracking")
+        st.write(df_tracking)
+        st.write("df_passes")
+        st.write(df_passes)
+
+        importlib.reload(defensive_network.utility.video)
+
+        defensive_network.utility.video.pass_video(df_tracking, df_passes, out_fpath=os.path.join(os.path.dirname(__file__), "test.mp4"), overwrite_if_exists=False)
+
+        # TODO check utility.video, add both timestamps (corrected/original)
+
+        break
+
 
 
 if __name__ == '__main__':

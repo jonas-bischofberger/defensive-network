@@ -11,7 +11,7 @@ importlib.reload(defensive_network.models.responsibility)
 
 
 def test_responsibility_correctness():
-    from defensive_network.tests.test_data import df_events, df_tracking
+    from defensive_network.tests.data import df_events, df_tracking
 
     df_involvement = defensive_network.models.involvement.get_involvement(df_events, df_tracking, tracking_frame_col="frame_id", event_frame_col="frame_id", model_radius=10, tracking_defender_meta_cols=["player_name", "player_position"])
 

@@ -1,4 +1,3 @@
-import datetime
 import importlib
 
 import pandas as pd
@@ -13,9 +12,6 @@ importlib.reload(etsy.sync)
 importlib.reload(etsy.scoring)
 
 import defensive_network.parse.drive
-from defensive_network.tests.test_data import df_events, df_tracking
-
-fps_tracking = 25
 
 
 # @st.cache_resource
@@ -35,7 +31,12 @@ SynchronizationResult = collections.namedtuple("SynchronizationResult", ["matche
 
 
 @st.cache_resource
-def synchronize(df_events, df_tracking):
+def synchronize(df_events, df_tracking, fps_tracking=25):
+    """
+    Use ETSY to synchronize tracking and event data.
+
+    >>>
+    """
     df_events = df_events[
         (df_events["event_type"] != "referee") &
         (df_events["player_id_1"].notna())
@@ -60,23 +61,16 @@ def synchronize(df_events, df_tracking):
     df_tracking["z"] = 0.0
     df_tracking["acceleration"] = 0.0
 
-    # df_events = df_events[df_events["frame"] < 5000].reset_index(drop=True)
-    # df_tracking = df_tracking[df_tracking["frame"] < 5000].reset_index(drop=True)
-    df_events = df_events[df_events["frame"] < 300].reset_index(drop=True)
-    df_tracking = df_tracking[df_tracking["frame"] < 300].reset_index(drop=True)
+    # df_events = df_events[df_events["frame"] < 300].reset_index(drop=True)
+    # df_tracking = df_tracking[df_tracking["frame"] < 300].reset_index(drop=True)
 
-    # Initialize event-tracking synchronizer with given event data (df_events),
-    # tracking data (df_tracking), and recording frequency of the tracking data (fps_tracking)
     ETSY = etsy.sync.EventTrackingSynchronizer(df_events, df_tracking, fps=fps_tracking)
-
-    # Run the synchronization
     ETSY.synchronize()
 
-    # Inspect the matched frames and scores
     df_events["matched_frame"] = ETSY.matched_frames
     df_events["scores"] = ETSY.scores
 
-    df_events = df_events.set_index("index")
+    df_events = df_events.set_index("index")  # restore original index!
 
     return SynchronizationResult(matched_frames=df_events["matched_frame"], scores=df_events["scores"])
 

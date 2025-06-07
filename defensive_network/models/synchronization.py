@@ -1,4 +1,3 @@
-import datetime
 import importlib
 
 import pandas as pd
@@ -12,29 +11,12 @@ import collections
 importlib.reload(etsy.sync)
 importlib.reload(etsy.scoring)
 
-import defensive_network.parse.drive
-from defensive_network.tests.test_data import df_events, df_tracking
-
-fps_tracking = 25
-
-
-# @st.cache_resource
-# def _get_csv(fpath):
-#     return defensive_network.parse.drive.download_csv_from_drive(fpath)
-#
-# @st.cache_resource
-# def _get_parquet(fpath):
-#     return defensive_network.parse.drive.download_parquet_from_drive(fpath)
-#
-# @st.cache_resource
-# def _get_local_parquet(fpath):
-#     return pd.read_parquet(fpath)
-
+# from defensive_network.tests.data import df_events, df_tracking
 
 SynchronizationResult = collections.namedtuple("SynchronizationResult", ["matched_frames", "scores"])
 
 
-def synchronize(df_events, df_tracking):
+def synchronize(df_events, df_tracking, fps_tracking=25):
     df_events = df_events[
         (df_events["event_type"] != "referee") &
         (df_events["player_id_1"].notna())
@@ -80,16 +62,17 @@ def synchronize(df_events, df_tracking):
     return SynchronizationResult(matched_frames=df_events["matched_frame"], scores=df_events["scores"])
 
 
-# df_events = _get_csv("events/bundesliga-2023-2024-22-st-bayer-leverkusen-werder-bremen.csv").reset_index(drop=True)
-# # df_tracking = _get_parquet("tracking/bundesliga-2023-2024-22-st-bayer-leverkusen-werder-bremen.parquet").reset_index(drop=True)
-# df_tracking = _get_local_parquet("Y:/w_raw/preprocessed/tracking/bundesliga-2023-2024-22-st-bayer-leverkusen-werder-bremen.parquet").reset_index(drop=True)
-#
-# res = synchronize(df_events, df_tracking)
-# st.write("res")
-# st.write(res.matched_frames)
-# st.write(res.scores)
-# df_events["matched_frame"] = res.matched_frames
-# df_tracking["matched_frame"] = res.matched_frames
-#
-# st.write("df_events with matched frames")
-# st.write(df_events)
+if __name__ == '__main__':
+    df_events = _get_csv("events/bundesliga-2023-2024-22-st-bayer-leverkusen-werder-bremen.csv").reset_index(drop=True)
+    # df_tracking = _get_parquet("tracking/bundesliga-2023-2024-22-st-bayer-leverkusen-werder-bremen.parquet").reset_index(drop=True)
+    df_tracking = _get_local_parquet("Y:/w_raw/preprocessed/tracking/bundesliga-2023-2024-22-st-bayer-leverkusen-werder-bremen.parquet").reset_index(drop=True)
+
+    res = synchronize(df_events, df_tracking)
+    st.write("res")
+    st.write(res.matched_frames)
+    st.write(res.scores)
+    df_events["matched_frame"] = res.matched_frames
+    df_tracking["matched_frame"] = res.matched_frames
+
+    st.write("df_events with matched frames")
+    st.write(df_events)

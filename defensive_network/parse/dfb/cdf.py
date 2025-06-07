@@ -27,8 +27,16 @@ def get_event_fpath(base_path, slugified_match_string):
     return os.path.abspath(os.path.join(base_path, "events", f"{slugified_match_string}.csv"))
 
 
+def get_events(base_path, slugified_match_string):
+    return pd.read_csv(get_event_fpath(base_path, slugified_match_string))
+
+
 def get_tracking_fpath(base_path, slugified_match_string):
     return os.path.abspath(os.path.join(base_path, "tracking", f"{slugified_match_string}.parquet"))
+
+
+def get_tracking(base_path, slugified_match_string):
+    return pd.read_parquet(get_tracking_fpath(base_path, slugified_match_string))
 
 
 def get_preprocessed_tracking_fpath(base_path, slugified_match_string):
@@ -228,7 +236,7 @@ def augment_match_data(
         df_tracking_indexed = df_tracking.set_index(["frame", "section", "player_id"])
 
     with st.spinner("Calculating x, y from tracking data..."):
-        keys = df_event.apply(lambda row: get_target_x_y(row, df_tracking_indexed, row["player_id_1"]), axis=1)
+        keys = df_event.apply(lambda row: get_target_x_y(row, df_tracking_indexed, row["player_id_1"]), axis=1)  # TODO check if works
         df_event[["x_event", "y_event"]] = pd.DataFrame(keys.tolist(), index=df_event.index)
         df_event["x_event"] = df_event["x_event_player_1"].fillna(df_event["x_event"])
         df_event["y_event"] = df_event["y_event_player_1"].fillna(df_event["y_event"])
@@ -239,7 +247,7 @@ def augment_match_data(
         keys_target = df_event.apply(lambda row: get_target_x_y(row, df_tracking_indexed, row["player_id_2"]), axis=1)
         df_event[["x_target", "y_target"]] = pd.DataFrame(keys_target.tolist(), index=df_event.index)
         df_event["x_target"] = df_event["x_event_player_2"].fillna(df_event["x_target"])
-        df_event["y_target"] = df_event["y_event_player_2"].fillna(df_event["y_event"])
+        df_event["y_target"] = df_event["y_event_player_2"].fillna(df_event["y_target"])
         df_event["x_target"] = df_event["x_target"].fillna(df_event["x_tracking_player_2"])
         df_event["y_target"] = df_event["y_target"].fillna(df_event["y_tracking_player_2"])
         assert df_event["x_target"].notna().all()

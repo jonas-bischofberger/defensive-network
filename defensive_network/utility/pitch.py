@@ -208,7 +208,7 @@ def plot_tracking_frame(
             except KeyError as e:
                 st.warning(e)
 
-        if tracking_player_name_col is not None:
+        if tracking_player_name_col is not None and tracking_player_name_col in df_frame_team.columns:
             for i, txt in enumerate(df_frame_team[tracking_player_name_col]):
                 plt.annotate(txt, (x[i], y[i]-2.25), fontsize=5*factor, ha="center", va="center", color=color)
 
@@ -281,11 +281,12 @@ def plot_passes(df_passes, df_tracking, n_cols=2):  # TODO add params
 def plot_pass(
     p4ss, df_frame=None,
     pass_x_col="x_event", pass_y_col="y_event", pass_end_x_col="x_target", pass_end_y_col="y_target",
-    pass_frame_col="full_frame", pass_team_col="team_id_1", pass_player_name_col="player_name_1",
+    pass_frame_col="full_frame", pass_end_frame_col="frame_rec", pass_team_col="team_id_1", pass_player_name_col="player_name_1",
     tracking_team_col="team_id", tracking_player_col="player_id", tracking_x_col="x_tracking",
     tracking_y_col="y_tracking", tracking_frame_col="full_frame", tracking_player_name_col="player_name",
     tracking_vx_col=None, tracking_vy_col=None, ball_tracking_player_id="BALL", plot_defenders=True,
-    plot_expected_receiver=True, make_pass_transparent=False, plot_tracking_data=True, plot_ball=True,
+    plot_expected_receiver=True, plot_tracking_data=True, plot_ball=True,
+    additional_x_coordinates=None, additional_y_coordinates=None, additional_frame_cols=None,
 ):
     """
     >>> p4ss = pd.Series({"x_event": 0, "y_event": 0, "x_target": 30, "y_target": -10, "full_frame": 0, "team_id_1": "H", "player_name_1": "Player A", })
@@ -294,8 +295,12 @@ def plot_pass(
     <Figure size 640x480 with 1 Axes>
     >>> plt.show()  # doctest: +SKIP
     """
-    # st.write("df_frame", df_frame.shape)
-    # st.write(df_frame)
+    if df_frame is not None and "frame" in df_frame.columns:
+        frame = df_frame["frame"].iloc[0]
+        make_pass_transparent = not (p4ss["frame"] <= float(frame) <= p4ss["frame_rec"])
+    else:
+        make_pass_transparent = True
+
     # if ball_tracking_player_id not in df_tracking[tracking_player_col]:
     #     return
     # accessible_space.interface._check_ball_in_tracking_data(df_frame, tracking_player_col, ball_tracking_player_id)
@@ -353,11 +358,33 @@ def plot_pass(
                 plt.legend()
 
     # plot pass arrow
-    alpha = 0.3 if make_pass_transparent else 1
-    plt.arrow(x=p4ss[pass_x_col], y=p4ss[pass_y_col], dx=p4ss[pass_end_x_col] - p4ss[pass_x_col],
-              dy=p4ss[pass_end_y_col] - p4ss[pass_y_col], head_width=2*factor, head_length=3*factor, fc="black", ec="black",
-              alpha=alpha, length_includes_head=True,
-              )
+    if additional_frame_cols is None:
+        alpha = 0.1 if make_pass_transparent else 1
+        plt.arrow(x=p4ss[pass_x_col], y=p4ss[pass_y_col], dx=p4ss[pass_end_x_col] - p4ss[pass_x_col],
+                  dy=p4ss[pass_end_y_col] - p4ss[pass_y_col], head_width=2*factor, head_length=3*factor, fc="black", ec="black",
+                  alpha=alpha, length_includes_head=True
+                  )
+
+    additional_frames_str = ""
+    if additional_frame_cols is not None:
+        for cnr, (additional_frame_col, arrow_color) in enumerate(additional_frame_cols.items()):
+            alpha = 1 if float(p4ss[additional_frame_col]) <= frame <= p4ss["frame_rec"] else 0.1
+
+            plt.arrow(x=p4ss[pass_x_col], y=p4ss[pass_y_col], dx=p4ss[pass_end_x_col] - p4ss[pass_x_col],
+                      dy=p4ss[pass_end_y_col] - p4ss[pass_y_col], head_width=2 * factor - cnr*0.8, head_length=0.74 * (cnr + 1) * 3 * factor,
+                      fc=arrow_color, ec=arrow_color, alpha=alpha, length_includes_head=True, linewidth=0.5,
+                      label=additional_frame_col, edgecolor=None,
+                      )
+            st.write(f"{additional_frame_cols=}, {float(p4ss[additional_frame_col])} <= {frame} <= {p4ss["frame_rec"]}, {alpha=}")
+            additional_frames_str += f"{additional_frame_col}:{p4ss[additional_frame_col]},"
+
+    if additional_x_coordinates is not None:
+        for cnr, ((additional_x_col, scatter_color), additional_y_col) in enumerate(list(zip(additional_x_coordinates.items(), additional_y_coordinates.keys()))):
+            ds = -cnr * 35
+            st.write(p4ss)
+            st.write(p4ss[additional_x_col], p4ss[additional_y_col], additional_x_col, additional_y_col)
+            plt.scatter(x=p4ss[additional_x_col], y=p4ss[additional_y_col], c=scatter_color, marker="x", s=200*factor + ds, label=additional_x_col)
+        plt.legend()
 
     return plt.gcf()
 

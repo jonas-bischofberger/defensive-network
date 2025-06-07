@@ -29,3 +29,4 @@ google-auth-oauthlib
 pandas
 pyarrow
 git+https://github.com/ML-KULeuven/ETSY.git
+opencv-python

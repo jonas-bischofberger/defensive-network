@@ -77,7 +77,7 @@ def get_responsibility(df_passes, dfg_responsibility_model):
     return ResponsibilityResult(responsibility["responsibility"], responsibility["n_passes"])
 
 def main():
-    from defensive_network.tests.test_data import df_events, df_tracking
+    from defensive_network.tests.data import df_events, df_tracking
     import defensive_network.utility.general
 
     defensive_network.utility.general.start_streamlit_profiler()
@@ -88,7 +88,7 @@ def main():
     # selected_receiver_col, selected_receiver_name_col, selected_expected_receiver_col,
     # selected_expected_receiver_name_col, selected_tracking_player_col, selected_tracking_player_name_col,
     # use_tracking_average_position, selected_value_col, plot_involvement_examples, n_examples_per_type,
-    # show_def_full_metrics, remove_passes_with_zero_involvement, defender_col, defender_name_col) = defensive_network.utility.dashboards.select_defensive_network_options()
+    # show_def_full_metrics, remove_passes_with_zero_involvement, defender_col, defender_name_col) = defensive_network.utility.scripts.select_defensive_network_options()
     #
     # for slugified_match_string in selected_tracking_matches:
     #     df_tracking, df_events = defensive_network.parse.cdf.get_match_data(

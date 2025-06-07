@@ -1,7 +1,6 @@
 import defensive_network.parse.drive
 
 import pandas as pd
-import streamlit as st
 
 
 def _get_test_df():

@@ -13,7 +13,6 @@ import importlib
 import math
 import os
 
-import matplotlib.pyplot as plt
 import pandas as pd
 import slugify
 import streamlit as st
@@ -25,9 +24,9 @@ import defensive_network.utility.dataframes
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 import defensive_network.utility.general
-import defensive_network.parse.meta
+import defensive_network.parse.dfb.meta
 
-import defensive_network.parse.cdf
+import defensive_network.parse.dfb.cdf
 
 import defensive_network.parse.drive
 import defensive_network.models.formation
@@ -36,7 +35,7 @@ import defensive_network.models.responsibility
 import defensive_network.models.synchronization
 import defensive_network.utility.pitch
 
-importlib.reload(defensive_network.parse.meta)
+importlib.reload(defensive_network.parse.dfb.meta)
 importlib.reload(defensive_network.utility.general)
 importlib.reload(defensive_network.parse.drive)
 
@@ -536,7 +535,7 @@ def finalize_events_and_tracking_to_drive(folder_tracking, folder_events, df_met
         # df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events)
 
         with st.spinner("Augmenting event and tracking data..."):
-            df_tracking, df_event = defensive_network.parse.cdf.augment_match_data(match, df_event, df_tracking, df_lineup)
+            df_tracking, df_event = defensive_network.parse.dfb.cdf.augment_match_data(match, df_event, df_tracking, df_lineup)
 
         # df_events = defensive_network.parse.drive.download_csv_from_drive("events/bundesliga-2023-2024-22-st-bayer-leverkusen-werder-bremen.csv").reset_index(drop=True)
         # df_tracking = _get_parquet("tracking/bundesliga-2023-2024-22-st-bayer-leverkusen-werder-bremen.parquet").reset_index(drop=True)
