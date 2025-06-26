@@ -12,9 +12,11 @@ import defensive_network.utility
 import defensive_network.utility.pitch
 
 
-def pass_video(df_tracking, df_passes, out_fpath, event_frame_cols=("frame", "original_frame_id", "matched_frame"), tracking_frame_col="frame", frame_rec_cols=["frame_rec"], event_section_col="section", tracking_section_col="section", fps=25, overwrite_if_exists=True):
+def pass_video(df_tracking, df_passes, out_fpath, event_frame_cols=("frame", "original_frame_id", "matched_frame"), tracking_frame_col="frame", frame_rec_cols=["frame_rec"], event_section_col="section", tracking_section_col="section", fps=25, overwrite_if_exists=True, only_n_frames_per_half=np.inf):
     st.write("df_passes")
     st.write(df_passes)
+
+    slugified_match_string = df_passes["slugified_match_string"].iloc[0]
 
     overwrite_if_exists = True
 
@@ -40,7 +42,7 @@ def pass_video(df_tracking, df_passes, out_fpath, event_frame_cols=("frame", "or
 
         current_pass = None
         for frame, df_tracking_frame in defensive_network.utility.general.progress_bar(df_tracking_section.groupby(tracking_frame_col), total=len(df_tracking[tracking_frame_col].unique())):
-            if frame > 150:
+            if frame > only_n_frames_per_half:
                 break
 
             slugified_match_string = df_passes_section["slugified_match_string"].iloc[0]

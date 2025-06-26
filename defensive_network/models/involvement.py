@@ -234,12 +234,12 @@ def _get_involvement_by_model(
     df_involvement["raw_contribution"] = df_involvement["raw_contribution"].fillna(0)
     df_involvement["raw_fault"] = df_involvement["raw_fault"].fillna(0)
 
-    for col in ["involvement", "contribution", "fault"]:
-        df_involvement[col] = df_involvement[f"raw_{col}"] * df_involvement[value_col].abs()
+    for col in ["valued_involvement", "valued_contribution", "valued_fault"]:
+        df_involvement[col] = df_involvement[col.replace("valued", "raw")] * df_involvement[value_col].abs()
 
-    df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "fault", 0)
-    df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "contribution", 0)
-    df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "involvement", 0)
+    df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "valued_fault", 0)
+    df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "valued_contribution", 0)
+    df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "valued_involvement", 0)
     df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "raw_fault", 0)
     df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "raw_contribution", 0)
     df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "raw_involvement", 0)
@@ -259,12 +259,24 @@ def _get_involvement_by_model(
 
     df_involvement = df_involvement.drop(columns=[unique_frame_col])
 
+    import streamlit as st
+
     if tracking_defender_meta_cols is not None:
+        st.write("tracking_defender_meta_cols")
+        st.write(tracking_defender_meta_cols)
         dft_player = df_tracking.drop_duplicates(tracking_player_col).set_index(tracking_player_col)#.reset_index()
         for context_col in tracking_defender_meta_cols:
-            dictionary = dft_player[context_col].to_dict()
+            dictionary = dft_player[context_col].dropna().to_dict()
+            st.write("dft_player")
+            st.write(dft_player[context_col])
+            st.write(dft_player)
+            if dft_player[context_col].isna().any():
+                raise ValueError(f"{context_col} is NaN!")
+
+            st.write("dictionary")
+            st.write(dictionary)
             df_involvement[f"defender_{context_col}"] = df_involvement["defender_id"].map(dictionary)
-            assert df_involvement[f"defender_{context_col}"].notna().all()
+            # assert df_involvement[f"defender_{context_col}"].notna().all()
 
     # dfg = df_involvement.groupby(["team_id_1", "event_id"]).agg(
     # dfg = df_involvement.groupby(["event_id"]).agg(
@@ -349,6 +361,8 @@ def get_involvement(
     # 1. Successful passes, xT >= 0
     i_success_and_pos_value = df_passes[event_success_col] & (df_passes[event_value_col] >= 0)
     df_passes.loc[i_success_and_pos_value, "involvement_type"] = "success_and_pos_value"
+
+    df_tracking["role_category"] = df_tracking["role"]
     df_involvement_success = _get_involvement_by_model(
         df_passes.loc[i_success_and_pos_value], df_tracking,
         tracking_frame_col, tracking_team_col,
@@ -359,6 +373,12 @@ def get_involvement(
         model=involvement_model_success_pos_value, model_radius=model_radius,
         tracking_defender_meta_cols=tracking_defender_meta_cols,
     )
+    import streamlit as st
+    st.write("df_involvement_success")
+    st.write(df_involvement_success)
+    st.write("df_tracking")
+    st.write(df_tracking)
+    st.stop()
 
     # 2. Successful passes, xT < 0
     i_success_and_neg_value = df_passes[event_success_col] & (df_passes[event_value_col] < 0)
@@ -406,6 +426,8 @@ def get_involvement(
     df_involvement["model_radius"] = model_radius
 
     df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "involvement_pass_id", 0)
+    st.write("df_involvement x")
+    st.write(df_involvement)
 
     return df_involvement
 

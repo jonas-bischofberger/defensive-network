@@ -1,0 +1,29 @@
+Goal: We have multiple KPIs (interceptions, duels, positioning scores, ...) on the player-position-match and total player-position level in a season. We want to analyse the stability, discrimination, independence and validity of the new metrics and compare with old ones.
+
+Methods:
+1. ICC (stability, discrimination)
+-- (DONE) Uncorrected for position: MM for players/player-matches vs KPIs, do this for each position.
+-- DONE Corrected for position: MM for players/player-matched corrected by position vs KPIs, do this once.
+-- DONE Player-position-match-level to check whether Player performances are stable and discriminative on the match level
+-- Player-position level: Bootstrap matches (within player-variance) and compare with between-player variance (quasi-ICC)
+2. Collinearity analysis
+-- DONE KPI1 vs KPI2 (Player-position-level, Player-position-match level)
+3. Hin vs Rück correlation
+-- DONE Correlation within KPIs across player-positions
+4. Descriptive analysis
+-- DONE Histogram per KPI (colored by position)
+5. Validity correlation analysis
+-- DONE Overall correlation KPI corrected for Position vs REF (linear model? variant?), do once.
+-- DONE regular correlation KPI vs REF, do per Position
+6. Maybe time to convergence
+-- Per player-position: X=Minutes vs Y=delta KPI from final value.
+
+# Run reduction again - there was a bug - then run involvement and matchsums again and check if results are ok now. Maybe do Resp etc. per Pass!
+
+TODOS
+- reprocess
+- check and harmonize  of cont/fault minus/plus (make fault negative, contribution positive, involvement absolute?)
+- New KPI: Difference Involvement vs Responsibility, Absolute Involvement/Responsibility, Interceptions/Tackles per Pass
+
+Conclusions
+- Which ICC higher than interceptions_per90? Shows higher match-to-match stability.

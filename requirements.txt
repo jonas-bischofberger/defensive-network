@@ -30,3 +30,8 @@ pandas
 pyarrow
 git+https://github.com/ML-KULeuven/ETSY.git
 opencv-python
+statsmodels
+shapely
+requests
+beautifulsoup4
+accessible_space

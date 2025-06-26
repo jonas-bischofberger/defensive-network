@@ -12,7 +12,8 @@ import defensive_network.utility.general
 import defensive_network.models.value
 import defensive_network.models.expected_receiver
 import defensive_network.models.velocity
-import defensive_network.models.formation
+import defensive_network.models.formation_v2
+import defensive_network.models.synchronization
 
 
 def get_meta_fpath(base_path):
@@ -110,6 +111,13 @@ def augment_match_data(
     playerid2name = df_lineup_match[['player_id', 'short_name']].set_index('player_id').to_dict()['short_name']
     team2name = df_lineup_match.loc[df_lineup_match["team_name"].notna(), ['team_id', 'team_name']].set_index('team_id').to_dict()['team_name']
 
+    # add lineup info into tracking data
+    df_lineup_match["is_gk"] = df_lineup_match["position"] == "GK"
+    player2isgk = df_lineup_match.set_index("player_id")["is_gk"].to_dict()
+    team2teamname = df_lineup_match[df_lineup_match["team_name"].notna()].set_index("team_id")["team_name"].to_dict()
+    df_tracking["team_name"] = df_tracking["team_id"].map(team2teamname)
+    df_tracking["is_gk"] = df_tracking["player_id"].map(player2isgk).fillna(False).astype(bool)
+
     assert df_event["datetime_event"].notna().all()
     df_event["datetime_event"] = pd.to_datetime(df_event["datetime_event"])
     df_event = df_event.sort_values("datetime_event")
@@ -158,13 +166,15 @@ def augment_match_data(
     # Fill section info
     for section_nr, (section, section_time) in enumerate(section_times.items()):
         section_end_time = section_end_times[section]
-        i_section = df_event["datetime_event"].between(section_time, section_end_time, inclusive="both") | (
-                    df_event["section"] == section)
+        i_section = df_event["datetime_event"].between(section_time, section_end_time, inclusive="both") | (df_event["section"] == section)
         df_event.loc[i_section, "section"] = section
-        df_event.loc[i_section, "seconds_since_section_start"] = (
-                    df_event.loc[i_section, "datetime_event"] - section_time).dt.total_seconds()
-        df_event.loc[i_section, "mmss"] = df_event.loc[i_section, "seconds_since_section_start"].apply(
-            lambda x: defensive_network.utility.general.seconds_since_period_start_to_mmss(x, section_nr))
+        df_event.loc[i_section, "seconds_since_section_start"] = (df_event.loc[i_section, "datetime_event"] - section_time).dt.total_seconds()
+        df_event.loc[i_section, "mmss"] = df_event.loc[i_section, "seconds_since_section_start"].apply(lambda x: defensive_network.utility.general.seconds_since_period_start_to_mmss(x, section_nr))
+
+        i_tracking_section = df_tracking["section"] == section
+        df_tracking["datetime_tracking"] = pd.to_datetime(df_tracking["datetime_tracking"])
+        df_tracking.loc[i_tracking_section, "seconds_since_section_start"] = (df_tracking.loc[i_tracking_section, "datetime_tracking"] - section_time).dt.total_seconds()
+        df_tracking.loc[i_tracking_section, "mmss"] = df_tracking.loc[i_tracking_section, "seconds_since_section_start"].apply(lambda x: defensive_network.utility.general.seconds_since_period_start_to_mmss(x, section_nr))
 
     # with st.spinner("Synchronizing events and tracking data..."):
     #     res = defensive_network.models.synchronization.synchronize(df_event, df_tracking)
@@ -295,18 +305,47 @@ def augment_match_data(
 
     df_tracking = defensive_network.models.velocity.add_velocity(df_tracking)
 
-    with st.spinner("Inferring formation"):
-        assert len(df_tracking["ball_poss_team_id"].dropna().unique()) == 2, "Only two teams are supported for formation detection"
-        res = defensive_network.models.formation.detect_formation(df_tracking, model=formation_model, plot_formation=plot_formation)
-        df_tracking["role"] = res.role
-        df_tracking["role_name"] = res.role_name
-        df_tracking["formation_instance"] = res.formation_instance
-        df_tracking["role_category"] = res.role_category
-
     ball_player = "BALL"
     i_ball = df_tracking["player_id"] == ball_player
     df_tracking.loc[i_ball, "role"] = ball_player
     df_tracking.loc[i_ball, "role_name"] = ball_player
+
+    # Set piece phase
+    df_event["is_set_piece"] = df_event["event_subtype"].isin(["free_kick", "corner_kick"])
+    set_piece_timestamps = []
+    for _, set_piece in df_event[df_event["is_set_piece"]].iterrows():
+        set_piece_timestamps.append((set_piece["datetime_event"], set_piece["datetime_event"] + pd.Timedelta(seconds=10)))
+
+    def is_within_timestamps(event, timestamps):
+        for t_start, t_end in timestamps:
+            if (event["datetime_event"] >= t_start) and (event["datetime_event"] <= t_end):
+                return True
+        return False
+
+    df_event["is_in_setpiece_phase"] = df_event.apply(lambda p4ss: is_within_timestamps(p4ss, set_piece_timestamps), axis=1)
+
+    # Other team
+    teams = df_event["team_id_1"].dropna().unique().tolist()
+    df_event["defending_team"] = df_event["team_id_1"].apply(lambda t: [team for team in teams if team != t][0])
+
+    # df_tracking.to_parquet(fpath_preprocessed_tracking, index=False)
+    # df_event.to_csv(fpath_preprocessed_event, index=False)
+
+    with st.spinner("Inferring formation"):
+        # assert len(df_tracking["ball_poss_team_id"].dropna().unique()) == 2, "Only two teams are supported for formation detection"
+        # res = defensive_network.models.formation.detect_formation(df_tracking, model=formation_model, plot_formation=plot_formation)
+        # df_tracking["role"] = res.role
+        # df_tracking["role_name"] = res.role_name
+        # df_tracking["formation_instance"] = res.formation_instance
+        # df_tracking["role_category"] = res.role_category
+        importlib.reload(defensive_network.models.formation_v2)
+        res = defensive_network.models.formation_v2.detect_formation(df_tracking, do_formation_segment_plot=True)
+        df_tracking["formation"] = res.formation
+        df_tracking["role"] = res.position
+
+        del res
+        gc.collect()
+
 
     # Add role to events
     # frameplayerrole = df_tracking.groupby(["frame", "player_id"])["role"].first().to_dict()
@@ -317,12 +356,18 @@ def augment_match_data(
     # frameplayerrole = df_tracking.groupby(["frame", "player_id"])["role"].first().to_dict()
     # role2name = df_tracking.groupby("role")["role_name"].first().to_dict()
     # role2name = {role: role_name.replace("def", "off") for role, role_name in role2name.items()}
-    role2name = df_tracking.groupby("role")["role_name"].first()
-    role2name = role2name.str.replace("def", "off")
+    # role2name = df_tracking.groupby("role")["role_name"].first()
+    # role2name = role2name.str.replace("def", "off")
     # frameplayerrole = {k: v.replace("def", "off") for k, v in frameplayerrole.items() if v is not None}
-    frameplayerrole = df_tracking.groupby(["frame", "player_id"])["role"].first().str.replace("def", "off")
-    df_tracking["role"] = df_tracking["role"].str.replace("def", "off")
-    df_tracking["role_name"] = df_tracking["role"].map(role2name)
+    frameplayerrole = df_tracking.groupby(["frame", "player_id"])["role"].first()#.str.replace("def", "off")
+    df_tracking["role"] = df_tracking["role"]#.str.replace("def", "off")
+    df_tracking["role_name"] = df_tracking["role"]#.map(role2name)
+
+    st.write("df_tracking")
+    st.write(df_tracking.head(50000))
+
+    st.write("frameplayerrole")
+    st.write(frameplayerrole)
 
     # def _rn():
     #     # st.write(df_tracking["role"])
@@ -358,14 +403,14 @@ def augment_match_data(
     # df_event["expected_receiver_role"] = df_event[["frame", "expected_receiver"]].apply(lambda x: frameplayerrole.get((x["frame"], x["expected_receiver"]), None), axis=1)
     # df_event["expected_receiver_role_name"] = df_event["expected_receiver_role"].map(role2name)
 
-    df_event["role_name_1"] = df_event["role_1"].map(role2name)
-    df_event["role_name_2"] = df_event["role_2"].map(role2name)
-    df_event["expected_receiver_role_name"] = df_event["expected_receiver_role"].map(role2name)
+    df_event["role_name_1"] = df_event["role_1"]#.map(role2name)
+    df_event["role_name_2"] = df_event["role_2"]#.map(role2name)
+    df_event["expected_receiver_role_name"] = df_event["expected_receiver_role"]#.map(role2name)
 
-    role2category = df_tracking.groupby("role")["role_category"].first()
-    df_event["role_category_1"] = df_event["role_1"].map(role2category)
-    df_event["role_category_2"] = df_event["role_2"].map(role2category)
-    df_event["expected_receiver_role_category"] = df_event["expected_receiver_role"].map(role2category)
+    # role2category = df_tracking.groupby("role")["role_category"].first()
+    df_event["role_category_1"] = df_event["role_1"]#.map(role2category)
+    df_event["role_category_2"] = df_event["role_2"]#.map(role2category)
+    df_event["expected_receiver_role_category"] = df_event["expected_receiver_role"]#.map(role2category)
 
     assert df_event.loc[df_event["role_1"].notna(), "role_name_1"].notna().all(), "role_name_1 should not be NaN if role_1 is not NaN"
     assert df_event.loc[df_event["role_2"].notna(), "role_name_2"].notna().all(), "role_name_2 should not be NaN if role_2 is not NaN"
@@ -375,44 +420,27 @@ def augment_match_data(
     assert df_event.loc[df_event["role_2"].notna(), "role_category_2"].notna().all(), "role_category_2 should not be NaN if role_2 is not NaN"
     assert df_event.loc[df_event["expected_receiver_role"].notna(), "expected_receiver_role_category"].notna().all(), "expected_receiver_role_category should not be NaN if expected_receiver_role is not NaN"
 
-    # Set piece phase
-    df_event["is_set_piece"] = df_event["event_subtype"].isin(["free_kick", "corner_kick"])
-    set_piece_timestamps = []
-    for _, set_piece in df_event[df_event["is_set_piece"]].iterrows():
-        set_piece_timestamps.append((set_piece["datetime_event"], set_piece["datetime_event"] + pd.Timedelta(seconds=10)))
-
-    def is_within_timestamps(event, timestamps):
-        for t_start, t_end in timestamps:
-            if (event["datetime_event"] >= t_start) and (event["datetime_event"] <= t_end):
-                return True
-        return False
-
-    df_event["is_in_setpiece_phase"] = df_event.apply(lambda p4ss: is_within_timestamps(p4ss, set_piece_timestamps), axis=1)
-
-    # Other team
-    teams = df_event["team_id_1"].dropna().unique().tolist()
-    df_event["defending_team"] = df_event["team_id_1"].apply(lambda t: [team for team in teams if team != t][0])
-
-    # df_tracking.to_parquet(fpath_preprocessed_tracking, index=False)
-    # df_event.to_csv(fpath_preprocessed_event, index=False)
-
-    with st.spinner("Synchronizing events and tracking data..."):
-        df_event["original_frame_id"] = df_event["frame"].copy()
-        res = defensive_network.models.synchronization.synchronize(df_event, df_tracking)
-        df_event["matched_frame"] = res.matched_frames
-        df_event["matching_score"] = res.scores
-        df_event["frame"] = df_event["matched_frame"].fillna(df_event["frame"])
-        st.write("A")
-        st.write(df_event["original_frame_id"] - df_event["frame"])
-        st.write(df_event[["original_frame_id", "frame", "full_frame", "full_frame_rec"]])
-
-        assert (df_event["original_frame_id"] - df_event["frame"]).abs().max() > 0
-
     df_event["full_frame"] = df_event["section"].str.cat(df_event["frame"].astype(float).astype(str), sep="-")
     # df_event["full_frame_rec"] = ???
-    st.write("B")
-    st.write(df_event["original_frame_id"] - df_event["frame"])
-    st.write(df_event[["original_frame_id", "frame", "full_frame", "full_frame_rec"]])
+
+    df_event["original_frame_id"] = df_event["frame"].copy()
+    do_synchronize = True
+    if do_synchronize:
+        with st.spinner("Synchronizing events and tracking data..."):
+            df_event["original_frame_id"] = df_event["frame"].copy()
+            try:
+                res = defensive_network.models.synchronization.synchronize(df_event, df_tracking)
+                df_event["matched_frame"] = res.matched_frames
+                df_event["matching_score"] = res.scores
+                df_event["frame"] = df_event["matched_frame"].fillna(df_event["frame"])
+                assert (df_event["original_frame_id"] - df_event["frame"]).abs().max() > 0
+
+            except ValueError:
+                df_event["matched_frame"] = None
+                df_event["matching_score"] = "matching_failed"
+    else:
+        df_event["matched_frame"] = None
+        df_event["matching_score"] = "matching_failed"
 
     gc.collect()
 

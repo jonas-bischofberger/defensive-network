@@ -172,11 +172,11 @@ def plot_position_arrow(start_position: str, end_position: str, label: str = "",
 
 
 def plot_tracking_frame(
-    df_frame, attacking_team,
+    df_frame, attacking_team=None,
     tracking_team_col="team_id", tracking_player_col="player_id", tracking_x_col="x_tracking",
     tracking_y_col="y_tracking", tracking_frame_col="full_frame", tracking_player_name_col="player_name",
     tracking_vx_col=None, tracking_vy_col=None, ball_tracking_player_id="BALL", plot_defenders=True, plot_attackers=True,
-    plot_ball=True,
+    plot_ball=True, dy_name=2.25
 ):
     """
     >>> df_tracking = pd.DataFrame({"player_id": ["a", "b", "c", "d", "BALL"], "player_name": ["Player AT", "Player BT", "Player CT", "Player DT", None], "team_id": ["H", "H", "A", "A", None], "x_tracking": [0, 15, -15, 0, 2], "y_tracking": [0, 0, 0, 20, 0], "full_frame": [0]*5})
@@ -185,6 +185,9 @@ def plot_tracking_frame(
     >>> plt.show()  # doctest: +SKIP
     """
     df_frame_without_ball = df_frame[df_frame[tracking_player_col] != ball_tracking_player_id]
+
+    if attacking_team is None:
+        attacking_team = df_frame_without_ball[tracking_team_col].unique()[0]
 
     factor = 1
 
@@ -210,7 +213,7 @@ def plot_tracking_frame(
 
         if tracking_player_name_col is not None and tracking_player_name_col in df_frame_team.columns:
             for i, txt in enumerate(df_frame_team[tracking_player_name_col]):
-                plt.annotate(txt, (x[i], y[i]-2.25), fontsize=5*factor, ha="center", va="center", color=color)
+                plt.annotate(txt, (x[i], y[i]-dy_name), fontsize=5*factor, ha="center", va="center", color=color)
 
     # plot ball position
     if plot_ball:
@@ -227,9 +230,9 @@ def plot_tracking_frame(
 
 
 
-def _plot_pitch():
+def plot_pitch():
     """
-    >>> _plot_pitch()
+    >>> plot_pitch()
     >>> plt.show()  # doctest: +SKIP
     """
     plt.figure()
@@ -267,6 +270,8 @@ def _plot_pitch():
     plt.gca().axes.get_yaxis().set_visible(False)
     plt.xlim(-52.5-5, 52.5+5)
     plt.ylim(-34-5, 34+5)
+
+    return plt.gcf()
 
 
 def plot_passes(df_passes, df_tracking, n_cols=2):  # TODO add params
@@ -313,8 +318,9 @@ def plot_pass(
 
     factor=1
 
-    _plot_pitch()
+    plot_pitch()
 
+    assert p4ss[pass_team_col] in df_frame[tracking_team_col].unique(), f"Pass team {p4ss[pass_team_col]} not in tracking data {df_frame[tracking_team_col].unique()}"
     if plot_tracking_data and df_frame is not None:
         plot_tracking_frame(df_frame, p4ss[pass_team_col], plot_defenders=plot_defenders, plot_ball=plot_ball)
 
@@ -402,7 +408,7 @@ def plot_pass_involvement(
     fig = plot_pass(
         p4ss, df_tracking[df_tracking[tracking_frame_col] == p4ss[pass_frame_col] ],
         pass_x_col, pass_y_col, pass_end_x_col, pass_end_y_col,
-        pass_frame_col, pass_team_col, pass_player_name_col,
+        pass_frame_col, "frame_rec", pass_team_col, pass_player_name_col,
         tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col, tracking_frame_col, tracking_player_name_col,
         tracking_vx_col, tracking_vy_col, ball_tracking_player_id,
         plot_expected_receiver=plot_expected_receiver, plot_ball=False, plot_tracking_data=True, plot_defenders=False,
@@ -432,7 +438,12 @@ def plot_pass_involvement(
         # add number to responsibility
         if responsibility_col is not None:  # and responsibility_col in row:
             responsibility = row[responsibility_col] if row[responsibility_col] is not None else np.nan
-            plt.annotate(f"Resp: {responsibility:.2f}", (row["defender_x"], row["defender_y"]+2.25), fontsize=3, ha="center", va="center", color="black")
+            if "relative" in responsibility_col and "valued" not in responsibility_col:
+                format = "{:.0%}"
+            else:
+                format = "{:.2f}"
+            formatted_responsibility = format.format(responsibility) if not pd.isna(responsibility) else "N/A"
+            plt.annotate(f"Resp: {formatted_responsibility}", (row["defender_x"], row["defender_y"]+2.25), fontsize=3, ha="center", va="center", color="black")
 
         # add defender name
         plt.annotate(player2name.get(row["defender_id"], row["defender_id"]), (row["defender_x"], row["defender_y"]-2.25), fontsize=5, ha="center", va="center", color="blue")

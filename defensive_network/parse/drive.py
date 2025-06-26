@@ -2,6 +2,7 @@ import os
 import io
 import time
 
+import googleapiclient.errors
 import pandas as pd
 import streamlit
 from google.oauth2.credentials import Credentials
@@ -11,7 +12,8 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import streamlit as st
 from googleapiclient.http import MediaIoBaseDownload
-
+import ssl
+import socket
 
 # If modifying scopes, delete token.json to re-authenticate
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
@@ -198,7 +200,6 @@ def upload_file_to_drive(local_path: str, relative_drive_path: str, root_folder_
 
     media = MediaIoBaseUpload(io.FileIO(local_path, 'rb'), mimetype='application/octet-stream')
 
-
     if files:
         # Overwrite
         file_id = files[0]['id']
@@ -207,9 +208,13 @@ def upload_file_to_drive(local_path: str, relative_drive_path: str, root_folder_
     else:
         # Upload new
         metadata = {'name': filename, 'parents': [target_folder_id]}
-        uploaded_file = service.files().create(body=metadata, media_body=media, fields='id').execute()
-        return uploaded_file['id']
-
+        while True:
+            try:
+                uploaded_file = service.files().create(body=metadata, media_body=media, fields='id').execute()
+                return uploaded_file['id']
+            except (socket.error, ssl.SSLError, googleapiclient.errors.HttpError) as e:
+                st.write(f"Network or HTTP error occurred: {e}")
+                continue
 
 
 def upload_parquet_to_drive(df: pd.DataFrame, fpath: str, folder_id: str = ROOT_FOLDER_ID):
@@ -360,12 +365,65 @@ def download_csv_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDE
     return _download_csv_from_drive(relative_path, root_folder_id)
 
 
+def download_excel_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDER_ID, st_cache=False):
+    def _download_excel_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDER_ID):
+        """
+        Download Excel file from Google Drive by path and load into DataFrame.
+
+        Args:
+            relative_path (str): path like 'folder/subfolder/file.excel'
+            root_folder_id (str): Drive root folder ID
+
+        Returns:
+            pd.DataFrame
+        """
+        relative_path = relative_path.replace("\\", "/")  # Ensure consistent path separators
+        creds = _authenticate()
+        service = build('drive', 'v3', credentials=creds)
+
+        path_parts = relative_path.strip("/").split("/")
+        filename = path_parts[-1]
+        folder_path = "/".join(path_parts[:-1])
+
+        folder_id = _get_folder_id_by_path(folder_path, root_folder_id, service)
+        if folder_id is None:
+            raise FileNotFoundError(f"Folder path '{folder_path}' not found on Drive.")
+
+        # Find file in folder
+        query = (
+            f"name = '{filename}' and "
+            f"'{folder_id}' in parents and "
+            f"mimeType != 'application/vnd.google-apps.folder' and "
+            f"trashed = false"
+        )
+        response = service.files().list(q=query, spaces='drive', fields='files(id)').execute()
+        files = response.get('files', [])
+        if not files:
+            raise FileNotFoundError(f"File '{filename}' not found in folder '{folder_path}'.")
+
+        file_id = files[0]['id']
+
+        request = service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+
+        fh.seek(0)
+        return pd.read_excel(fh)
+
+    if st_cache:
+        return st.cache_resource(_download_excel_from_drive)(relative_path, root_folder_id)
+    return _download_excel_from_drive(relative_path, root_folder_id)
+
+
 def list_files_in_drive_folder(folder_path: str, root_folder_id: str = ROOT_FOLDER_ID, st_cache=False) -> list[dict]:
     # """
     # >>> list_files_in_drive_folder("tracking")
     # [{'id': '1TbZiRlJiSRgSmukuabjokec0fTajzMbe', 'name': 'bundesliga-2023-2024-16-st-1-fc-nurnberg-sc-freiburg.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T19:04:49.976Z'}, {'id': '12Wiez23S47zZR_ZZ_W864Fu7NkNB3QR4', 'name': 'bundesliga-2023-2024-12-st-rb-leipzig-1-fc-koln.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T19:04:15.007Z'}, {'id': '1zRPfcoPkdY1Sx5k1SUvcOUDfPW9xqkCP', 'name': 'bundesliga-2023-2024-6-st-1-fc-nurnberg-1-fc-koln.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:17:43.056Z'}, {'id': '1xGUKj6L9eSOwRkURg3HA8AeGu2Ubq85m', 'name': 'bundesliga-2023-2024-10-st-1899-hoffenheim-rb-leipzig.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:17:28.814Z'}, {'id': '1OYckN52_zg6rbtaoevYLwJAzEUWI4WsJ', 'name': 'bundesliga-2023-2024-17-st-rb-leipzig-msv-duisburg.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:16:59.416Z'}, {'id': '1oTWLG7idLG_Htd7Z7-50i2CCINn4v7_b', 'name': 'bundesliga-2023-2024-14-st-werder-bremen-sc-freiburg.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:14:49.319Z'}, {'id': '1XoFZrIbm7VPKk4UtApVeuWM7jMmqX55K', 'name': 'bundesliga-2023-2024-14-st-msv-duisburg-1-fc-koln.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:12:30.403Z'}, {'id': '1PQnLLxJWnYXnz2_KrwDYtpzKzggPNB4U', 'name': 'bundesliga-2023-2024-11-st-sgs-essen-vfl-wolfsburg.parquet', 'mimeType': 'application/octet-stream', 'modifiedTime': '2025-05-29T18:11:56.517Z'}]
     # """
-    @st.cache_resource
+    # @st.cache_resource
     def _list_files_in_drive_folder(folder_path: str, root_folder_id: str = ROOT_FOLDER_ID) -> list[dict]:
         creds = _authenticate()
         service = build('drive', 'v3', credentials=creds)
@@ -399,7 +457,7 @@ def list_files_in_drive_folder(folder_path: str, root_folder_id: str = ROOT_FOLD
     return _list_files_in_drive_folder(folder_path, root_folder_id)
 
 
-def download_parquet_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDER_ID, st_cache=True):
+def download_parquet_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDER_ID, st_cache=False):
     def _download_parquet_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDER_ID):
         """
         Download Parquet file from Google Drive by path and load into DataFrame.
@@ -516,6 +574,8 @@ def append_to_parquet_on_drive(df_to_append, fpath: str, key_cols, overwrite_key
     creds = _authenticate()
     service = build('drive', 'v3', credentials=creds)
     parent_path, fname = os.path.split(fpath)
+
+    delete_folder_by_path(fpath)
 
     # --- Resolve folder ID
     # st.write("parent_path", parent_path, "root_folder_id", root_folder_id, "service", service)

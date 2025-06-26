@@ -13,16 +13,24 @@ import importlib
 import math
 import os
 
+import patsy
+# import statsmodels.api as sm
+from scipy.stats import pearsonr
+
+import numpy as np
+import statsmodels.formula.api
+
 import pandas as pd
 import slugify
 import streamlit as st
 
 import sys
 
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 import defensive_network.utility.dataframes
 
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-
+import seaborn as sns
+import matplotlib.pyplot as plt
 import defensive_network.utility.general
 import defensive_network.parse.dfb.meta
 
@@ -35,9 +43,16 @@ import defensive_network.models.responsibility
 import defensive_network.models.synchronization
 import defensive_network.utility.pitch
 
+import defensive_network.utility.video
+importlib.reload(defensive_network.utility.video)
+
+importlib.reload(defensive_network.parse.dfb.cdf)
 importlib.reload(defensive_network.parse.dfb.meta)
 importlib.reload(defensive_network.utility.general)
 importlib.reload(defensive_network.parse.drive)
+importlib.reload(defensive_network.models.responsibility)
+importlib.reload(defensive_network.models.synchronization)
+importlib.reload(defensive_network.models.involvement)
 
 
 @st.cache_resource
@@ -45,6 +60,7 @@ def _read_df(fpath, **kwargs):
     return pd.read_csv(fpath, **kwargs)
 
 
+@st.cache_resource
 def get_dfb_csv_files_in_folder(folder, exclude_files=None):
     tracking_cols = "frame,match_id,player_id,team_id,event_vendor,tracking_vendor,datetime_tracking,section,x_tracking,y_tracking,z_tracking,d_tracking,a_tracking,s_tracking,ball_status,ball_poss_team_id"
     event_cols = [
@@ -222,6 +238,301 @@ def check_tracking_files(folder):
                 st.write(section, df_section["frame"].min(), df_section["frame"].max(), "OK")
 
 
+
+# def calculate_icc(df: pd.DataFrame, metric: str, subject_id: str, covariate_col: str) -> float:
+#     """
+#     Calculates the Intraclass Correlation Coefficient (ICC) for a performance metric
+#     across repeated measures for subjects (e.g., players).
+#
+#     Parameters:
+#         df (pd.DataFrame): Input dataframe with repeated measures.
+#         metric (str): Column name of the performance metric (e.g., 'goals').
+#         subject_id (str): Column name for the subject identifier (e.g., 'player_id').
+#
+#     Returns:
+#         float: ICC value (between 0 and 1).
+#     """
+#     # Check columns
+#     if subject_id not in df.columns or metric not in df.columns:
+#         raise ValueError(f"Column '{metric}' or '{subject_id}' not found in data")
+#
+#     # Drop rows with NaNs in the relevant columns
+#     df = df[[subject_id, metric]].dropna()
+#
+#     if df.empty or df[subject_id].nunique() < 2:
+#         raise ValueError("Not enough valid data to calculate ICC")
+#
+#     df = df[[subject_id, metric]]
+#     formula = f"{metric} ~ 1"
+#     model = statsmodels.formula.api.mixedlm(formula, data=df, groups=df[subject_id])
+#     with st.spinner(f"Fitting mixed model for {metric}..."):
+#         result = model.fit()
+#
+#     var_between = result.cov_re.iloc[0, 0]  # between-subject variance
+#     var_within = result.scale  # within-subject (residual) variance
+#
+#     icc = var_between / (var_between + var_within)
+#     return icc
+
+
+import pandas as pd
+import statsmodels.formula.api as smf
+
+# def calculate_icc(df: pd.DataFrame, metric: str, subject_id: str, covariate_col: str = None) -> float:
+#     """
+#     Calculates the Intraclass Correlation Coefficient (ICC) for a performance metric
+#     across repeated measures for subjects (e.g., players), adjusting for a covariate
+#     such as position.
+#
+#     Parameters:
+#         df (pd.DataFrame): Input dataframe with repeated measures.
+#         metric (str): Column name of the performance metric (e.g., 'goals').
+#         subject_id (str): Column name for the subject identifier (e.g., 'player_id').
+#         covariate_col (str): Column name of the covariate to adjust for (e.g., 'position').
+#
+#     Returns:
+#         float: ICC value (between 0 and 1).
+#     """
+#     # Check required columns
+#     for col in [subject_id, metric, covariate_col]:
+#         if col not in df.columns:
+#             raise ValueError(f"Column '{col}' not found in data")
+#
+#     # Drop missing values
+#     df = df[[subject_id, metric, covariate_col]].dropna()
+#
+#     if df.empty or df[subject_id].nunique() < 2:
+#         raise ValueError("Not enough valid data to calculate ICC")
+#
+#     # Include covariate as a fixed effect
+#     formula = f"{metric} ~ C({covariate_col})"  # treat covariate as categorical
+#     st.write("df[subject_id]")
+#     st.write(df[subject_id])
+#     st.write("df[covariate_col]")
+#     st.write(df[covariate_col])
+#     model = smf.mixedlm(formula, data=df, groups=df[subject_id])
+#     result = model.fit()
+#
+#     # Extract variance components
+#     var_between = result.cov_re.iloc[0, 0]  # Between-subject variance (player)
+#     var_within = result.scale              # Residual (within-subject) variance
+#
+#     # Calculate ICC
+#     icc = var_between / (var_between + var_within)
+#     return icc
+#
+
+import pandas as pd
+import statsmodels.formula.api as smf
+
+def calculate_icc(df: pd.DataFrame, metric: str, subject_id: str, covariate_col: str = None) -> float:
+    """
+    Calculates the Intraclass Correlation Coefficient (ICC) for a performance metric
+    across repeated measures for subjects (e.g., players), optionally adjusting for
+    a covariate such as position.
+
+    Parameters:
+        df (pd.DataFrame): Input dataframe with repeated measures.
+        metric (str): Column name of the performance metric (e.g., 'goals').
+        subject_id (str): Column name for the subject identifier (e.g., 'player_id').
+        covariate_col (str or None): Optional column name of a covariate to adjust for (e.g., 'position').
+
+    Returns:
+        float: ICC value (between 0 and 1).
+    """
+    # Check required columns
+    if subject_id not in df.columns or metric not in df.columns:
+        raise ValueError(f"Column '{subject_id}' or '{metric}' not found in data")
+
+    columns_to_use = [subject_id, metric]
+    if covariate_col:
+        if covariate_col not in df.columns:
+            raise ValueError(f"Column '{covariate_col}' not found in data")
+        columns_to_use.append(covariate_col)
+
+    # Drop missing values
+    df = df[columns_to_use].dropna()
+
+    # st.write("df[subject_id]")
+    # st.write(df[subject_id])
+    # drop duplicate cols
+    df = df.loc[:, ~df.columns.duplicated()]
+    if df.empty or len(df[subject_id].unique()) < 2:
+        raise ValueError("Not enough valid data to calculate ICC")
+
+    # Construct the formula
+    if covariate_col:
+        df[covariate_col] = df[covariate_col].astype("category")
+        formula = f"{metric} ~ C({covariate_col})"
+    else:
+        formula = f"{metric} ~ 1"
+
+    # Fit mixed effects model
+    try:
+        model = smf.mixedlm(formula, data=df, groups=df[subject_id])
+    except patsy.PatsyError as e:
+        st.write(e)
+        return None
+    result = model.fit()
+
+    # Extract variance components
+    var_between = result.cov_re.iloc[0, 0]  # Between-subject variance
+    var_within = result.scale               # Residual (within-subject) variance
+
+    # Calculate ICC
+    icc = var_between / (var_between + var_within)
+    return icc
+
+
+
+
+
+def aggregate_matchsums(df_player_matchsums, group_cols=["player_id"]):
+    dfg = df_player_matchsums.groupby(group_cols).agg(
+        # Classic metrics
+        n_interceptions=("n_interceptions", "sum"),
+        n_passes=("n_passes", "sum"),
+        n_tackles_won=("n_tackles_won", "sum"),
+        n_tackles_lost=("n_tackles_lost", "sum"),
+
+        # Involvement
+        total_valued_contribution=("total_contribution", "sum"),
+        total_valued_fault=("total_fault", "sum"),
+        total_valued_involvement=("total_involvement", "sum"),
+        total_raw_contribution=("total_raw_contribution", "sum"),
+        total_raw_fault=("total_raw_fault", "sum"),
+        total_raw_involvement=("total_raw_involvement", "sum"),
+        n_passes_with_contribution=("n_passes_with_contribution", "sum"),
+        n_passes_with_fault=("n_passes_with_fault", "sum"),
+        n_passes_with_involvement=("n_passes_with_involvement", "sum"),
+
+        # Responsibility
+        total_valued_contribution_responsibility=("total_valued_contribution_responsibility", "sum"),
+        total_valued_fault_responsibility=("total_valued_fault_responsibility", "sum"),
+        total_valued_responsibility=("total_valued_responsibility", "sum"),
+        n_passes_with_contribution_responsibility=("n_passes_with_contribution_responsibility", "sum"),
+        n_passes_with_fault_responsibility=("n_passes_with_fault_responsibility", "sum"),
+        n_passes_with_responsibility=("n_passes_with_responsibility", "sum"),
+        # TODO valued intrinsic fault/contribution responsibility etc.
+        total_responsibility=("total_responsibility", "sum"),
+        total_intrinsic_responsibility=("total_intrinsic_responsibility", "sum"),
+        total_intrinsic_relative_responsibility=("total_intrinsic_relative_responsibility", "sum"),
+        total_intrnsic_fault_responsibility=("total_intrinsic_fault_responsibility", "sum"),
+        total_intrinsic_contribution_responsibility=("total_intrinsic_contribution_responsibility", "sum"),
+
+ # total_intrinsic_contribution_responsibility_per90
+
+        # Minutes
+        minutes_played=("minutes_played", "sum"),
+    )
+    dfg["n_tackles"] = (dfg["n_tackles_won"] + dfg["n_tackles_lost"])
+
+    minutes_played_total = dfg["minutes_played"].copy()
+    dfg = (dfg.div(dfg["minutes_played"], axis=0) * 90).rename(columns=lambda x: f"{x}_per90")
+    dfg["minutes_played"] = minutes_played_total
+    dfg["tackles_won_share"] = dfg["n_tackles_won_per90"] / dfg["n_tackles_per90"]
+
+    for col in ["short_name", "first_name", "last_name"]:
+        df_player_matchsums[col] = df_player_matchsums[col].replace("0", "")
+
+    df_player_matchsums["first_plus_last_name"] = (df_player_matchsums["first_name"].astype(str) + " " + df_player_matchsums["last_name"].astype(str)).str.strip()
+    df_player_matchsums["normalized_name"] = df_player_matchsums["short_name"].where(df_player_matchsums["short_name"].notna() & (df_player_matchsums["short_name"] != ""), df_player_matchsums["first_plus_last_name"])
+
+    i_nan = df_player_matchsums["normalized_name"] == ""
+
+    # Resp per pass
+    dfg_per_pass = df_player_matchsums.groupby(group_cols).agg(
+        total_valued_contribution_responsibility=("total_valued_contribution_responsibility", "sum"),
+        total_valued_fault_responsibility=("total_valued_fault_responsibility", "sum"),
+        total_valued_responsibility=("total_valued_responsibility", "sum"),
+        total_valued_involvement=("total_involvement", "sum"),
+        total_valued_contribution=("total_contribution", "sum"),
+        total_valued_fault=("total_fault", "sum"),
+        total_raw_contribution_responsibility=("total_contribution_responsibility", "sum"),
+        total_raw_fault_responsibility=("total_fault_responsibility", "sum"),
+        total_raw_responsibility=("total_responsibility", "sum"),
+        total_raw_contribution=("total_raw_contribution", "sum"),
+        total_raw_fault=("total_raw_fault", "sum"),
+        total_raw_involvement=("total_raw_involvement", "sum"),
+        # total_intrinsic_valued_involvement=("total_intrinsic_valued_involvement", "sum"),
+        total_intrinsic_valued_contribution=("total_intrinsic_valued_contribution_responsibility", "sum"),
+        total_intrinsic_valued_fault=("total_intrinsic_valued_fault_responsibility", "sum"),
+        total_intrinsic_valued_responsibility=("total_intrinsic_valued_responsibility", "sum"),
+        total_intrinsic_valued_contribution_responsibility=("total_intrinsic_valued_contribution_responsibility", "sum"),
+        total_intrinsic_valued_fault_responsibility=("total_intrinsic_valued_fault_responsibility", "sum"),
+
+        # n_passes_with_contribution_responsibility=("n_passes_with_contribution_responsibility", "sum"),
+        # n_passes_with_fault_responsibility=("n_passes_with_fault_responsibility", "sum"),
+        n_passes_with_responsibility=("n_passes_with_responsibility", "sum"),
+        n_passes_with_involvement=("n_passes_with_involvement", "sum"),
+
+        # classic metrics
+        # n_interceptions=("n_interceptions", "sum"),
+        # n_tackles=("n_tackles", "sum"),
+        # n_tackles_won=("n_tackles_won", "sum"),
+        # n_tackles_lost=("n_tackles_lost", "sum"),
+        # n_passes_against=("n_passes_against", "sum"),
+    )
+    dfg_per_pass["total_valued_contribution_responsibility_per_pass"] = dfg_per_pass["total_valued_contribution_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+    dfg_per_pass["total_valued_fault_responsibility_per_pass"] = dfg_per_pass["total_valued_fault_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+    dfg_per_pass["total_valued_responsibility_per_pass"] = dfg_per_pass["total_valued_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+    dfg_per_pass["total_valued_involvement_per_pass"] = dfg_per_pass["total_valued_involvement"] / dfg_per_pass["n_passes_with_involvement"]
+    dfg_per_pass["total_valued_contribution_per_pass"] = dfg_per_pass["total_valued_contribution"] / dfg_per_pass["n_passes_with_involvement"]
+    dfg_per_pass["total_valued_fault_per_pass"] = dfg_per_pass["total_valued_fault"] / dfg_per_pass["n_passes_with_involvement"]
+    dfg_per_pass["total_raw_contribution_responsibility_per_pass"] = dfg_per_pass["total_raw_contribution_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+    dfg_per_pass["total_raw_fault_responsibility_per_pass"] = dfg_per_pass["total_raw_fault_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+    dfg_per_pass["total_raw_responsibility_per_pass"] = dfg_per_pass["total_raw_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+    dfg_per_pass["total_raw_contribution_per_pass"] = dfg_per_pass["total_raw_contribution"] / dfg_per_pass["n_passes_with_involvement"]
+    dfg_per_pass["total_raw_fault_per_pass"] = dfg_per_pass["total_raw_fault"] / dfg_per_pass["n_passes_with_involvement"]
+    dfg_per_pass["total_raw_involvement_per_pass"] = dfg_per_pass["total_raw_involvement"] / dfg_per_pass["n_passes_with_involvement"]
+
+    # dfg_per_pass["total_intrinsic_valued_involvement_per_pass"] = dfg_per_pass["total_intrinsic_valued_involvement"] / dfg_per_pass["n_passes_with_involvement"]
+    dfg_per_pass["total_intrinsic_valued_contribution_per_pass"] = dfg_per_pass["total_intrinsic_valued_contribution"] / dfg_per_pass["n_passes_with_involvement"]
+    dfg_per_pass["total_intrinsic_valued_fault_per_pass"] = dfg_per_pass["total_intrinsic_valued_fault"] / dfg_per_pass["n_passes_with_involvement"]
+    dfg_per_pass["total_intrinsic_valued_responsibility_per_pass"] = dfg_per_pass["total_intrinsic_valued_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+    dfg_per_pass["total_intrinsic_valued_contribution_responsibility_per_pass"] = dfg_per_pass["total_intrinsic_valued_contribution_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+    dfg_per_pass["total_intrinsic_valued_fault_responsibility_per_pass"] = dfg_per_pass["total_intrinsic_valued_fault_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+
+    # dfg_per_pass["n_interceptions_per_pass"] = dfg_per_pass["n_interceptions"] / dfg_per_pass["n_passes_against"]
+
+    dfg_per_pass = dfg_per_pass.drop(columns=[
+        # "n_passes_with_contribution_responsibility",
+        # "n_passes_with_fault_responsibility",
+        "n_passes_with_responsibility",
+        "n_passes_with_involvement",
+        "total_valued_contribution_responsibility",
+        "total_valued_fault_responsibility",
+        "total_valued_responsibility",
+        "total_valued_involvement",
+        "total_valued_contribution",
+        "total_valued_fault",
+        "total_raw_contribution_responsibility",
+        "total_raw_fault_responsibility",
+        "total_raw_responsibility",
+        "total_raw_contribution",
+        "total_raw_fault",
+        "total_raw_involvement",
+        # "total_intrinsic_valued_involvement",
+        "total_intrinsic_valued_contribution",
+        "total_intrinsic_valued_fault",
+        "total_intrinsic_valued_responsibility",
+        "total_intrinsic_valued_contribution_responsibility",
+        "total_intrinsic_valued_fault_responsibility",
+    ])
+    dfg = dfg.join(dfg_per_pass, on=group_cols, rsuffix="_per_pass")
+
+    dfg_meta = df_player_matchsums.groupby(group_cols).agg(
+        short_name=("short_name", "first"),
+        first_name=("first_name", "first"),
+        last_name=("last_name", "first"),
+        normalized_name=("normalized_name", "first"),
+    )
+    dfg = dfg.join(dfg_meta, on=group_cols)
+
+    return dfg.reset_index()
+
+
+
 def main():
     # overwrite_if_exists = True
     overwrite_if_exists = st.toggle("Overwrite if exists", value=False)
@@ -231,12 +542,16 @@ def main():
     _process_tracking = st.toggle("Process tracking", value=False)
     _check_tracking_files = st.toggle("Check tracking files", value=False)
     _pp_to_drive = st.toggle("Preprocess and upload to drive", value=False)
+    _do_reduction = st.toggle("Upload reduced tracking data to Drive", False)
     _do_involvement = st.toggle("Process involvements", value=False)
     _calculate_responsibility_model = st.toggle("Calculate responsibility model", value=False)
     _do_create_matchsums = st.toggle("Create matchsums", value=False)
+    _do_videos = st.toggle("Create videos", value=False)
+    _do_analysis = st.toggle("Do analysis", value=True)
+
     folder = st.text_input("Folder", "Y:/w_raw")
-    if not os.path.exists(folder):
-        st.warning(f"Folder {folder} does not exist")
+    # if not os.path.exists(folder):
+    #     st.warning(f"Folder {folder} does not exist")
         # return
     fpath_target_meta = st.text_input("Processed meta.csv file", os.path.join(folder, "meta.csv"))
     fpath_target_lineup = st.text_input("Processed lineups.csv file", os.path.join(folder, "lineups.csv"))
@@ -248,6 +563,7 @@ def main():
     folder_pp_tracking = os.path.join(folder, "preprocessed", folder_tracking)
     folder_pp_events = os.path.join(folder, "preprocessed", folder_events)
     folder_drive_tracking = "tracking"
+    folder_full_tracking = os.path.join(folder, "finalized", folder_tracking)
     folder_drive_events = "events"
     fpath_drive_team_matchsums = "team_matchsums.csv"
     fpath_drive_players_matchsums = "players_matchsums.csv"
@@ -284,7 +600,17 @@ def main():
 
         df_lineups = defensive_network.parse.drive.download_csv_from_drive("lineups.csv")
         # df_meta = df_meta[df_meta["slugified_match_string"] == "bundesliga-2023-2024-12-st-rb-leipzig-1-fc-koln"]
-        finalize_events_and_tracking_to_drive(folder_pp_tracking, folder_pp_events, df_meta, df_lineups, folder_drive_events, folder_drive_tracking)
+        finalize_events_and_tracking_to_drive(folder_pp_tracking, folder_pp_events, df_meta, df_lineups, folder_drive_events, folder_drive_tracking, folder_full_tracking)
+
+    if _do_reduction:
+        # def upload_reduced_tracking_data(df_meta, drive_folder_events, full_tracking_folder, drive_folder_tracking):
+        df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=True)
+        upload_reduced_tracking_data(df_meta, folder_drive_events, folder_full_tracking, folder_drive_tracking)
+
+    if _do_involvement:
+        df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=True)
+        df_meta = df_meta[(df_meta["match_id"] == "2d4fe74894566dc4b826bd608deaa53c") | (df_meta["slugified_match_string"] == "bundesliga-2023-2024-18-st-bayer-leverkusen-eintracht-frankfurt")].iloc[::-1]
+        process_involvements(df_meta, folder_drive_tracking, folder_drive_events, folder_drive_involvement)
 
     if _calculate_responsibility_model:
         def calc_involvement_model(folder_drive_involvement, fpath_out="responsibility_model.csv"):
@@ -316,7 +642,6 @@ def main():
             st.write("dfg")
             st.write(dfg)
 
-
             for match_id, df_involvement_test_match in df_involvement_test.groupby("slugified_match_string"):
                 df_tracking_match = defensive_network.parse.drive.download_parquet_from_drive(f"tracking/{match_id}.parquet")
                 st.write("df_involvement_test_match")
@@ -325,25 +650,575 @@ def main():
 
             # df_involvement = df_involvement[~df_involvement["pass_is_intercepted"]]
 
-            defensive_network.parse.drive.upload_csv_to_drive(dfg, fpath_out)
-
-            st.stop()
+            defensive_network.parse.drive.upload_csv_to_drive(dfg.reset_index(), fpath_out)
 
         calc_involvement_model(folder_drive_involvement)
 
     if _do_create_matchsums:
         df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv")
         df_lineups = defensive_network.parse.drive.download_csv_from_drive("lineups.csv")
-        # df_meta = df_meta[df_meta["slugified_match_string"] == "bundesliga-2023-2024-12-st-rb-leipzig-1-fc-koln"]
-        create_matchsums(folder_drive_tracking, folder_drive_events, df_meta, df_lineups, fpath_drive_team_matchsums, fpath_drive_players_matchsums)
+        # df_meta = df_meta[df_meta["match_id"] == "2d4fe74894566dc4b826bd608deaa53c"]
+        create_matchsums(folder_full_tracking, folder_drive_events, df_meta, df_lineups, fpath_drive_team_matchsums, fpath_drive_players_matchsums, overwrite_if_exists=overwrite_if_exists)
 
-    if _do_involvement:
-        df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv")
-        # df_meta = df_meta[df_meta["slugified_match_string"] == "bundesliga-2023-2024-18-st-bayer-leverkusen-eintracht-frankfurt"]
-        process_involvements(df_meta, folder_drive_tracking, folder_drive_events, folder_drive_involvement)
+    if _do_videos:
+        create_videos()
+
+    if _do_analysis:
+        df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
+        df_player_matchsums["is_rückrunde"] = df_player_matchsums["kickoff_time"].apply(lambda x: pd.to_datetime(x).year == 2024)
+        df_player_matchsums = df_player_matchsums[df_player_matchsums["role_category"] != "GK"]
+        position_mapping = {'CB-3': 'CB', 'LB': 'FB', 'LCB-3': 'CB', 'LCB-4': 'CB', 'LDM': 'CM', 'LS': 'CF',
+                            'LW': 'Winger', 'LZM': 'CM', 'RB': 'FB', 'RCB-3': 'CB', 'RCB-4': 'CB', 'RDM': 'CM',
+                            'RS': 'CF', 'RW': 'Winger', 'RWB': 'FB', 'RZM': 'CM', 'ST': 'CF', 'ZDM': 'CM', 'ZOM': 'CM',
+                            'LWB': 'FB'}
+        df_player_matchsums["coarse_position"] = df_player_matchsums["role_category"].map(position_mapping)
+        assert df_player_matchsums["coarse_position"].notna().all(), "Some positions are not mapped to coarse positions"
+        df_player_matchsums["player_pos_minutes_played"] = df_player_matchsums.groupby(["player_id", "coarse_position"])["minutes_played"].transform("sum")
+
+        df_agg_match_player_pos = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "coarse_position", "match_id"])
+        # df_agg_match_player_pos["player_minutes_played"] = df_agg_match_player_pos.groupby("player_id")["minutes_played"].transform("sum")
+        df_agg_match_player_pos["player_pos_minutes_played"] = df_agg_match_player_pos.groupby(["player_id", "coarse_position"])["minutes_played"].transform("sum")
+        # df_agg_match_player_pos["player_matches_played"] = df_agg_match_player_pos.groupby("player_id")["match_id"].transform("nunique")
+        # st.write("df_agg_match_player_pos")
+        # st.write(df_agg_match_player_pos[["player_id", "coarse_position", "match_id"] + [col for col in df_agg_match_player_pos.columns if "minutes" in col]])
+
+        df_agg_player_pos = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "coarse_position"])
+        df_agg_player_pos["player_minutes_played"] = df_agg_player_pos.groupby("player_id")["minutes_played"].transform("sum")
+        # df_agg_match_player_pos["player_matches_played"] = df_agg_match_player_pos.groupby("player_id")["match_id"].transform("nunique")
+
+        df_agg_team = aggregate_matchsums(df_player_matchsums, group_cols=["team_id", "coarse_position", "player_id"]).reset_index()
+        # df_agg_team["full_name"] = df_agg_team["first_name"] + " " + df_agg_team["last_name"]
+
+        df_agg_by_season_half = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "coarse_position", "is_rückrunde"])
+        # df_agg_match_player = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "match_id"])
+        # df_agg_match_player["player_minutes_played"] = df_agg_match_player.groupby("player_id")["minutes_played"].transform("sum")
+        # df_agg_match_player["player_matches_played"] = df_agg_match_player.groupby("player_id")["match_id"].transform("nunique")
+
+        kpis = [
+            # Classic metrics
+            "n_interceptions_per90",
+            "n_tackles_won_per90",
+            "n_tackles_per90",
+            "tackles_won_share",
+            "n_passes_per90",
+
+            # Valued Responsibility
+            # "total_valued_contribution_responsibility_per90",
+            # "total_valued_fault_responsibility_per90",
+            # "total_valued_responsibility_per90",
+            #
+            # "total_intrinsic_contribution_responsibility_per90",
+            # "total_intrinsic_fault_responsibility_per90",
+            # "total_intrinsic_responsibility_per90",
+
+            # total_raw_contribution=("raw_involvement", "sum"),
+            # total_contribution=("involvement", "sum"),
+            # total_valued_contribution_responsibility=("valued_responsibility", "sum"),
+            # total_contribution_responsibility=("responsibility", "sum"),
+            # total_intrinsic_contribution_responsibility=("intrinsic_responsibility", "sum"),
+            # total_intrinsic_valued_contribution_responsibility=("intrinsic_valued_responsibility", "sum"),
+            # n_passes_with_contribution=("raw_involvement", lambda x: (x != 0).sum()),
+            # n_passes_with_contribution_responsibility=("valued_responsibility", lambda x: ((x < 0) & (x != 0)).sum()),
 
 
-def _create_matchsums(df_event, df_tracking, series_meta, df_lineup):
+            # "total_responsibility_per90",
+            # "total_intrinsic_responsibility_per90",
+            "total_intrinsic_relative_responsibility_per90",
+
+            # Pass counts
+            # "n_passes_with_contribution_responsibility_per90",
+            # "n_passes_with_fault_responsibility_per90",
+            # "n_passes_with_responsibility_per90",
+            # "n_passes_with_contribution_per90",
+            # "n_passes_with_fault_per90",
+            # "n_passes_with_involvement_per90",
+
+            # Involvement
+            "total_involvement_per90",
+            "total_contribution_per90",
+            # "total_fault_per90",
+            # "total_raw_contribution_per90",
+            # "total_raw_fault_per90",
+            # "total_raw_involvement_per90",
+
+            # Per pass
+            "total_valued_responsibility_per_pass",
+            "total_valued_contribution_responsibility_per_pass",
+            "total_valued_fault_responsibility_per_pass",
+            "total_valued_involvement_per_pass",
+            "total_valued_contribution_per_pass",
+            "total_valued_fault_per_pass",
+            "total_raw_responsibility_per_pass",
+            "total_raw_contribution_responsibility_per_pass",
+            "total_raw_fault_responsibility_per_pass",
+            "total_raw_involvement_per_pass",
+            "total_raw_contribution_per_pass",
+            "total_raw_fault_per_pass",
+            # "total_intrinsic_valued_involvement_per_pass",
+            "total_intrinsic_valued_contribution_per_pass",
+            "total_intrinsic_valued_fault_per_pass",
+            "total_intrinsic_valued_responsibility_per_pass",
+            "total_intrinsic_valued_contribution_responsibility_per_pass",
+            "total_intrinsic_valued_fault_responsibility_per_pass",
+
+
+            #     dfg_per_pass["total_valued_contribution_responsibility_per_pass"] = dfg_per_pass["total_valued_contribution_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_valued_fault_responsibility_per_pass"] = dfg_per_pass["total_valued_fault_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_valued_responsibility_per_pass"] = dfg_per_pass["total_valued_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_valued_involvement_per_pass"] = dfg_per_pass["total_valued_involvement"] / dfg_per_pass["n_passes_with_involvement"]
+            #     dfg_per_pass["total_valued_contribution_per_pass"] = dfg_per_pass["total_valued_contribution"] / dfg_per_pass["n_passes_with_involvement"]
+            #     dfg_per_pass["total_valued_fault_per_pass"] = dfg_per_pass["total_valued_fault"] / dfg_per_pass["n_passes_with_involvement"]
+            #     dfg_per_pass["total_raw_contribution_responsibility_per_pass"] = dfg_per_pass["total_raw_contribution_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_raw_fault_responsibility_per_pass"] = dfg_per_pass["total_raw_fault_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_raw_responsibility_per_pass"] = dfg_per_pass["total_raw_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+            #
+            #     dfg_per_pass["total_intrinsic_valued_contribution_per_pass"] = dfg_per_pass["total_intrinsic_valued_contribution"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_intrinsic_valued_fault_per_pass"] = dfg_per_pass["total_intrinsic_valued_fault"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_intrinsic_valued_responsibility_per_pass"] = dfg_per_pass["total_intrinsic_valued_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_raw_contribution_per_pass"] = dfg_per_pass["total_raw_contribution"] / dfg_per_pass["n_passes_with_involvement"]
+            #     dfg_per_pass["total_raw_fault_per_pass"] = dfg_per_pass["total_raw_fault"] / dfg_per_pass["n_passes_with_involvement"]
+            #     dfg_per_pass["total_raw_involvement_per_pass"] = dfg_per_pass["total_raw_involvement"] / dfg_per_pass["n_passes_with_involvement"]
+
+            #     dfg_per_pass["total_raw_contribution_responsibility_per_pass"] = dfg_per_pass["total_raw_contribution_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_raw_fault_responsibility_per_pass"] = dfg_per_pass["total_raw_fault_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_raw_responsibility_per_pass"] = dfg_per_pass["total_raw_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_valued_intrinsic_contribution_per_pass"] = dfg_per_pass["total_valued_intrinsic_contribution"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_valued_intrinsic_fault_per_pass"] = dfg_per_pass["total_valued_intrinsic_fault"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_valued_intrinsic_responsibility_per_pass"] = dfg_per_pass["total_valued_intrinsic_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+            #     dfg_per_pass["total_raw_contribution_per_pass"] = dfg_per_pass["total_raw_contribution"] / dfg_per_pass["n_passes_with_involvement"]
+            #     dfg_per_pass["total_raw_fault_per_pass"] = dfg_per_pass["total_raw_fault"] / dfg_per_pass["n_passes_with_involvement"]
+            #     dfg_per_pass["total_raw_involvement_per_pass"] = dfg_per_pass["total_raw_involvement"] / dfg_per_pass["n_passes_with_involvement"]
+        ]
+        for kpi in kpis:
+            if kpi not in df_agg_match_player_pos.columns:
+                st.warning(f"{kpi} not in df_agg_match_player_pos")
+        kpis = [kpi for kpi in kpis if kpi in df_agg_match_player_pos.columns]
+
+        if st.toggle("Matchsum Descriptives", False):
+            # Position counts
+            df_desc1 = df_agg_match_player_pos.groupby(["coarse_position", "player_id"]).agg(
+                n_matches=("match_id", "nunique"),
+                minutes_played=("minutes_played", "sum"),
+                normalized_name=("normalized_name", "first"),
+            ).reset_index()
+            st.write("df_desc1")
+            st.write(df_desc1)
+
+        if st.toggle("Season-by-season correlation", False):
+            with st.expander("Correlations"):
+                # df_agg_player_rr = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "is_rückrunde"])
+                # df_agg_player_rr = df_agg_player_rr.reset_index().set_index("player_id")
+                df_agg = df_agg_by_season_half.copy().reset_index()
+                min_minutes = st.number_input("Minimum minutes played by player for Season-by-season corr.", min_value=0, value=300)
+                df_agg = df_agg[df_agg["minutes_played"] > min_minutes]
+                df_hinrunde = df_agg[df_agg["is_rückrunde"] == False]
+                df_rückrunde = df_agg[df_agg["is_rückrunde"] == True]
+                df_data_new = df_hinrunde.merge(df_rückrunde, on=["player_id", "coarse_position"], suffixes=("_hinrunde", "_rückrunde"))
+                st.write("df_data_new")
+                st.write(df_data_new)
+
+                data = []
+                for kpi_nr, kpi in enumerate(df_agg.columns):
+                    # correlate hinrunde with rückrunde
+                    if kpi == "player_id" or kpi == "is_rückrunde" or kpi == "coarse_position":
+                        continue
+
+                    # correlation plot with trendline
+                    # sns.scatterplot(data=df_hinrunde, x=kpi, y=df_rückrunde[kpi], hue="is_rückrunde")
+                    # sns.regplot(data=df_agg, x=kpi, y="is_rückrunde", scatter=True, color='blue', label='Trendline')
+                    try:
+                        # sns.regplot(data=df_data_new, x=f"{kpi}_hinrunde", y=f"{kpi}_rückrunde", scatter=True, color='blue', label='Trendline')
+                        sns.lmplot(data=df_data_new, x=f"{kpi}_hinrunde", y=f"{kpi}_rückrunde", hue="coarse_position", scatter=True)
+
+                    except (ValueError, np.exceptions.DTypePromotionError) as e:
+                        continue
+
+                    for i, row in df_data_new.iterrows():
+                        plt.text(
+                            row[f"{kpi}_hinrunde"],  # x position
+                            row[f"{kpi}_rückrunde"],  # y position
+                            row["short_name_hinrunde"],
+                            fontsize=9,
+                            ha='right',
+                            va='bottom'
+                        )
+
+                    try:
+                        # correlation_coefficient = df_hinrunde[kpi].corr(df_rückrunde[kpi])
+                        correlation_coefficient = float(df_data_new[f"{kpi}_hinrunde"].corr(df_data_new[f"{kpi}_rückrunde"]))
+                    except ValueError as e:
+                        st.write(e)
+                        correlation_coefficient = np.nan
+
+                    df_data_new_only_CBs = df_data_new[df_data_new["coarse_position"] == "CB"]
+                    correlation_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"]))
+                    spearman_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"], method='spearman'))
+
+                    columns = st.columns(2)
+                    plt.title(f"{kpi} (r={correlation_coefficient:.2f})")
+                    columns[0].write(kpi)
+                    columns[1].write(f"{correlation_coefficient=}")
+                    # st.write(correlation_coefficient)
+                    #
+                    plt.xlabel("Hinrunde")
+                    plt.ylabel("Rückrunde")
+                    plt.title(f"Correlation of {kpi} between Hinrunde and Rückrunde")
+
+                    # plot diagonal
+                    plt.plot(
+                        [df_data_new[f"{kpi}_hinrunde"].min(), df_data_new[f"{kpi}_hinrunde"].max()],
+                        [df_data_new[f"{kpi}_rückrunde"].min(), df_data_new[f"{kpi}_rückrunde"].max()],
+                        color='black', linestyle='--', label='Diagonal'
+                    )
+                    columns[0].write(plt.gcf())
+
+                    plt.close()
+
+                    plt.figure()
+                    # scatter plot with trendline
+                    sns.regplot(data=df_data_new, x=f"{kpi}_hinrunde", y=f"{kpi}_rückrunde", scatter=True, color='blue', label='Trendline')
+                    plt.xlabel(f"{kpi} Hinrunde")
+                    plt.ylabel(f"{kpi} Rückrunde")
+                    plt.title(f"Scatter plot of {kpi} between Hinrunde and Rückrunde")
+                    columns[1].write(plt.gcf())
+                    plt.close()
+
+                    data.append({
+                        "kpi": kpi,
+                        "correlation_coefficient": correlation_coefficient,
+                        "correlation_coefficient_only_CBs": correlation_coefficient_only_CBs,
+                        "spearman_coefficient_only_CBs": spearman_coefficient_only_CBs,
+                    })
+
+                df_correlations = pd.DataFrame(data)
+                st.write("df_correlations")
+                st.write(df_correlations)
+
+        data = []
+        if st.toggle("ICC", False):
+            min_minutes = st.number_input("Minimum minutes played by player for ICC.", min_value=0, value=30)
+            df_agg = df_agg_match_player_pos[df_agg_match_player_pos["minutes_played"] >= min_minutes].copy()
+            df_agg["player_pos_minutes_played"] = df_agg.groupby(["player_id", "coarse_position"])["minutes_played"].transform("sum")
+            min_minutes_player = st.number_input("Minimum minutes played by player-pos for ICC.", min_value=0, value=300)
+            df_agg = df_agg[df_agg["player_pos_minutes_played"] >= min_minutes_player].copy()
+            df_agg = df_agg.loc[:, ~df_agg.columns.duplicated()]
+
+            st.write(f"Using {len(df_agg)} match performances of {len(df_agg['player_id'].unique())} players that played at least {min_minutes_player} minutes for ICC calculation.")
+            with st.expander("Match-level ICC (how consistent and discriminative are KPIs on the match-level?)"):
+                n_cols = 1
+                columns = st.columns(n_cols)
+                # player_col = "short_name"
+                player_col = "player_id"
+                for kpi_nr, kpi in enumerate(df_agg.columns):
+                    col = columns[kpi_nr % n_cols]
+                    try:
+                        # deduplicate
+                        df_agg = df_agg.loc[:, ~df_agg.columns.duplicated()]
+                        icc = calculate_icc(df_agg, kpi, player_col, "coarse_position")
+                        data.append({"kpi": kpi, "icc": icc})
+                    except ValueError as e:
+                        col.write(e)
+                        data.append({"kpi": kpi, "icc": None})
+                        continue
+                    col.write(f"ICC for {kpi}: {icc}")
+
+                    # sort by average
+                    df_agg = df_agg.sort_values(by=kpi, ascending=False)
+                    assert kpi in df_agg.columns and "short_name" in df_agg.columns, f"Columns {kpi} or short_name not found in df_agg"
+                    # plt.figure(figsize=(16, 9))
+                    sns.boxplot(data=df_agg, x="short_name", y=kpi, hue="coarse_position", width=1, dodge=False)
+                    plt.xticks(rotation=90)
+                    plt.xticks(fontsize=4)  # adjust the value as needed
+                    plt.title(f"Discriminability of '{kpi}'")
+                    col.write(plt.gcf())
+                    plt.close()
+
+            df_icc = pd.DataFrame(data)
+            st.write("df_icc")
+            st.write(df_icc)
+
+        if st.toggle("Bootstrapped Season-Level ICC", True):
+            min_minutes_per_match = st.number_input("Minimum minutes played by player for Season-Level ICC.", min_value=0, value=30)
+            df_base_matchsums = df_player_matchsums.copy()
+            df_base_matchsums = df_base_matchsums[df_base_matchsums["minutes_played"] >= min_minutes_per_match]
+            min_minutes = st.number_input("Minimum minutes played by player-pos for Season-Level ICC.", min_value=0, value=300)
+            df_base_matchsums = df_base_matchsums[df_base_matchsums["player_pos_minutes_played"] >= min_minutes].copy()
+            st.write(f"Using {len(df_base_matchsums)} match performances of {len(df_base_matchsums['player_id'].unique())} players that played at least {min_minutes} minutes for bootstrapped ICC calculation.")
+
+            def bootstrap_aggregate(df, group_cols, n_bootstrap=2000, random_state=None):
+                st.write(f"{n_bootstrap=}")
+                rng = np.random.default_rng(random_state)
+                results = []
+
+                for group_key, group_df in defensive_network.utility.general.progress_bar(df.groupby(group_cols), total=df[group_cols].nunique().prod(), desc="Bootstrapping"):
+                    boots = []
+                    for _ in range(n_bootstrap):
+                        sample = group_df.sample(n=len(group_df), replace=True, random_state=rng.integers(0, 1e9))
+                        # boots.append(transform_func(sample))
+                        df_agg = aggregate_matchsums(sample, group_cols)
+                        boots.append(df_agg)
+
+                    df = pd.concat(boots)
+                    # result = dict(zip(group_cols, group_key if isinstance(group_key, tuple) else (group_key,)))
+                    # result.update({
+                    #     'mean': boots.mean(),
+                    #     'ci_lower': np.percentile(boots, 2.5),
+                    #     'ci_upper': np.percentile(boots, 97.5)
+                    # })
+                    results.append(df)
+                    # st.write("result")
+                    # st.write(result)
+
+                df = pd.concat(results, axis=0)
+                df["n_bootstrap"] = n_bootstrap
+                st.write("df_bootstrap")
+                st.write(df)
+                return df
+
+            st.write("df_base_matchsums")
+            st.write(df_base_matchsums)
+
+            df_agg = bootstrap_aggregate(df_base_matchsums, ["player_id", "coarse_position"])
+            df_agg["player_and_coarse_position"] = df_agg["player_id"].astype(str) + "_" + df_agg["coarse_position"]
+
+            data = []
+            for kpi in kpis:
+                icc = calculate_icc(df_agg, kpi, "player_and_coarse_position", "coarse_position")
+                data.append({"kpi": kpi, "icc": icc})
+            df = pd.DataFrame(data)
+            st.write("df")
+            st.write(df)
+
+            st.stop()
+
+        if st.toggle("Histograms", True):
+            min_minutes_per_match_hist = st.number_input("Minimum minutes played per match for histograms.", min_value=0, value=30)
+            min_minutes_total = st.number_input("Minimum total minutes played for histograms.", min_value=0, value=400)
+            df_agg_player_pos_hist = df_agg_player_pos[df_agg_player_pos["minutes_played"] > min_minutes_total]
+            df_agg_match_player_pos_hist = df_agg_match_player_pos[df_agg_match_player_pos["minutes_played"] > min_minutes_per_match_hist]
+            st.write("df_agg_match_player_pos_hist")
+            st.write(df_agg_match_player_pos_hist)
+            with st.expander("Histograms"):
+                for kpi in kpis:
+                    columns = st.columns(2)
+                    for col, df_agg, label in zip(columns, [
+                            df_agg_player_pos_hist,
+                            df_agg_match_player_pos_hist
+                    ], ["Season-Level", "Match-Level"]):
+                        col.write(f"Descriptives for {kpi} ({label})")
+                        col.write(df_agg[kpi].describe())
+                        # sns.histplot(df_agg[kpi], kde=True, log_scale=(True, False))
+                        try:
+                            sns.histplot(df_agg, x=kpi, hue="coarse_position", kde=True, log_scale=(False, False), multiple="stack")
+                        except np.linalg.LinAlgError as e:
+                            st.write(e)
+                            continue
+
+                        plt.title(f"Distribution of {kpi}")
+                        col.write(plt.gcf())
+                        plt.close()
+
+                        plt.figure(figsize=(8, 5))
+                        sns.boxplot(data=df_agg, x="coarse_position", y=kpi)
+                        plt.title(f"Boxplot of {kpi} by Position ({label})")
+                        col.pyplot(plt.gcf())
+                        plt.close()
+
+        if st.toggle("KPI correlations as heatmap", True):
+            min_minutes_per_match_hist = st.number_input("Minimum minutes played per match for histograms.", min_value=0, value=30)
+            min_minutes_total = st.number_input("Minimum total minutes played for histograms.", min_value=0, value=400)
+            df_agg_player_pos_hist = df_agg_player_pos[df_agg_player_pos["minutes_played"] > min_minutes_total]
+            df_agg_match_player_pos_hist = df_agg_match_player_pos[df_agg_match_player_pos["minutes_played"] > min_minutes_per_match_hist]
+            with st.spinner("Calculating heatmap..."):
+                columns = st.columns(2)
+                for col, df_agg, label in zip(columns, [
+                    df_agg_player_pos_hist,
+                    df_agg_match_player_pos_hist
+                ], ["Season-Level", "Match-Level"]):
+                    st.write(label)
+                    # heatmap
+                    corr_matrix = df_agg[kpis].corr()
+                    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f", square=True, cbar_kws={"shrink": .8}, annot_kws={"size": 4})
+                    plt.suptitle("Correlation Heatmap", y=1.02)
+                    st.write(plt.gcf())
+                    plt.close()
+
+
+                    # do another heatmap with only the first 4 columns but all rows
+                    plt.figure()
+                    sns.heatmap(corr_matrix.iloc[:, :5], annot=True, cmap='coolwarm', fmt=".2f", square=True, cbar_kws={"shrink": .8}, annot_kws={"size": 4})
+                    plt.suptitle("Correlation Heatmap", y=1.02)
+                    st.write(plt.gcf())
+                    plt.close()
+
+        if st.toggle("FIFA Correlations", True):
+            with st.expander("FIFA", True):
+                import thefuzz
+                df_fifa_players = defensive_network.parse.drive.download_csv_from_drive("fifa_ratings.csv", st_cache=True)
+                # df_soccerdonna = defensive_network.parse.drive.download_excel_from_drive("soccerdonna_market_values.xlsx", st_cache=True)
+                df_soccerdonna = pd.read_excel("C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/scripts/soccerdonna_market_values_curated.xlsx")
+                st.write("df_soccerdonna")
+                st.write(df_soccerdonna)
+                # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive("players_matchsums.csv")
+                # df_agg_player = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "position"])
+                # df_agg_player["coarse_position"] = df_agg_player["position"].map(position_mapping)
+                df_agg_player = df_agg_player_pos.copy()
+                df_agg_player["full_name"] = df_agg_player["first_name"] + " " + df_agg_player["last_name"]
+                min_minutes = st.number_input("Minimum minutes played by player for FIFA correlations.", min_value=0, value=300)
+                df_agg_player = df_agg_player[df_agg_player["minutes_played"] > min_minutes]
+
+                # df_agg_team = aggregate_matchsums(df_player_matchsums, group_cols=["team_id", "position", "player_id"]).reset_index()
+                # df_agg_team["full_name"] = df_agg_team["first_name"] + " " + df_agg_team["last_name"]
+                # df_agg_team["coarse_position"] = df_agg_team["position"].map(position_mapping)
+                df_agg_team = df_agg_team[df_agg_team["minutes_played"] > min_minutes]
+                df_agg_team["full_name"] = df_agg_team["first_name"] + " " + df_agg_team["last_name"]
+
+                # Map FIFA names
+                fifa_names = df_fifa_players["name"].tolist()
+                soccerdonna_names = df_soccerdonna["name"].tolist()
+
+                manual_fifa_mapping = {
+                    "Sammy Jerabek": "Samantha Jerabek",
+                    "0 Letícia Santos": "Letícia Santos de Oliveira",
+                    "Allie Hess": "Alexandria Loy Hess",
+                    # 0 Letícia Santos	Letícia Santos de Oliveira
+                    # Allie Hess	Alexandria Loy Hess
+                }
+                fifa_mapping = manual_fifa_mapping.copy()
+                soccerdonna_mapping = dict()
+
+                for idx, row in df_agg_player.iterrows():
+                    import thefuzz.process
+                    full_name = row['full_name']
+                    if full_name in manual_fifa_mapping:
+                        best_match, score = manual_fifa_mapping[full_name], 200
+                    else:
+                        best_match, score = thefuzz.process.extractOne(full_name, fifa_names)
+
+                    # st.write(full_name, ",", best_match, score)
+                    if score > 90:
+                        df_agg_player.at[idx, 'fifa_match'] = best_match
+                        df_agg_player.at[idx, 'match_score'] = score
+                        fifa_mapping[full_name]  = best_match
+                    else:
+                        fifa_mapping[full_name] = None
+
+                    # match Soccerdonna name
+                    best_match_soccerdonna, score_soccerdonna = thefuzz.process.extractOne(full_name, soccerdonna_names)
+
+                    if score_soccerdonna > 90:
+                        df_agg_player.at[idx, 'soccerdonna_name'] = best_match_soccerdonna
+                        df_agg_player.at[idx, 'soccerdonna_score'] = score_soccerdonna
+                        soccerdonna_mapping[full_name] = best_match_soccerdonna
+                    else:
+                        soccerdonna_mapping[full_name] = None
+
+                df_agg_team["fifa_name"] = df_agg_team["full_name"].map(fifa_mapping)
+                df_agg_team = df_agg_team.merge(df_fifa_players, left_on="fifa_name", right_on="name", how="left")
+                df_agg_team["soccerdonna_name"] = df_agg_team["full_name"].map(soccerdonna_mapping)
+                df_agg_team = df_agg_team.merge(df_soccerdonna, left_on="soccerdonna_name", right_on="name", how="left")
+                st.write("df_agg_team")
+                st.write(df_agg_team)
+
+                df_agg_player = df_agg_player.merge(df_fifa_players, left_on="fifa_match", right_on="name", how="left")
+                df_agg_player = df_agg_player.merge(df_soccerdonna, left_on="soccerdonna_name", right_on="name", how="left")
+                st.write("df_agg_player")
+                st.write(df_agg_player)
+                # df_agg_player = df_agg_player[df_agg_player["minutes_played"] > 600]
+                # st.write("df_agg_team")
+                # st.write(df_agg_team)
+
+                data = []
+                x_variables = kpis
+                y_variables = ["def_awareness", "defending", "market_value"]
+                # xy_variables = [(x, y) for x in x_variables for y in y_variables]
+                for x_variable in x_variables:
+                    columns = st.columns(len(y_variables))
+                    for y_nr, y_variable in enumerate(y_variables):
+                        col = columns[y_nr]
+                        try:
+                            # sns.regplot(data=df_agg_player, x=x_variable, y=y_variable, hue="position", scatter=True, label='Trendline')
+                            sns.lmplot(data=df_agg_player, x=x_variable, y=y_variable, hue="coarse_position", scatter=True)
+
+                        except (ValueError, np.exceptions.DTypePromotionError) as e:
+                            col.write(e)
+
+                        # for i, row in df_data_new.iterrows():
+                        #     plt.text(
+                        #         row[f"{kpi}_hinrunde"],  # x position
+                        #         row[f"{kpi}_rückrunde"],  # y position
+                        #         row["short_name_hinrunde"],
+                        #         fontsize=9,
+                        #         ha='right',
+                        #         va='bottom'
+                        #     )
+
+                        try:
+                            correlation_coefficient = df_agg_player[x_variable].corr(df_agg_player[y_variable])
+                        except ValueError as e:
+                            st.write(e)
+                            correlation_coefficient = np.nan
+
+                        df_agg_player_only_cb = df_agg_player[df_agg_player["coarse_position"] == "CB"]
+                        correlation_coefficient_only_CBs = df_agg_player_only_cb[x_variable].corr(df_agg_player_only_cb[y_variable])
+
+                        plt.title(f"{x_variable}-{y_variable}")
+                        col.write(f"{x_variable}-{y_variable}")
+                        #
+                        plt.xlabel(x_variable)
+                        plt.ylabel(y_variable)
+                        plt.title(f"Correlation of {x_variable} and {y_variable}")
+                        col.write(plt.gcf())
+                        plt.close()
+                        #
+                        # st.write("BLA")
+                        # st.write("df_agg_team")
+                        # st.write(df_agg_team)
+
+                        # Assume df has columns: x, y, team, position
+
+                        # df_agg_team["position"] = df_agg_team["position_x"].fillna(df_agg_team["position_y"])
+
+                        with st.spinner("Regress"):
+                            df_agg_team = df_agg_team.dropna(subset=[x_variable, y_variable, "team_id", "position"])
+
+                            # Regress x on team and position
+                            model_x = statsmodels.formula.api.ols(f'{x_variable} ~ C(team_id) + C(coarse_position)', data=df_agg_team).fit()
+                            resid_x = model_x.resid
+
+                            # Regress y on team and position
+                            model_y = statsmodels.formula.api.ols(f'{y_variable} ~ C(team_id) + C(coarse_position)', data=df_agg_team).fit()
+                            resid_y = model_y.resid
+
+                            # Correlation of residuals
+                            try:
+                                corr, pval = pearsonr(resid_x, resid_y)
+                            except ValueError as e:
+                                st.write(e)
+                                continue
+
+                            # Regress on position only
+                            model_x_pos = statsmodels.formula.api.ols(f'{x_variable} ~ C(coarse_position)', data=df_agg_team).fit()
+                            resid_x_pos = model_x_pos.resid
+                            model_y_pos = statsmodels.formula.api.ols(f'{y_variable} ~ C(coarse_position)', data=df_agg_team).fit()
+                            resid_y_pos = model_y_pos.resid
+                            corr_pos, pval_pos = pearsonr(resid_x_pos, resid_y_pos)
+
+                            data.append(
+                                {"r": correlation_coefficient, "abs_r": abs(correlation_coefficient), "x": x_variable,
+                                 "y": y_variable, "team_and_position_corrected_correlation": corr, "p": pval,
+                                 "position_corrected_correlation_pos": corr_pos, "p_pos": pval_pos,
+                                 "correlation_coefficient_only_CBs": correlation_coefficient_only_CBs,
+                                 })
+
+                df = pd.DataFrame(data)
+                df["total_p"] = df["p"] + df["p_pos"]
+                df["both_significant"] = (df["p"] < 0.05) & (df["p_pos"] < 0.05)
+                st.write("df")
+                st.write(df)
+
+
+def _create_matchsums(df_event, df_tracking, series_meta, df_lineup, df_involvement):
     dfgs = []
 
     assert "pass_xt" in df_event.columns
@@ -356,6 +1231,8 @@ def _create_matchsums(df_event, df_tracking, series_meta, df_lineup):
     df_possession.columns = [f"net_minutes_in_possession"]
     df_possession["net_minutes_opponent_in_possession"] = df_possession["net_minutes_in_possession"].values[::-1]
     df_possession["net_minutes"] = df_possession["net_minutes_opponent_in_possession"] + df_possession["net_minutes_in_possession"]
+
+    df_tracking["datetime_tracking"] = pd.to_datetime(df_tracking["datetime_tracking"])
 
     total_minutes = (
         df_tracking.groupby("section")["datetime_tracking"]
@@ -426,107 +1303,363 @@ def _create_matchsums(df_event, df_tracking, series_meta, df_lineup):
     dfgs.append(dfg_tackles)
 
     dfg_team = pd.concat(dfgs, axis=1).reset_index().rename(columns={"index": "team_id"})
-    dfg_team["match_id"] = series_meta["match_id"]
+    for col, value in series_meta.items():
+        dfg_team[col] = value
+
     dfg_team = defensive_network.utility.dataframes.move_column(dfg_team, "match_id", 1)
 
+    ### Players
     dfgs_players = []
-    dfg_players_tackles_won = df_event[df_event["event_subtype"] == "tackle"].groupby("player_id_1", observed=False).agg(
+    player_group_cols = ["player_id_1", "role_category_1"]
+    receiver_group_cols = ["player_id_2", "role_category_2"]
+    involvement_group_cols = ["defender_id", "defender_role_category"]
+
+    # Player name
+    dfg_lineup = df_lineup[~df_lineup["player_id"].str.startswith("DFL-OBJ-")].groupby(["player_id"], observed=False).agg(
+        first_name=("first_name", "first"),
+        last_name=("last_name", "first"),
+        short_name=("short_name", "first"),
+        position_group=("position_group", "first"),
+        position=("position", "first"),
+        team_id=("team_id", "first"),
+        team_name=("team_name", "first"),
+        team_role=("team_role", "first"),
+        starting=("starting", "first"),
+        captain=("captain", "first"),
+        jersey_number=("jersey_number", "first"),
+    ).to_dict()
+
+    # Positions
+    df_tracking["role_category"] = df_tracking["role"]
+    dfg_tracking = df_tracking.groupby(["player_id", "role_category"]).agg(
+        n_frames=("frame", "count"),
+        distance_covered=("d_tracking", "sum"),
+    )
+    dfg_tracking["minutes_played"] = dfg_tracking["n_frames"] / series_meta["fps"] / 60
+    dfg_tracking["distance_covered_per_90_minutes"] = dfg_tracking["distance_covered"] / dfg_tracking["minutes_played"] * 90
+    # dfg_tracking = df_tracking.groupby(["player_id", "section"]).agg(
+    dfgs_players.append(dfg_tracking)
+
+    # Tackles
+    dfg_players_tackles_won = df_event[df_event["event_subtype"] == "tackle"].groupby(player_group_cols, observed=False).agg(
         n_tackles_won=("event_id", "count"),
-    )
+    ).fillna(0)
     dfgs_players.append(dfg_players_tackles_won)
-    dfg_players_tackles_lost = df_event[df_event["event_subtype"] == "tackle"].groupby("player_id_1", observed=False).agg(
+
+    dfg_players_tackles_lost = df_event[df_event["event_subtype"] == "tackle"].groupby(receiver_group_cols, observed=False).agg(
         n_tackles_lost=("event_id", "count"),
-    )
+    ).reset_index().rename(columns={"player_id_2": "player_id_1", "role_category_2": "role_category_1"}).set_index(["player_id_1", "role_category_1"]).fillna(0)
+    dfg_players_tackles_lost["tackles_won_share"] = dfg_players_tackles_won["n_tackles_won"] / (dfg_players_tackles_won["n_tackles_won"] + dfg_players_tackles_lost["n_tackles_lost"])
     dfgs_players.append(dfg_players_tackles_lost)
 
-    dfg_players = pd.concat(dfgs_players, axis=1)
-    dfg_players["n_tackles"] = dfg_players["n_tackles_won"] + dfg_players["n_tackles_lost"]
-    dfg_players = dfg_players.reset_index().rename(columns={"player_id_1": "player_id"})
-    dfg_players["match_id"] = series_meta["match_id"]
-    dfg_players = defensive_network.utility.dataframes.move_column(dfg_players, "match_id", 1)
+    # Interceptions
+    dfg_players_interceptions = df_event[df_event["outcome"] == "intercepted"].groupby(receiver_group_cols, observed=False).agg(
+        n_interceptions=("event_id", "count"),
+    ).fillna(0)
+    dfg_players_interceptions["n_interceptions"] = dfg_players_interceptions["n_interceptions"].fillna(0)
+    dfg_players_interceptions = dfg_players_interceptions.rename(columns={"player_id_2": "player_id_1"})
+    dfgs_players.append(dfg_players_interceptions)
 
-    st.write("dfg_players", dfg_players.shape)
-    st.write(dfg_players)
+    # Pass xP
+    dfg_players_pass = df_passes.groupby(player_group_cols, observed=False).agg(
+        n_passes=("event_id", "count"),
+        total_xp=("xpass", "sum"),
+        total_xt=("pass_xt", "sum"),
+    )
+    dfg_players_pass["xp_per_pass"] = dfg_players_pass["total_xp"] / dfg_players_pass["n_passes"]
+    dfgs_players.append(dfg_players_pass)
+
+    dfg_players_pass_successful = df_passes[df_passes["event_outcome"] == "successfully_completed"].groupby(player_group_cols, observed=False).agg(
+        n_passes_successful=("event_id", "count"),
+    )
+    dfg_players_pass_successful["pass_completion_rate"] = dfg_players_pass_successful["n_passes_successful"] / dfg_players_pass["n_passes"]
+    dfgs_players.append(dfg_players_pass_successful)
+
+    # Involvement
+    df_fault = df_involvement[df_involvement["pass_xt"] > 0]
+    df_contribution = df_involvement[df_involvement["pass_xt"] < 0]
+
+    dfg_fault = df_fault.groupby(involvement_group_cols, observed=False).agg(
+        total_raw_fault=("raw_involvement", "sum"),
+        total_fault=("involvement", "sum"),
+        total_valued_fault_responsibility=("valued_responsibility", "sum"),
+        total_fault_responsibility=("responsibility", "sum"),
+        total_intrinsic_fault_responsibility=("intrinsic_responsibility", "sum"),
+        total_intrinsic_valued_fault_responsibility=("intrinsic_valued_responsibility", "sum"),
+        n_passes_with_fault=("raw_involvement", lambda x: (x != 0).sum()),
+        n_passes_with_fault_responsibility=("valued_responsibility", lambda x: ((x > 0) & (x != 0)).sum()),
+    )
+    dfgs_players.append(dfg_fault)
+    # st.write("dfg_fault")
+    # st.write(dfg_fault)
+    dfg_contribution = df_contribution.groupby(involvement_group_cols, observed=False).agg(
+        total_raw_contribution=("raw_involvement", "sum"),
+        total_contribution=("involvement", "sum"),
+        total_valued_contribution_responsibility=("valued_responsibility", "sum"),
+        total_contribution_responsibility=("responsibility", "sum"),
+        total_intrinsic_contribution_responsibility=("intrinsic_responsibility", "sum"),
+        total_intrinsic_valued_contribution_responsibility=("intrinsic_valued_responsibility", "sum"),
+        n_passes_with_contribution=("raw_involvement", lambda x: (x != 0).sum()),
+        n_passes_with_contribution_responsibility=("valued_responsibility", lambda x: ((x < 0) & (x != 0)).sum()),
+    )
+    dfgs_players.append(dfg_contribution)
+
+    dfg_involvement = df_involvement.groupby(involvement_group_cols, observed=False).agg(
+        # Involvement
+        total_raw_involvement=("raw_involvement", "sum"),
+        # total_raw_fault=("raw_fault", "sum"),
+        # total_raw_contribution=("raw_contribution", "sum"),
+        total_involvement=("involvement", "sum"),
+        # total_fault=("fault", "sum"),
+        # total_contribution=("contribution", "sum"),
+        n_passes_with_involvement=("raw_involvement", lambda x: (x != 0).sum()),
+        # n_passes_with_fault=("raw_fault", lambda x: (x != 0).sum()),
+        # n_passes_with_contribution=("raw_contribution", lambda x: (x != 0).sum()),
+
+        # Responsibility
+        total_intrinsic_responsibility=("intrinsic_responsibility", "sum"),
+        total_intrinsic_valued_responsibility=("intrinsic_valued_responsibility", "sum"),
+        # total_intrinsic_relative_responsibility=("intrinsic_relative_responsibility", "sum"),
+        total_responsibility=("responsibility", "sum"),
+        # total_relative_responsibility=("relative_responsibility", "sum"),  # not meaningful
+        total_valued_responsibility=("valued_responsibility", "sum"),
+        # total_valued_fault_responsibility=("valued_responsibility", lambda x: (x * (x > 0)).sum()),
+        # total_valued_contribution_responsibility=("valued_responsibility", lambda x: (x * (x < 0)).sum()),
+
+        # n_passes_against=("involvement", "count"),
+        n_passes_with_responsibility=("responsibility", lambda x: (x != 0).sum()),
+        # n_passes_with_fault_responsibility=("valued_responsibility", lambda x: ((x > 0) & (x != 0)).sum()),
+        # n_passes_with_contribution_responsibility=("valued_responsibility", lambda x: ((x < 0) & (x != 0)).sum()),
+        model_radius=("model_radius", "first")
+    ).fillna(0)
+
+    # st.write("dfg_involvement")
+    # st.write(dfg_involvement)
+    dfgs_players.append(dfg_involvement)
+
+    # raise NotImplementedError("TODO valued intrinsic fault/contribution responsibility etc.: ")
+
+    dfg_players = pd.concat(dfgs_players, axis=1)
+
+    dfg_players = dfg_players.reset_index().rename(columns={"level_0": "player_id", "level_1": "role_category"})
+
+    for meta_key, meta_value in dfg_lineup.items():
+        if meta_key in dfg_players.columns:
+            st.warning(f"Column {meta_key} already exists in dfg_players, skipping")
+            continue
+        dfg_players[meta_key] = dfg_players["player_id"].map(meta_value)
+
+    for col, value in series_meta.items():
+        dfg_players[col] = value
+
+    dfg_players = defensive_network.utility.dataframes.move_column(dfg_players, "match_id", 2)
+    dfg_team = defensive_network.utility.dataframes.move_column(dfg_team, "match_id", 2)
+
+    dfg_players = dfg_players.fillna(0)
+    dfg_team = dfg_team.fillna(0)
 
     return dfg_team, dfg_players
 
 
 def process_involvements(df_meta, folder_tracking, folder_events, target_folder):
+    present_match_ids = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder(folder_tracking, st_cache=True)]
+    df_meta = df_meta[df_meta["slugified_match_string"].isin(present_match_ids)]
     for _, match in defensive_network.utility.general.progress_bar(df_meta.iterrows(), total=len(df_meta), desc="Processing involvements"):
         match_string = match["match_string"]
-        st.write(f"#### {match_string}")
         slugified_match_string = match["slugified_match_string"]
+
+        st.write(f"#### {slugified_match_string}")
 
         fpath_tracking = os.path.join(folder_tracking, f"{slugified_match_string}.parquet")
         fpath_events = os.path.join(folder_events, f"{slugified_match_string}.csv")
-        df_tracking = defensive_network.parse.drive.download_parquet_from_drive(fpath_tracking)
-        df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events)
+        try:
+            df_tracking = defensive_network.parse.drive.download_parquet_from_drive(fpath_tracking, st_cache=True)
+        except FileNotFoundError:
+            continue
 
+        df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events, st_cache=True)
         df_events = df_events[df_events["event_type"] == "pass"]
+        st.write("df_events")
+        st.write(df_events[[col for col in df_events.columns if "frame" in col]])
+        df_events = df_events[df_events["frame"].isin([69, 70])]
 
-        for coordinates in ["original", "sync"]:
-            with st.expander(f"Plot passes with involvement ({coordinates})"):
-                if coordinates == "original":
-                    df_events["frame"] = df_events["original_frame_id"]
-                else:
-                    df_events["frame"] = df_events["matched_frame"]
+        df_involvement = defensive_network.models.involvement.get_involvement(df_events, df_tracking, tracking_defender_meta_cols=["role_category"])
 
-                df_events["full_frame"] = df_events["section"].str.cat(df_events["frame"].astype(float).astype(str), sep="-")
+        # # TODO remove
+        # df_involvement = df_involvement[df_involvement["involvement_pass_id"] == 0]
+        # df_tracking = df_tracking[df_tracking["frame"] == 0]
 
-                df_involvement = defensive_network.models.involvement.get_involvement(df_events, df_tracking, tracking_defender_meta_cols=["role_category"])
-                df_involvement["network_receiver_role_category"] = df_involvement["expected_receiver_role_category"].where(df_involvement["expected_receiver_role_category"].notna(), df_involvement["role_category_2"])
-                dfg_responsibility = defensive_network.models.responsibility.get_responsibility_model(df_involvement, responsibility_context_cols=["defending_team", "role_category_1", "network_receiver_role_category", "defender_role_category"])
-                df_involvement["intrinsic_responsibility"], _ = defensive_network.models.responsibility.get_responsibility(df_involvement, dfg_responsibility_model=dfg_responsibility)
+        # st.write("df_involvement")
+        # st.write(df_involvement[["defender_id", "defender_role_category", "role_category_1", "role_category_2", "expected_receiver_role_category"]])
+        # st.write(df_involvement[df_involvement["involvement_pass_id"] == 0].shape)
+        # st.write(df_involvement[df_involvement["involvement_pass_id"] == 0])
+        # #
+        # st.write("df_tracking")
+        # st.write(df_tracking[df_tracking["frame"] == 0].shape)
+        # st.write(df_tracking[df_tracking["frame"] == 0])
+        #
+        # st.stop()
 
-                # upload
-                # target_fpath = os.path.join(target_folder, f"{slugified_match_string}.csv")
-                # defensive_network.parse.drive.upload_csv_to_drive(df_involvement, target_fpath)
+        df_involvement["network_receiver_role_category"] = df_involvement["expected_receiver_role_category"].where(df_involvement["expected_receiver_role_category"].notna(), df_involvement["role_category_2"])
+        df_involvement["defender_role_category"] = df_involvement["defender_role_category"]#.fillna("unknown")
+        df_involvement["role_category_1"] = df_involvement["role_category_1"]#.fillna("unknown")
+        df_involvement["network_receiver_role_category"] = df_involvement["network_receiver_role_category"]#.fillna("unknown")
+        st.write("df_involvement a")
+        st.write(df_involvement[["defender_id", "defender_x", "defender_y", "defender_role_category", "role_category_1", "network_receiver_role_category"]])
+        df_involvement = df_involvement.dropna(subset=["defender_id", "defender_role_category", "role_category_1", "network_receiver_role_category"], how="any")
+        st.write("df_involvement b")
+        st.write(df_involvement[["defender_id", "defender_x", "defender_y", "defender_role_category", "role_category_1", "network_receiver_role_category"]])
+        intrinsic_context_cols = ["defending_team", "role_category_1", "network_receiver_role_category", "defender_role_category"]
+        dfg_responsibility = defensive_network.models.responsibility.get_responsibility_model(df_involvement, responsibility_context_cols=intrinsic_context_cols)
+        # st.write("dfg_responsibility")
+        # st.write(dfg_responsibility)
+        df_involvement["raw_intrinsic_responsibility"], df_involvement["raw_intrinsic_relative_responsibility"], df_involvement["valued_intrinsic_responsibility"], df_involvement["valued_intrinsic_relative_responsibility"] = defensive_network.models.responsibility.get_responsibility(df_involvement, dfg_responsibility_model=dfg_responsibility, context_cols=intrinsic_context_cols)
 
-                st.write("df_involvement")
-                st.write(df_involvement)
+        st.write("df_involvement", df_involvement.shape)
+        st.write(df_involvement)
+        st.write(df_involvement[["frame", "involvement_pass_id", "defender_id", "defender_role_category", "role_category_1", "role_category_2", "expected_receiver_role_category", "network_receiver_role_category"]])
+        # st.write(df_involvement[df_involvement["involvement_pass_id"] == 0].shape)
+        # st.write(df_involvement[df_involvement["involvement_pass_id"] == 0])
+        #
+        st.write("df_tracking", df_tracking.shape)
+        st.write(df_tracking[df_tracking["frame"].isin([69, 70])].shape)
+        st.write(df_tracking[df_tracking["frame"].isin([69, 70])]["frame"].unique())
+        st.write(df_tracking[df_tracking["frame"].isin([69, 70])])
 
-                defensive_network.utility.pitch.plot_passes_with_involvement(df_involvement, df_tracking, responsibility_col="intrinsic_responsibility", n_passes=5)
+# # raw_responsibility", "raw_relative_responsibility", "valued_responsibility", "valued_relative_responsibility
+        # st.write("df_involvement")
+        # st.write(df_involvement)
+
+        target_fpath = os.path.join(target_folder, f"{slugified_match_string}.csv")
+        importlib.reload(defensive_network.utility.pitch)
+        defensive_network.utility.pitch.plot_passes_with_involvement(
+            df_involvement, df_tracking, responsibility_col="raw_intrinsic_relative_responsibility", n_passes=5
+        )
+        defensive_network.parse.drive.upload_csv_to_drive(df_involvement, target_fpath)
+        st.stop()
+
+        # for coordinates in ["original", "sync"]:
+        #     with st.expander(f"Plot passes with involvement ({coordinates})"):
+        #         if coordinates == "original":
+        #             df_events["frame"] = df_events["original_frame_id"]
+        #         else:
+        #             df_events["frame"] = df_events["matched_frame"]
+        #
+        #         df_events["full_frame"] = df_events["section"].str.cat(df_events["frame"].astype(float).astype(str), sep="-")
+        #
+        #         df_involvement = defensive_network.models.involvement.get_involvement(df_events, df_tracking, tracking_defender_meta_cols=["role_category"])
+        #         df_involvement["network_receiver_role_category"] = df_involvement["expected_receiver_role_category"].where(df_involvement["expected_receiver_role_category"].notna(), df_involvement["role_category_2"])
+        #         dfg_responsibility = defensive_network.models.responsibility.get_responsibility_model(df_involvement, responsibility_context_cols=["defending_team", "role_category_1", "network_receiver_role_category", "defender_role_category"])
+        #         df_involvement["intrinsic_responsibility"], _ = defensive_network.models.responsibility.get_responsibility(df_involvement, dfg_responsibility_model=dfg_responsibility)
+        #
+        #         # upload
+        #         # target_fpath = os.path.join(target_folder, f"{slugified_match_string}.csv")
+        #         # defensive_network.parse.drive.upload_csv_to_drive(df_involvement, target_fpath)
+        #
+        #         st.write("df_involvement")
+        #         st.write(df_involvement)
+        #
+                # defensive_network.utility.pitch.plot_passes_with_involvement(df_involvement, df_tracking, responsibility_col="intrinsic_responsibility", n_passes=5)
 
 
-def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target_fpath_team, target_fpath_players):
+def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target_fpath_team, target_fpath_players, folder_involvement="involvement", overwrite_if_exists=False):
+    existing_match_ids = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder(folder_events)]
+    df_meta = df_meta[df_meta["slugified_match_string"].isin(existing_match_ids)]
+
+    if not overwrite_if_exists:
+        try:
+            df_matchsums_player = defensive_network.parse.drive.download_csv_from_drive(target_fpath_players)
+            df_matchsums_team = defensive_network.parse.drive.download_csv_from_drive(target_fpath_team)
+            match_ids = set(df_matchsums_player["match_id"]).intersection(df_matchsums_team["match_id"])
+        except FileNotFoundError:
+            match_ids = set()
+
+        df_meta = df_meta[~df_meta["match_id"].isin(match_ids)]
+
+    dfs_player = []
+    dfs_team = []
+    match_nr = 0
     for _, match in defensive_network.utility.general.progress_bar(df_meta.iterrows(), total=len(df_meta), desc="Creating matchsums"):
+        match_nr += 1
+        # if match_nr <= 104:
+        #     continue
         df_lineup = df_lineups[df_lineups["match_id"] == match["match_id"]]
         match_string = match["match_string"]
         slugified_match_string = match["slugified_match_string"]
         st.write(f"Creating matchsums for {match_string}")
         fpath_tracking = os.path.join(folder_tracking, f"{slugified_match_string}.parquet")
         fpath_events = os.path.join(folder_events, f"{slugified_match_string}.csv")
-        st.write(f"fpath_tracking: {fpath_tracking}")
-        st.write(f"fpath_events: {fpath_events}")
+        fpath_involvement = os.path.join(folder_involvement, f"{slugified_match_string}.csv")
 
         # df_tracking = pd.read_parquet(fpath_tracking)
         # df_events = pd.read_csv(fpath_events)
-        df_tracking = defensive_network.parse.drive.download_parquet_from_drive(fpath_tracking)
-        df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events)
+        try:
+            # df_tracking = defensive_network.parse.drive.download_parquet_from_drive(fpath_tracking)
+            with st.spinner("Loading data..."):
+                df_involvement = defensive_network.parse.drive.download_csv_from_drive(fpath_involvement, st_cache=True)  # TODO no cache
+                df_tracking = pd.read_parquet(fpath_tracking)
+                df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events)
+                dfg_responsibility_model = defensive_network.parse.drive.download_csv_from_drive("responsibility_model.csv").reset_index(drop=True)
+                # st.write("dfg_responsibility_model")
+                # st.write(dfg_responsibility_model)
+            with st.spinner("Calculating Responsibility..."):
+                df_involvement["raw_responsibility"], df_involvement["raw_relative_responsibility"], df_involvement["valued_responsibility"], df_involvement["valued_relative_responsibility"] = defensive_network.models.responsibility.get_responsibility(df_involvement, dfg_responsibility_model)
+        except FileNotFoundError as e:
+            st.write(e)
+            continue
 
-        dfg_team, dfg_players = _create_matchsums(df_events, df_tracking, match, df_lineup)
-        st.write("dfg_team")
-        st.write(dfg_team)
-        st.write("dfg_players")
-        st.write(dfg_players)
+        with st.spinner("Aggregating matchsums..."):
+            dfg_team, dfg_players = _create_matchsums(df_events, df_tracking, match, df_lineup, df_involvement)
+        # st.write("dfg_team")
+        # st.write(dfg_team)
+        # st.write(dfg_team[["team_id", "match_id"]])
+        # st.write("dfg_players")
+        # st.write(dfg_players)
+        # st.write(dfg_players[["player_id", "role_category", "match_id"]])
 
-        defensive_network.parse.drive.append_to_parquet_on_drive(dfg_team, target_fpath_team, key_cols=["team_id", "match_id"], overwrite_key_cols=True, format="csv")
-        defensive_network.parse.drive.append_to_parquet_on_drive(dfg_players, target_fpath_players, key_cols=["player_id", "match_id"], overwrite_key_cols=True, format="csv")
+        dfs_player.append(dfg_players)
+        dfs_team.append(dfg_team)
+        with st.spinner("Uploading team data..."):
+            defensive_network.parse.drive.append_to_parquet_on_drive(dfg_team, target_fpath_team, key_cols=["team_id", "match_id"], overwrite_key_cols=True, format="csv")
+        with st.spinner("Uploading players data..."):
+            defensive_network.parse.drive.append_to_parquet_on_drive(dfg_players, target_fpath_players, key_cols=["player_id", "role_category", "match_id"], overwrite_key_cols=True, format="csv")
+        st.write("Uploaded!")
 
-        st.write("df_tracking", df_tracking.shape)
-        st.write(df_tracking.head())
-        st.write("df_events", df_events.shape)
-        st.write(df_events.head())
+    # dfg_team = pd.concat(dfs_team)
+    # dfg_players = pd.concat(dfs_player)
+
+    # defensive_network.parse.drive.upload_csv_to_drive(dfg_team, target_fpath_team)
+    # defensive_network.parse.drive.upload_csv_to_drive(dfg_players, target_fpath_players)
 
 
-def finalize_events_and_tracking_to_drive(folder_tracking, folder_events, df_meta, df_lineups, target_folder_events, target_folder_tracking):
+    # st.write("Appended")
+    # st.stop()
+
+
+def finalize_events_and_tracking_to_drive(folder_tracking, folder_events, df_meta, df_lineups, target_folder_events, target_folder_tracking, full_target_folder_tracking, do_not_process_if_synchronized=True):
     for _, match in defensive_network.utility.general.progress_bar(df_meta.iterrows(), total=len(df_meta), desc="Finalizing matches"):
         df_lineup = df_lineups[df_lineups["match_id"] == match["match_id"]]
         match_string = match["match_string"]
         slugified_match_string = match["slugified_match_string"]
         st.write(f"Finalizing {match_string}")
         fpath_tracking = os.path.join(folder_tracking, f"{slugified_match_string}.parquet")
+        fpath_full_tracking = os.path.join(full_target_folder_tracking, f"{slugified_match_string}.parquet")
         fpath_events = os.path.join(folder_events, f"{slugified_match_string}.csv")
+
+        drive_path_events = os.path.join(target_folder_events, f"{slugified_match_string}.csv")
+        drive_path_tracking = os.path.join(target_folder_tracking, f"{slugified_match_string}.parquet")
+
+        if do_not_process_if_synchronized:
+            try:
+                df_event_existing = defensive_network.parse.drive.download_csv_from_drive(drive_path_events)
+                st.write("df_event_existing")
+                st.write(df_event_existing)
+                if df_event_existing["matched_frame"].notna().any():
+                    st.write(f"Skipping {match_string} because it is already synchronized")
+                    continue
+                pass
+            except FileNotFoundError:
+                pass
 
         df_tracking = pd.read_parquet(fpath_tracking)
         df_event = pd.read_csv(fpath_events)
@@ -552,22 +1685,12 @@ def finalize_events_and_tracking_to_drive(folder_tracking, folder_events, df_met
 
         # df_event["full_frame"] = df_event["section"].str.cat(df_event["frame"].astype(float).astype(str), sep="-")
 
-        # Make tracking data smaller to store in Drive
-        # original_full_frames = df_event["original_frame_id"].astype(str).str.cat(df_event["section"], sep="-").values
-        # df_tracking = df_tracking[df_tracking["full_frame"].isin(df_event["full_frame"]) | df_tracking["full_frame"].isin(original_full_frames)]
+        with st.spinner("Writing full tracking data to disk..."):
+            df_tracking.to_parquet(fpath_full_tracking)
 
-        with st.spinner("Uploading to drive..."):
-            drive_path_events = os.path.join(target_folder_events, f"{slugified_match_string}.csv")
-            drive_path_tracking = os.path.join(target_folder_tracking, f"{slugified_match_string}.parquet")
+        defensive_network.parse.drive.upload_csv_to_drive(df_event, drive_path_events)
 
-            st.write("C")
-            st.write(df_event["original_frame_id"] - df_event["frame"])
-            st.write(df_event[["original_frame_id", "frame", "full_frame", "full_frame_rec"]])
-
-            defensive_network.parse.drive.upload_csv_to_drive(df_event, drive_path_events)
-            defensive_network.parse.drive.upload_parquet_to_drive(df_tracking, drive_path_tracking)
-
-        st.write(f"Finalized events and tracking for {match_string} ({drive_path_events} and {drive_path_tracking})")
+        st.write(f"Finalized events and tracking for {match_string} ({drive_path_events} and {fpath_full_tracking}), but didn't upload to drive yet.")
 
         # df_events_downloaded = defensive_network.parse.drive.download_csv_from_drive(drive_path_events)
         # df_tracking_downloaded = defensive_network.parse.drive.download_parquet_from_drive(drive_path_tracking)
@@ -578,6 +1701,36 @@ def finalize_events_and_tracking_to_drive(folder_tracking, folder_events, df_met
         # st.write(dfg_team)
         # st.write("dfg_players")
         # st.write(dfg_players)
+
+
+def upload_reduced_tracking_data(df_meta, drive_folder_events, full_tracking_folder, drive_folder_tracking):
+    for _, match in defensive_network.utility.general.progress_bar(df_meta.iterrows(), total=len(df_meta), desc="Reducing tracking data"):
+        match_string = match["match_string"]
+        slugified_match_string = match["slugified_match_string"]
+        st.write(f"Reducing {match_string}")
+
+        fpath_full_tracking = os.path.join(full_tracking_folder, f"{slugified_match_string}.parquet")
+        drive_path_events = os.path.join(drive_folder_events, f"{slugified_match_string}.csv")
+        drive_path_tracking = os.path.join(drive_folder_tracking, f"{slugified_match_string}.parquet")
+
+        df_events = defensive_network.parse.drive.download_csv_from_drive(drive_path_events)
+        df_tracking = pd.read_parquet(fpath_full_tracking)
+
+        _upload_reduced_tracking_data(df_events, df_tracking, drive_path_tracking)
+
+
+def _upload_reduced_tracking_data(df_event, df_tracking, drive_path_tracking):
+    # Make tracking data smaller to store in Drive
+    df_event["original_full_frame"] = df_event["section"].str.cat(df_event["original_frame_id"].astype(float).astype(str), sep="-")
+    df_event["matched_full_frame"] = df_event["section"].str.cat(df_event["matched_frame_id"].astype(float).astype(str), sep="-")
+    df_tracking_reduced = df_tracking[
+        df_tracking["full_frame"].isin(df_event["full_frame"]) |
+        df_tracking["full_frame"].isin(df_event["original_full_frame"]) |
+        df_tracking["full_frame"].isin(df_event["matched_full_frame"])
+    ]
+
+    with st.spinner("Uploading to drive..."):
+        defensive_network.parse.drive.upload_parquet_to_drive(df_tracking_reduced, drive_path_tracking)
 
 
 def concat_metas_and_lineups():
@@ -593,6 +1746,81 @@ def concat_metas_and_lineups():
             dfs.append(df)
         df_meta = pd.concat(dfs, axis=0)
         df_meta.to_csv(f"C:/Users/Jonas/Downloads/dfl_test_data/2324/{kind}.csv", index=False)
+
+
+def create_videos(overwrite_if_exists=False, only_n_frames_per_half=5000):
+    import matplotlib
+    matplotlib.use('TkAgg')  # make plots show in new window (for animation)
+
+    # folder = "C:/Users/Jonas/Downloads/dfl_test_data/2324/"
+    # folder = base_path
+    # if not os.path.exists(folder):
+    #     raise NotADirectoryError(f"Folder {folder} does not exist")
+    #
+    # folder_events = os.path.join(folder, "events")
+    # folder_tracking = os.path.join(folder, "tracking")
+    # folder_animation = os.path.join(folder, "animation")
+    # match_slugified_strings_to_animate = [os.path.splitext(file)[0] for file in os.listdir(folder_tracking)]
+
+    existing_matches = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("tracking", st_cache=True)]
+    # existing_matches = [file.split(".")[0] for file in os.listdir(os.path.join(os.path.dirname(__file__), "../../../w_raw/preprocessed/tracking"))]
+    # st.write("existing_matches")
+    # st.write("existing_matches")
+    # st.write(existing_matches)
+    # st.write("A")
+
+    for match_slugified_string in existing_matches:  # defensive_network.utility.general.progress_bar(match_slugified_strings_to_animate):
+        fname = f"{match_slugified_string}_only_{only_n_frames_per_half}_frames_per_half.mp4"
+        folder = "animation"
+        drive_fpath = f"{folder}/{fname}"
+        if not overwrite_if_exists and fname in defensive_network.parse.drive.list_files_in_drive_folder(folder):
+            continue
+
+        st.write(match_slugified_string)
+        # target_fpath = os.path.join(folder_animation, f"{match_slugified_string}.mp4")
+        # if os.path.exists(target_fpath):
+        #     print(f"File {target_fpath} already exists, skipping")
+        #     continue
+        # df_event = pd.read_csv(os.path.join(folder_events, f"{match_slugified_string}.csv"))
+        # df_tracking = pd.read_parquet(os.path.join(folder_tracking, f"{match_slugified_string}.parquet"))
+        try:
+            df_event = defensive_network.parse.drive.download_csv_from_drive(f"events/{match_slugified_string}.csv", st_cache=True)
+            # df_event = defensive_network.parse.dfb.cdf.get_events(base_path, match_slugified_string)
+        except FileNotFoundError as e:
+            # st.write(e)
+            continue
+
+        df_tracking = defensive_network.parse.drive.download_parquet_from_drive(f"tracking/{match_slugified_string}.parquet")
+        st.write(f"{match_slugified_string=}")
+        # df_tracking = defensive_network.parse.dfb.cdf.get_tracking(base_path, match_slugified_string)
+        # create_animation(df_tracking, df_event, target_fpath)
+        df_passes = df_event[df_event["event_type"] == "pass"]
+
+# tracking_time_col], p4ss["rec_time
+
+        #replace 1900-01-01 with None
+        st.write(df_passes)
+        st.write(df_tracking["datetime_tracking"])
+        df_passes["datetime_tracking"] = pd.to_datetime(df_passes["datetime_tracking"].replace("1900-01-01 00:00:00.000000+0000", None).replace("1900-01-01 00:00:00+00:00", None), format="ISO8601")
+        st.write(df_passes)
+        st.write(df_tracking["datetime_tracking"])
+
+        df_passes["datetime_event"] = pd.to_datetime(df_passes["datetime_event"], format="ISO8601")
+        df_passes["datetime_tracking"] = pd.to_datetime(df_passes["datetime_tracking"], format="ISO8601")
+        df_passes["datetime_tracking"] = pd.to_datetime(df_passes["datetime_tracking"], format="ISO8601")
+
+        # df_tracking = df_tracking[df_tracking["frame"] < 1000]
+        # df_passes = df_passes[df_passes["frame"] < 1000]
+
+        st.write("df_tracking")
+        st.write(df_tracking)
+        st.write("df_passes")
+        st.write(df_passes)
+
+        local_fpath = os.path.join(os.path.dirname(__file__), f"{match_slugified_string}.mp4")
+        defensive_network.utility.video.pass_video(df_tracking, df_passes, out_fpath=local_fpath, overwrite_if_exists=False,
+                                                   only_n_frames_per_half=only_n_frames_per_half)
+        defensive_network.parse.drive.upload_file_to_drive(local_fpath, drive_fpath)
 
 
 if __name__ == '__main__':

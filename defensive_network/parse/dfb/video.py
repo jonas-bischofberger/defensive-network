@@ -23,7 +23,7 @@ importlib.reload(defensive_network.utility.pitch)
 
 importlib.reload(defensive_network.parse.drive)
 
-base_path = os.path.join(os.path.dirname(__file__), "../../../w_raw/preprocessed")
+base_path = os.path.join(os.path.dirname(__file__), "Y:/w_raw/preprocessed")
 
 
 def create_animation(df_tracking, df_events, fpath):
@@ -225,9 +225,8 @@ def main():
 
         importlib.reload(defensive_network.utility.video)
 
-        defensive_network.utility.video.pass_video(df_tracking, df_passes, out_fpath=os.path.join(os.path.dirname(__file__), "test.mp4"), overwrite_if_exists=False)
-
-        # TODO check utility.video, add both timestamps (corrected/original)
+        defensive_network.utility.video.pass_video(df_tracking, df_passes, out_fpath=os.path.join(os.path.dirname(__file__), f"{match_slugified_string}.mp4"), overwrite_if_exists=False,
+                                                   only_n_frames_per_half=5000)
 
         break
 

@@ -178,7 +178,7 @@ def defensive_network_dashboard():
             st.write("dfg_responsibility")
             st.write(dfg_responsibility)
 
-            df_involvement["responsibility"] = defensive_network.models.responsibility.get_responsibility(df_involvement, dfg_responsibility)
+            df_involvement["responsibility"], _ = defensive_network.models.responsibility.get_responsibility(df_involvement, dfg_responsibility)
             st.write("df_involvement")
             st.write(df_involvement)
             n_passes_to_plot_responsibility = st.number_input("Responsibility # Passes to plot", min_value=0, value=10)

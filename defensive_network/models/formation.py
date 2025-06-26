@@ -241,31 +241,34 @@ def get_role_category(df_tracking, role_col="role", formation_col="formation_ins
     # with st.spinner("Getting gk (likely the bottleneck)"):
     #     dfg_gk_role = dfg_gk_role.groupby(formation_col).apply(lambda x: x[x["x_norm_form"] == x["x_norm_form"].min()])[role_col].reset_index().drop(columns="level_1")
 
-    dfg_gk_role = dfg_gk_role.groupby(formation_col)[["formation_instance", "role", "x_norm_form"]].apply(
-        lambda x: x[x["x_norm_form"] == x["x_norm_form"].min()]
-    )[role_col].reset_index().drop(columns="level_1")
-
-    # st.write("dfg_gk_role")
-    # st.write(dfg_gk_role)
-    # st.stop()
-
-    dfg_gk_role["role_category"] = "goalkeeper"
-    dfg_gk_role["is_gk"] = dfg_gk_role["role_category"] == "goalkeeper"
-    gk_roles = dfg_gk_role[role_col].unique()
+    # dfg_gk_role = dfg_gk_role.groupby(formation_col)[["formation_instance", "role", "x_norm_form"]].apply(
+    #     lambda x: x[x["x_norm_form"] == x["x_norm_form"].min()]
+    # )[role_col].reset_index().drop(columns="level_1")
+    #
+    # # st.write("dfg_gk_role")
+    # # st.write(dfg_gk_role)
+    # # st.stop()
+    #
+    # dfg_gk_role["role_category"] = "goalkeeper"
+    # dfg_gk_role["is_gk"] = dfg_gk_role["role_category"] == "goalkeeper"
+    # gk_roles = dfg_gk_role[role_col].unique()
     # TODO bottleneck 1
     assert (original_index == df_tracking.index).all()
 
     # assert dfg_gk_role has no duplicates
     assert len(dfg_gk_role) == len(dfg_gk_role.drop_duplicates(subset=[formation_col, role_col]))
 
-    df_tracking = df_tracking.reset_index().merge(dfg_gk_role[[formation_col, role_col, "is_gk"]], on=[formation_col, role_col], how="left")
-    df_tracking = df_tracking.set_index("index")  # somehow merge doesnt preserve index
-    assert (original_index == df_tracking.index).all()
-
-    with pd.option_context('future.no_silent_downcasting', True):
-        df_tracking["is_gk"] = df_tracking["is_gk"].fillna(False).astype(bool)
+    # df_tracking = df_tracking.reset_index().merge(dfg_gk_role[[formation_col, role_col, "is_gk"]], on=[formation_col, role_col], how="left")
+    # df_tracking = df_tracking.set_index("index")  # somehow merge doesnt preserve index
+    # assert (original_index == df_tracking.index).all()
+    #
+    # with pd.option_context('future.no_silent_downcasting', True):
+    #     df_tracking["is_gk"] = df_tracking["is_gk"].fillna(False).astype(bool)
     # assert len(df_tracking["is_gk"].dropna().unique()) == 2
     # df_tracking["is_gk"] = df_tracking[[formation_col, role_col]].apply(tuple, axis=1).map(dfg_gk_role.set_index([formation_col, role_col])["role_category"]) == "goalkeeper"
+
+    st.write("df_tracking.head()")
+    st.write(df_tracking.head())
 
     dfg_roles = df_tracking[~df_tracking["is_gk"]].groupby([formation_col, role_col]).agg({"x_norm_form": "mean", "y_norm_form": "mean"}).reset_index()
     dfg_centroid = dfg_roles.groupby(formation_col).agg(x_centroid=("x_norm_form", "mean"), y_centroid=("y_norm_form", "mean"), x_min=("x_norm_form", "min"), x_max=("x_norm_form", "max"), y_min=("y_norm_form", "min"), y_max=("y_norm_form", "max"))

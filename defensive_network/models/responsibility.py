@@ -2,6 +2,8 @@ import collections
 import sys
 import os
 
+import numpy as np
+
 sys.path.append(os.path.join(__file__, "../../.."))
 
 import importlib
@@ -19,7 +21,7 @@ importlib.reload(defensive_network.models.involvement)
 importlib.reload(defensive_network.utility.pitch)
 
 
-ResponsibilityResult = collections.namedtuple("ResponsibilityResult", ["responsibility", "n_passes"])
+ResponsibilityResult = collections.namedtuple("ResponsibilityResult", ["raw_responsibility", "raw_relative_responsibility", "valued_responsibility", "valued_relative_responsibility"])
 
 
 def get_responsibility_model(df_involvement, responsibility_context_cols=["role_category_1", "network_receiver_role_category", "defender_role_category"], involvement_col="raw_involvement", value_col="pass_xt"):
@@ -42,15 +44,15 @@ def get_responsibility_model(df_involvement, responsibility_context_cols=["role_
                                               ST                              0.000000         1
     """
     dfg_responsibility_model = df_involvement.groupby(responsibility_context_cols).agg(
-        responsibility=(involvement_col, "mean"),
+        raw_responsibility=(involvement_col, "mean"),
         n_passes=(involvement_col, "count"),
         value=(value_col, "mean")
     )
-    dfg_responsibility_model["valued_responsibility"] = dfg_responsibility_model["responsibility"] * dfg_responsibility_model["value"]
+    dfg_responsibility_model["valued_responsibility"] = dfg_responsibility_model["raw_responsibility"] * dfg_responsibility_model["value"]
     return dfg_responsibility_model
 
 
-def get_responsibility(df_passes, dfg_responsibility_model):
+def get_responsibility(df_passes, dfg_responsibility_model, event_id_col="involvement_pass_id", value_col="pass_xt", context_cols=["role_category_1", "network_receiver_role_category", "defender_role_category"]):
     """
     >>> defensive_network.utility.dataframes.prepare_doctest()
     >>> from defensive_network.tests.test_data import df_events, df_tracking
@@ -65,16 +67,58 @@ def get_responsibility(df_passes, dfg_responsibility_model):
     >>> defensive_network.utility.pitch.plot_passes_with_involvement(df_involvement, df_tracking, tracking_frame_col="frame_id", pass_frame_col="frame_id", n_passes=1000000)
     [<Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>]
     """
-    def foo(row):
-        try:
-            r = dfg_responsibility_model.loc[tuple(row)]
-            return r
-        except KeyError as e:
-            return None
+    n_passes = df_passes.shape[0]
 
-    responsibility = df_passes[dfg_responsibility_model.index.names].apply(lambda row: foo(row), axis=1)
+    dfg_responsibility_model = dfg_responsibility_model.reset_index()
 
-    return ResponsibilityResult(responsibility["responsibility"], responsibility["n_passes"])
+    df_passes = df_passes[[event_id_col, value_col] + context_cols]
+
+    df_passes["_index"] = df_passes.index
+    df_passes = df_passes.merge(dfg_responsibility_model, on=context_cols, how="left")
+    df_passes = df_passes.set_index("_index")
+
+    # st.write("df_passes")
+    # st.write(df_passes)
+
+    # def foo(row):
+    #     try:
+    #         r = dfg_responsibility_model.loc[tuple(row)]
+    #         # st.write(f"r {tuple(row)})")
+    #         # st.write(r)
+    #         # st.stop()
+    #         return r
+    #     except KeyError as e:
+    #         return None
+    #
+    # try:
+    #     # st.write("dfg_responsibility_model.index.names")
+    #     # st.write(dfg_responsibility_model.index.names)
+    #     # st.write("df_passes[dfg_responsibility_model.index.names]")
+    #     # st.write(df_passes[dfg_responsibility_model.index.names])
+    #     responsibility = df_passes[dfg_responsibility_model.index.names].apply(lambda row: foo(row), axis=1)
+    #     st.write("A turn")
+    # except KeyError:
+    #     # use columns before "responsibility" as index
+    #     i_responsibility_col = dfg_responsibility_model.columns.get_loc("responsibility")
+    #     dfg_responsibility_model = dfg_responsibility_model.set_index(dfg_responsibility_model.columns[:i_responsibility_col].tolist())
+    #     st.write("B turn")
+    #     st.write("df_passes")
+    #     st.write(df_passes)
+    #     # st.write(df_passes[dfg_responsibility_model.index.names])
+    #     st.write("dfg_responsibility_model")
+    #     st.write(dfg_responsibility_model)
+    #     responsibility = df_passes[dfg_responsibility_model.index.names].apply(lambda row: foo(row), axis=1)
+    #     st.write("responsibility")
+    #     st.write(responsibility)
+    #
+
+    df_passes["raw_relative_responsibility"] = df_passes.groupby(event_id_col)["raw_responsibility"].transform(lambda x: x / x.sum())
+    df_passes["valued_responsibility"] = df_passes["raw_responsibility"] * df_passes[value_col]
+    df_passes["valued_relative_responsibility"] = df_passes["raw_relative_responsibility"] * df_passes[value_col]
+
+    assert len(df_passes) == n_passes, f"Number of passes changed during responsibility calculation: {len(df_passes)} != {n_passes}. Check context_cols."
+
+    return ResponsibilityResult(df_passes["raw_responsibility"], df_passes["raw_relative_responsibility"], df_passes["valued_responsibility"], df_passes["valued_relative_responsibility"])
 
 def main():
     from defensive_network.tests.data import df_events, df_tracking
@@ -107,7 +151,7 @@ def main():
     st.write("dfg_responsibility")
     st.write(dfg_responsibility)
 
-    df_involvement["responsibility"] = get_responsibility(df_involvement, dfg_responsibility)
+    df_involvement["raw_responsibility"] = get_responsibility(df_involvement, dfg_responsibility)
     st.write("df_involvement")
     st.write(df_involvement)
 
