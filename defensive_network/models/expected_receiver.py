@@ -36,6 +36,20 @@ def get_expected_receiver(
     df_passes = df_passes.copy()
 
     df_passes_unsuccessful = df_passes[~df_passes[event_success_col]]
+    if len(df_passes_unsuccessful) == 0:
+        st.write("df_passes[event_success_col]")
+        st.write(df_passes[event_success_col])
+        st.write(df_passes[event_success_col].value_counts())
+        st.warning("No unsuccessful passes found. Cannot determine expected receiver.")
+        raise ValueError("No unsuccessful passes found. Cannot determine expected receiver.")
+        return ExpectedReceiverResult(pd.Series(dtype=float))
+    if df_passes_unsuccessful[event_target_x_col].isna().all():
+        st.write("df_passes[event_target_x_col]")
+        st.write(df_passes[event_target_x_col])
+        st.write(df_passes[event_target_x_col].value_counts())
+        st.warning("No target coordinates found in unsuccessful passes. Cannot determine expected receiver.")
+        raise ValueError("No target coordinates found in unsuccessful passes. Cannot determine expected receiver.")
+        return ExpectedReceiverResult(pd.Series(dtype=float))
 
     frames_in_events_not_in_tracking = set(df_passes_unsuccessful[event_frame_col]) - set(df_tracking[tracking_frame_col])
     if len(frames_in_events_not_in_tracking) != 0:
@@ -83,7 +97,7 @@ def get_expected_receiver(
         expected_receiver = df_tracking_frame_attackers.loc[df_tracking_frame_attackers[expected_receiver_score_col].idxmin(), tracking_player_col]
         df_passes.loc[pass_index, expected_receiver_col] = expected_receiver
 
-    return ExpectedReceiverResult(df_passes["expected_receiver"])
+    return ExpectedReceiverResult(df_passes[expected_receiver_col])
 
 
 if __name__ == '__main__':

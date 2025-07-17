@@ -110,13 +110,20 @@ def _get_average(
         x_std=("x_norm_formation", "std"),
         y_std=("y_norm_formation", "std"),
     )
+    df_centroid.loc[(df_centroid["x_std"] == 0) | (df_centroid["x_std"].isna()), "x_std"] = 1  # Avoid division by zero
+    df_centroid.loc[(df_centroid["y_std"] == 0) | (df_centroid["y_std"].isna()), "y_std"] = 1  # Avoid division by zero
     df_tracking = df_tracking.merge(df_centroid, on=[full_frame_col, "team_id"], how="left", suffixes=("", "_centroid"))
     df_tracking["x_norm_formation_z"] = (df_tracking["x_norm_formation"] - df_tracking["x_centroid"]) / df_tracking["x_std"]
     df_tracking["y_norm_formation_z"] = (df_tracking["y_norm_formation"] - df_tracking["y_centroid"]) / df_tracking["y_std"]
-
+    assert df_tracking[["y_norm_formation", "y_centroid", "y_std"]].notna().all().all(), "y_norm_formation_z contains NaN values. This might be due to missing data or players not being present in the frame."
+    assert df_tracking[["x_norm_formation", "x_centroid", "x_std"]].notna().all().all(), "y_norm_formation_z contains NaN values. This might be due to missing data or players not being present in the frame."
     i_no_ball_no_gk = (df_tracking[player_col] != ball_id) & (df_tracking[is_gk_col] == False)
+    assert df_tracking.loc[i_no_ball_no_gk, "x_norm_formation_z"].notna().all() and df_tracking.loc[i_no_ball_no_gk, "y_norm_formation_z"].notna().all()
+
     dft = df_tracking.loc[i_no_ball_no_gk]
     nan_frames = dft.loc[dft["x_norm_formation_z"].isna() | dft["y_norm_formation_z"].isna()][full_frame_col].unique()
+    # st.write("df_tracking.loc[i_no_ball_no_gk, :].head(50000)")
+    # st.write(df_tracking.loc[i_no_ball_no_gk, :].head(50000))
     assert df_tracking.loc[i_no_ball_no_gk, "x_norm_formation_z"].notna().all() and df_tracking.loc[i_no_ball_no_gk, "y_norm_formation_z"].notna().all()
     assert len(nan_frames) == 0
     plot = False
@@ -134,6 +141,7 @@ def _get_average(
             y_norm_formation_z=("y_norm_formation_z", "mean"),
             n_frames=(full_frame_col, "nunique"),
         ).reset_index()
+        assert df_average["x_norm_formation_z"].notna().all() and df_average["y_norm_formation_z"].notna().all(), "Average positions contain NaN values. This might be due to missing data or players not being present in the frame."
 
         df_average["ball_in_play_phase_id"] = ball_in_play_phase_id
 
@@ -162,8 +170,8 @@ def _get_average(
     CLOSEST_POSITIONS = positions[MIN_INDICES]
     df_average["position"] = CLOSEST_POSITIONS
 
-    st.write("df_average")
-    st.write(df_average)
+    # st.write("df_average")
+    # st.write(df_average)
 
     assert df_tracking.loc[(~df_tracking["is_gk"]) & (df_tracking["player_id"] != "BALL"), "x_norm_formation_z"].notna().all()
 
@@ -212,7 +220,7 @@ def plot_template_positions():
             plt.text(x + 0.05, y + 0.05, pos, fontsize=8)
     st.write(plt.gcf())
 
-plot_template_positions()
+# plot_template_positions()
 
 # df_positions = pd.DataFrame.from_dict(positions, orient="index", columns=["x", "y"]).reset_index()
 df_positions["index"] = range(len(df_positions))
@@ -230,6 +238,9 @@ templates = {
     "4-4-1": ["LB", "LCB-4", "RCB-4", "RB", "LDM", "RDM", "LW", "RW", "ZOM"],
     "4-3-2": ["LB", "LCB-4", "RCB-4", "RB", "ZDM", "LZM", "RZM", "LS", "RS"],
     "3-4-2": ["LCB-3", "RCB-3", "CB-3", "LWB", "RWB", "LDM", "RDM", "LS", "RS"],
+
+    # 9 players
+    "4-3-1": ["LB", "LCB-4", "RCB-4", "RB", "ZDM", "LZM", "RZM", "ST"],
 
     # 3 players (test)
     # "2-1": ["LCB-4", "RCB-4", "ST"],
@@ -322,29 +333,70 @@ def plot_formation_segments(df_role_assignment):
 
 
 def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_phase=False, do_formation_segment_plot=False):
+    plot_phase_by_phase = True
+    st.write(f"{plot_phase_by_phase=}")
+
     dft_copy = copy.deepcopy(df_tracking)
     dft_copy_index = dft_copy.index
     assert "formation" not in dft_copy.columns
 
-    df_tracking = df_tracking[(df_tracking["player_id"] != "BALL") & (df_tracking["is_gk"] == False)]
+    # get number of players per frame
+    df_tracking["n_players"] = df_tracking.groupby(["team_id", "full_frame"])["player_id"].transform("nunique")
+    # st.write('df_tracking[df_tracking["n_players"] < 11]')
+    # st.write(df_tracking[df_tracking["n_players"] < 11])
+    # check how many nans each col of df_tracking has
+
+    # st.write("dfg")
+    # st.write(df_tracking["n_players"].value_counts())
+    # st.stop()
+
 
     # Get ball in play phases
     df_tracking["ball_in_play_phase_id"] = add_in_play_phase_id(df_tracking)
     dft_copy["ball_in_play_phase_id"] = add_in_play_phase_id(dft_copy)
+
+    st.write("W")
+    st.write(df_tracking[["full_frame", "ball_in_play_phase_id", "ball_status"]].drop_duplicates())
+
+    df_tracking = df_tracking[(df_tracking["player_id"] != "BALL") & (df_tracking["is_gk"] == False)]
+
+    assert dft_copy.loc[dft_copy["ball_status"] == 1, "ball_in_play_phase_id"].notna().all(), "Not all formations could be detected. Check the data and the role assignment."
+
+    # df_tracking = df_tracking[df_tracking["ball_in_play_phase_id"] == 66.5]
+    # df_tracking = df_tracking[df_tracking["ball_in_play_phase_id"] < 3]
+    # dft_copy = dft_copy[dft_copy["ball_in_play_phase_id"] == 66.5]
+    # dft_copy = dft_copy[dft_copy["ball_in_play_phase_id"] < 3]
+
     assert dft_copy.loc[dft_copy["ball_status"] == 1, "ball_in_play_phase_id"].notna().all(), "All frames must have a ball in play phase ID"
     assert "formation" not in dft_copy.columns
 
+    # 65.5
     df_tracking = df_tracking[df_tracking["ball_in_play_phase_id"].notna()]
+    st.write("Q")
+    st.write(df_tracking.head(10000))
+    st.write(df_tracking.sort_values("datetime_tracking").head(10000))
+    st.write(df_tracking["ball_in_play_phase_id"].unique())
+    st.write(df_tracking["ball_in_play_phase_id"].value_counts())
 
     with st.spinner("Calculating average positions..."):
         df_average, df_tracking = _get_average(df_tracking)
 
-    assert df_tracking["x_norm_formation_z"].notna().all()
+    # st.write("df_average ball_in_play_phase_id")
+    # st.write(df_average.reset_index()["ball_in_play_phase_id"].unique())
+    # st.write("df_tracking ball_in_play_phase_id")
+    # st.write(df_tracking["ball_in_play_phase_id"].unique())
+    # st.write("dft_copy ball_in_play_phase_id")
+    # st.write(dft_copy["ball_in_play_phase_id"].unique())
 
+    assert df_tracking["x_norm_formation_z"].notna().all()
+    assert df_tracking["x_norm_formation_z"].notna().all() and df_tracking["y_norm_formation_z"].notna().all(), "Average positions contain NaN values. This might be due to missing data or players not being present in the frame."
+
+    show_average_positions = False
     if show_average_positions:
         dfg = df_average.groupby(["team_id", "player_id"]).agg(
             x_norm_formation_z=("x_norm_formation_z", "mean"), y_norm_formation_z=("y_norm_formation_z", "mean"),
         )
+        assert dfg["x_norm_formation_z"].notna().all() and dfg["y_norm_formation_z"].notna().all(), "Average positions contain NaN values. This might be due to missing data or players not being present in the frame."
 
         for team_id, df_team in dfg.groupby(level=["team_id"]):
             # fig = defensive_network.utility.pitch.plot_pitch()
@@ -436,6 +488,7 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
                                     DISTANCE_TEMPLATE[i, j] = 0
 
                         # plot it
+                        plot_phase_by_phase = True
                         if plot_phase_by_phase:
                             fig = plt.figure(figsize=(10, 6))
                             for i, cell in enumerate(voronoi_cells):
@@ -461,6 +514,7 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
                     template_distance = DISTANCE_TEMPLATE[row_ind, col_ind].mean()
                     for ri, ci in zip(row_ind, col_ind):
                         confidence = 1 - DISTANCE_TEMPLATE[ri, ci]
+                        assert not pd.isna(template)
                         role_assignment_data.append({
                             "ball_in_play_phase_id": ball_in_phase_id,
                             "team_id": team_id,
@@ -508,11 +562,13 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
     df_role_assignment_best = df_role_assignment[df_role_assignment["is_best_formation"]]
 
     df_tracking = df_tracking.merge(df_role_assignment_best.drop(columns=["team_name", "player_name", "formation"]), on=["ball_in_play_phase_id", "team_id", "player_id"], how="left")
+    # assert df_tracking["formation"].notna().all()
 
     ### Its ok to have NaN values, e.g. when more than 11 players are on the pitch
     # i_ball_status_1 = (df_tracking["ball_status"] == 1) & (~df_tracking["is_gk"]) & (df_tracking["player_id"] != "BALL")
     # assert df_tracking.loc[i_ball_status_1, "formation"].notna().all(), "Not all formations could be detected. Check the data and the role assignment."
 
+    do_formation_segment_plot = True
     if do_formation_segment_plot:
         plot_formation_segments(df_role_assignment)
 
@@ -526,8 +582,12 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
     dfg_formation = df_role_assignment_best.groupby(["ball_in_play_phase_id", "team_id"]).agg(
         formation=("formation", "first"),
     )
+    # st.write("dfg_formation")
+    # st.write(dfg_formation)
     df_tracking = df_tracking.merge(dfg_formation, on=["ball_in_play_phase_id", "team_id"], how="left")
     # dft_copy = dft_copy.merge(dfg_formation, on=["ball_in_play_phase_id", "team_id""], how="left")
+
+    assert df_tracking["formation"].notna().all()
 
     # assign remaining nan positions with nearest position
     i_pos_nan = df_tracking["position"].isna() & ~df_tracking["is_gk"] & ~i_ball
@@ -539,6 +599,7 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
             x_norm_formation_z=("x_norm_formation_z", "mean"),
             y_norm_formation_z=("y_norm_formation_z", "mean"),
         )
+        assert dfg_grouped["x_norm_formation_z"].notna().all() and dfg_grouped["y_norm_formation_z"].notna().all(), "Average positions contain NaN values. This might be due to missing data or players not being present in the frame."
         for (ball_in_phase_id, team_id), df_tracking_grouped in defensive_network.utility.general.progress_bar(dfg_grouped.reset_index().groupby(["ball_in_play_phase_id", "team_id"]), desc="Assigning remaining positions", total=len(dfg_grouped)):
             def foo(row):
                 # find the nearest position in df_positions
@@ -576,10 +637,18 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
     )
     formation_mapping = dfg_formation["formation"].to_dict()
     dft_copy["formation"] = dft_copy.apply(lambda row: formation_mapping.get((row["ball_in_play_phase_id"], row["team_id"]), None), axis=1)
+    # dft_copy = dft_copy.merge(dfg_formation, on=["ball_in_play_phase_id", "team_id"], how="left")
+
+    # st.write(dft_copy[["ball_in_play_phase_id", "team_id", "formation"]].drop_duplicates().sort_values(by=["ball_in_play_phase_id", "team_id"]))
+
+    i_nofo = (dft_copy["player_id"] != "BALL") & (dft_copy["ball_status"] == 1) & (dft_copy["formation"].isna())
+    # st.write(dft_copy.loc[i_nofo, ["full_frame", "ball_in_play_phase_id", "team_id", "player_id", "formation"]])
+    assert dft_copy.loc[i_nofo, "formation"].notna().all()
 
     position_mapping = df_average.set_index(["ball_in_play_phase_id", "team_id", "player_id"])["position"].to_dict()
     dft_copy["position"] = dft_copy.apply(lambda row: position_mapping.get((row["ball_in_play_phase_id"], row["team_id"], row["player_id"]), None), axis=1)
-    assert dft_copy["position"].notna().any()
+    # st.write(dft_copy.loc[i_nofo, ["full_frame", "ball_in_play_phase_id", "team_id", "player_id", "formation", "position"]])
+    assert dft_copy.loc[i_nofo, "position"].notna().all()
     # st.write("position_mapping")
     # st.write(position_mapping)
     # ixxx = (dft_copy["ball_in_play_phase_id"] == 80.5) & (dft_copy["team_id"] == "909b58975c636de982a6e9db835944ca") & (dft_copy["player_id"] == "770f7ea7a742740313620742d5b7bce3")
@@ -603,11 +672,24 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
         row_ind, col_ind = scipy.optimize.linear_sum_assignment(DISTANCE_TEMPLATE)
         player2positions = {df_average_phase_team["player_id"].iloc[ci]: df_formation_positions["position"].iloc[ri] for ri, ci in zip(row_ind, col_ind)}
 
-        # st.write("player2positions")
-        # st.write(player2positions)
+        # assert set(df_average_phase_team["player_id"].unique()) == set(player2positions)
 
         # assign positions to players in dft_copy
         i_phase_team = (dft_copy["ball_in_play_phase_id"] == ball_in_phase_id) & (dft_copy["team_id"] == team_id) & (dft_copy["player_id"] != "BALL") & (~dft_copy["is_gk"])
+
+        missing_pos = set(df_average_phase_team["player_id"].unique()) - set(dft_copy.loc[i_phase_team, "player_id"].unique())
+        superfluous_pos = set(dft_copy.loc[i_phase_team, "player_id"].unique()) - set(df_average_phase_team["player_id"].unique())
+
+        # Bugfix 2025-06-30
+        if len(missing_pos) == len(superfluous_pos) == 1:
+            player2positions[list(superfluous_pos)[0]] = player2positions[list(missing_pos)[0]]
+            dft_copy.loc[i_phase_team & (dft_copy["player_id"].isin(superfluous_pos)), "position"] = player2positions[list(missing_pos)[0]]
+        elif len(missing_pos) == len(superfluous_pos) >= 2:
+            for s_pos, m_pos in zip(list(superfluous_pos), list(missing_pos)):
+                dft_copy.loc[i_phase_team & (dft_copy["player_id"] == s_pos), "position"] = player2positions[m_pos]
+
+        # assert set(df_average_phase_team["player_id"].unique()) == set(dft_copy.loc[i_phase_team, "player_id"].unique())
+
         dft_copy.loc[i_phase_team, "position_2"] = dft_copy.loc[i_phase_team, "player_id"].map(player2positions)
         dft_copy.loc[i_phase_team, "position"] = dft_copy.loc[i_phase_team, "position_2"].where(dft_copy.loc[i_phase_team, "position_2"].notna(), dft_copy.loc[i_phase_team, "position"])
 
@@ -669,8 +751,19 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
 
         # st.write(dft_copy.loc[i_phase_team, ["ball_in_play_phase_id", "team_id", "player_id", "position"]])
 
-        assert dft_copy.loc[i_phase_team, "position"].notna().all()
+        try:
+            assert dft_copy.loc[i_phase_team, "position"].notna().all()
+        except AssertionError:
+            st.write("missing_pos")
+            st.write(missing_pos)
+            st.write("superfluous_pos")
+            st.write(superfluous_pos)
 
+            st.write("df_average_phase_team")
+            st.write(df_average_phase_team)
+            st.write("dft_copy.loc[i_phase_team, :]")
+            st.write(dft_copy.loc[i_phase_team, :])
+        # st.stop()
 
     dft_copy = dft_copy.drop(columns=["position_2"])
 
@@ -733,12 +826,17 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
     # res = FormationDetectionResult(dft_copy["formation"], dft_copy["position"], dft_copy["smoothed_confidence"], dft_copy["n_frames"], dft_copy["ball_in_play_phase_id"], df_role_assignment)
     res = FormationDetectionResult(dft_copy["formation"], dft_copy["position"], None, None, dft_copy["ball_in_play_phase_id"], df_role_assignment)
 
-    i_nofo = (dft_copy["player_id"] != "BALL") & (dft_copy["ball_status"] == 1)
-    assert dft_copy.loc[i_nofo, "formation"].notna().all(), "Not all formations could be detected. Check the data and the role assignment."
-    assert dft_copy.loc[i_nofo, "position"].notna().all(), "Not all positions could be assigned. Check the data and the role assignment."
+    i_nofo = (dft_copy["player_id"] != "BALL") & (dft_copy["ball_status"] == 1) & ((dft_copy["formation"].isna()) | (dft_copy["position"].isna()))
+    # st.write("dft_copy.loc[i_nofo]")
+    # st.write(dft_copy.loc[i_nofo, ["full_frame", "ball_in_play_phase_id", "team_id", "player_id", "formation", "position"]])
+    if not dft_copy.loc[i_nofo, "formation"].notna().all():
+        st.warning("Not all formations could be detected. Check the data and the role assignment.")
     assert dft_copy.loc[dft_copy["ball_status"] == 1, "ball_in_play_phase_id"].notna().all(), "Not all formations could be detected. Check the data and the role assignment."
+    assert dft_copy.loc[i_nofo, "position"].notna().all(), "Not all positions could be assigned. Check the data and the role assignment."
 
     # st.write(dft_copy[dft_copy["ball_in_play_phase_id"] == 4])
+
+    # plot_formations(dft_copy)
 
     return res
 
@@ -805,43 +903,44 @@ def main():
     # df_tracking["ball_on_player_phase_n_frames"] = res.n_frames
     # df_tracking["ball_in_play_phase_id"] = res.ball_in_phase_id
 
-    def plot_formations(df_tracking):
-        df_tracking = df_tracking[df_tracking["player_id"] != "BALL"]
-
-        df_averages = df_tracking.groupby(["ball_in_play_phase_id", "team_id", "player_id"]).agg(
-            x_tracking=("x_tracking", "mean"),
-            y_tracking=("y_tracking", "mean"),
-            position=("position", "first"),
-            formation=("formation", "first"),
-            player_name=("player_name", "first"),
-        ).reset_index()
-
-        cols = st.columns(3)
-        for (ball_phase_id, team_id), df_team in df_averages.groupby(["ball_in_play_phase_id", "team_id"]):
-
-            fig = defensive_network.utility.pitch.plot_tracking_frame(
-                df_team, attacking_team=team_id, tracking_x_col="x_tracking", tracking_y_col="y_tracking",
-                tracking_player_name_col="position",
-            )
-            plt.title(f"Formations for {team_id} in phase {ball_phase_id}: {df_team['formation'].iloc[0]}")
-            cols[0].write(fig)
-            plt.close()
-            fig = defensive_network.utility.pitch.plot_tracking_frame(
-                df_team, attacking_team=team_id, tracking_x_col="x_tracking", tracking_y_col="y_tracking",
-                tracking_player_name_col="player_id",
-            )
-            plt.title(f"Formations for {team_id} in phase {ball_phase_id}: {df_team['formation'].iloc[0]}")
-            cols[1].write(fig)
-            plt.close()
-            fig = defensive_network.utility.pitch.plot_tracking_frame(
-                df_team, attacking_team=team_id, tracking_x_col="x_tracking", tracking_y_col="y_tracking",
-                tracking_player_name_col="player_name",
-            )
-            plt.title(f"Formations for {team_id} in phase {ball_phase_id}: {df_team['formation'].iloc[0]}")
-            cols[2].write(fig)
-            plt.close()
-
     plot_formations(df_tracking)
+
+
+def plot_formations(df_tracking):
+    df_tracking = df_tracking[df_tracking["player_id"] != "BALL"]
+
+    df_averages = df_tracking.groupby(["ball_in_play_phase_id", "team_id", "player_id"]).agg(
+        x_tracking=("x_tracking", "mean"),
+        y_tracking=("y_tracking", "mean"),
+        position=("position", "first"),
+        formation=("formation", "first"),
+        player_name=("player_name", "first"),
+    ).reset_index()
+
+    cols = st.columns(3)
+    for (ball_phase_id, team_id), df_team in df_averages.groupby(["ball_in_play_phase_id", "team_id"]):
+
+        fig = defensive_network.utility.pitch.plot_tracking_frame(
+            df_team, attacking_team=team_id, tracking_x_col="x_tracking", tracking_y_col="y_tracking",
+            tracking_player_name_col="position",
+        )
+        plt.title(f"Formations for {team_id} in phase {ball_phase_id}: {df_team['formation'].iloc[0]}")
+        cols[0].write(fig)
+        plt.close()
+        fig = defensive_network.utility.pitch.plot_tracking_frame(
+            df_team, attacking_team=team_id, tracking_x_col="x_tracking", tracking_y_col="y_tracking",
+            tracking_player_name_col="player_id",
+        )
+        plt.title(f"Formations for {team_id} in phase {ball_phase_id}: {df_team['formation'].iloc[0]}")
+        cols[1].write(fig)
+        plt.close()
+        fig = defensive_network.utility.pitch.plot_tracking_frame(
+            df_team, attacking_team=team_id, tracking_x_col="x_tracking", tracking_y_col="y_tracking",
+            tracking_player_name_col="player_name",
+        )
+        plt.title(f"Formations for {team_id} in phase {ball_phase_id}: {df_team['formation'].iloc[0]}")
+        cols[2].write(fig)
+        plt.close()
 
 
 if __name__ == '__main__':

@@ -16,7 +16,7 @@ def add_velocity(df_tracking, time_col="datetime_tracking", player_col="player_i
     4 1970-01-01 00:00:01          1           2           0  1.0  0.0  1.0
     5 1970-01-01 00:00:02          1           4           0  2.0  0.0  2.0
     """
-    df_tracking["datetime_tracking"] = pd.to_datetime(df_tracking["datetime_tracking"])
+    df_tracking[time_col] = pd.to_datetime(df_tracking[time_col])
     df_tracking = df_tracking.sort_values(time_col)
     groups = []
     for player, df_tracking_player in df_tracking.groupby(player_col):

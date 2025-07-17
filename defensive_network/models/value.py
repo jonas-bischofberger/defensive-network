@@ -59,10 +59,14 @@ def get_expected_threat(
 
     # Get cell index from x and y coordinates
     x_cell_index_col, y_cell_index_col, x_cell_index_after_col, y_cell_index_after_col = defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "x_cell_index"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "y_cell_index"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "x_cell_index_after"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "y_cell_index_after")
-    df_events[x_cell_index_col] = np.clip(((df_events[event_x_col] + 52.5) / dx_cell).apply(np.floor), 0, num_x_cells - 1)
-    df_events[y_cell_index_col] = np.clip(((df_events[event_y_col] + 34) / dy_cell).apply(np.floor), 0, num_y_cells - 1)
-    df_events[x_cell_index_after_col] = np.clip(((df_events[pass_end_x_col] + 52.5) / dx_cell).apply(np.floor), 0, num_x_cells - 1)
-    df_events[y_cell_index_after_col] = np.clip(((df_events[pass_end_y_col] + 34) / dy_cell).apply(np.floor), 0, num_y_cells - 1)
+    i_notna_x = df_events[event_x_col].notna()
+    df_events.loc[i_notna_x, x_cell_index_col] = np.clip(((df_events.loc[i_notna_x, event_x_col].astype(float) + 52.5) / dx_cell).apply(np.floor), 0, num_x_cells - 1)
+    i_notna_y = df_events[event_y_col].notna()
+    df_events.loc[i_notna_y, y_cell_index_col] = np.clip(((df_events.loc[i_notna_y, event_y_col] + 34) / dy_cell).apply(np.floor), 0, num_y_cells - 1)
+    i_notna_x_after = df_events[pass_end_x_col].notna()
+    df_events.loc[i_notna_x_after, x_cell_index_after_col] = np.clip(((df_events.loc[i_notna_x_after, pass_end_x_col] + 52.5) / dx_cell).apply(np.floor), 0, num_x_cells - 1)
+    i_notna_y_after = df_events[pass_end_y_col].notna()
+    df_events.loc[i_notna_y_after, y_cell_index_after_col] = np.clip(((df_events.loc[i_notna_y_after, pass_end_y_col] + 34) / dy_cell).apply(np.floor), 0, num_y_cells - 1)
 
     # assign xT values based on cell index and compute xT of passes
     xt_before_col, xt_after_col, pass_xt_col = defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "xt_before"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "xt_after"), defensive_network.utility.dataframes.get_unused_column_name(df_events.columns, "pass_xt")

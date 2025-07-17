@@ -171,7 +171,7 @@ def main():
 
     match_slugified_strings_to_animate = [os.path.splitext(file)[0] for file in os.listdir(folder_tracking)]
 
-    existing_matches = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("tracking", st_cache=True)]
+    existing_matches = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("tracking", st_cache=False)]
     # existing_matches = [file.split(".")[0] for file in os.listdir(os.path.join(os.path.dirname(__file__), "../../../w_raw/preprocessed/tracking"))]
     st.write("existing_matches")
     st.write("existing_matches")
@@ -187,7 +187,7 @@ def main():
         # df_event = pd.read_csv(os.path.join(folder_events, f"{match_slugified_string}.csv"))
         # df_tracking = pd.read_parquet(os.path.join(folder_tracking, f"{match_slugified_string}.parquet"))
         try:
-            df_event = defensive_network.parse.drive.download_csv_from_drive(f"events/{match_slugified_string}.csv", st_cache=True)
+            df_event = defensive_network.parse.drive.download_csv_from_drive(f"events/{match_slugified_string}.csv", st_cache=False)
             # df_event = defensive_network.parse.dfb.cdf.get_events(base_path, match_slugified_string)
         except FileNotFoundError as e:
             # st.write(e)

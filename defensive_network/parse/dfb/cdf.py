@@ -92,7 +92,7 @@ def get_all_lineups(base_path):
     return pd.read_csv(get_lineup_fpath(base_path))
 
 
-@st.cache_resource
+# @st.cache_resource
 def _get_parquet(fpath):
     return pd.read_parquet(fpath)
 
@@ -103,7 +103,8 @@ def foo(y):
 
 def augment_match_data(
     meta, df_event, df_tracking, df_lineup_match, xt_model="ma2024", expected_receiver_model="power2017",
-    formation_model="average_pos", plot_formation=True, overwrite_if_exists=False
+    formation_model="average_pos", plot_formation=True, overwrite_if_exists=False, edit_section=True,
+    calculate_expected_receiver=True,
 ):
     df_tracking = df_tracking[df_tracking["team_id"] != "referee"]
 
@@ -132,20 +133,21 @@ def augment_match_data(
     df_event["team_name_1"] = df_event["team_id_1"].map(team2name)
     df_event["team_name_2"] = df_event["team_id_2"].map(team2name)
 
-    sorted_sections = list(defensive_network.utility.general.uniquify_keep_order(df_event["section"].dropna()))
     i_whistle = df_event["event_subtype"] == "final_whistle"
-    assert len(sorted_sections) == len(df_event.loc[
-                                           i_whistle]), f"len(sorted_sections)={len(sorted_sections)} != len(df_event.loc[i_whistle])={len(df_event.loc[i_whistle])}"
-    df_event.loc[i_whistle, "section"] = sorted_sections
 
-    whistle_gap_seconds = 300
-    assert len(sorted_sections) == 2
+    if edit_section:
+        sorted_sections = list(defensive_network.utility.general.uniquify_keep_order(df_event["section"].dropna()))
+        assert len(sorted_sections) == len(df_event.loc[i_whistle]), f"len(sorted_sections)={len(sorted_sections)} != len(df_event.loc[i_whistle])={len(df_event.loc[i_whistle])}"
+        df_event.loc[i_whistle, "section"] = sorted_sections
 
-    whistle_first_half = df_event.loc[i_whistle, "datetime_event"].iloc[0]
-    border_seconds = whistle_first_half + pd.Timedelta(seconds=whistle_gap_seconds)
-    i_first_half = df_event["datetime_event"] < border_seconds
-    df_event.loc[i_first_half, "section"] = sorted_sections[0]
-    df_event.loc[~i_first_half, "section"] = sorted_sections[1]
+        whistle_gap_seconds = 300
+        assert len(sorted_sections) == 2
+
+        whistle_first_half = df_event.loc[i_whistle, "datetime_event"].iloc[0]
+        border_seconds = whistle_first_half + pd.Timedelta(seconds=whistle_gap_seconds)
+        i_first_half = df_event["datetime_event"] < border_seconds
+        df_event.loc[i_first_half, "section"] = sorted_sections[0]
+        df_event.loc[~i_first_half, "section"] = sorted_sections[1]
 
     # Fill missing frames
     df_kickoffs = df_event.loc[df_event["event_subtype"] == "kick_off", :]
@@ -183,7 +185,12 @@ def augment_match_data(
     #     df_event["matching_score"] = res.scores
     #     df_event["frame"] = df_event["matched_frame"].fillna(df_event["frame"])
 
-    df_event["full_frame"] = df_event["section"].str.cat(df_event["frame"].astype(float).astype(str), sep="-")
+    assert "mmss" in df_event.columns
+
+    # df_event["section"] = df_event["section"].astype(str)
+    # df_tracking["section"] = df_tracking["section"].astype(str)
+
+    df_event["full_frame"] = df_event["section"].astype(str).str.cat(df_event["frame"].astype(float).astype(str), sep="-")
 
     df_tracking["datetime_tracking"] = pd.to_datetime(df_tracking["datetime_tracking"])
 
@@ -199,7 +206,7 @@ def augment_match_data(
     df_tracking["x_tracking"] = df_tracking["x_tracking"].interpolate()  # TODO do properly
     df_tracking["y_tracking"] = df_tracking["y_tracking"].interpolate()
 
-    df_tracking["full_frame"] = df_tracking["section"].str.cat(df_tracking["frame"].astype(float).astype(str), sep="-")
+    df_tracking["full_frame"] = df_tracking["section"].astype(str).str.cat(df_tracking["frame"].astype(float).astype(str), sep="-")
     # i_event_frames_not_in_tracking_data = ~df_event["full_frame"].isin(df_tracking["full_frame"])
     # df_event.loc[i_event_frames_not_in_tracking_data, "frame"] = None
 
@@ -219,33 +226,65 @@ def augment_match_data(
     assert df_event["frame"].notna().all()
     assert (df_event["frame"] + default_pass_frames).notna().all()
     assert df_event["frame_rec"].notna().all()
-    df_event["full_frame_rec"] = df_event["section"].str.cat(df_event["frame_rec"].astype(float).astype(str), sep="-")
+    df_event["full_frame_rec"] = df_event["section"].astype(str).str.cat(df_event["frame_rec"].astype(float).astype(str), sep="-")
 
     def get_target_x_y(row, df_tracking_indexed, receiver):
         if pd.isna(receiver):
             receiver = "BALL"
         try:
             receiver_frame = df_tracking_indexed.loc[(row["frame_rec"], row["section"], receiver)]
-            return receiver_frame["x_tracking"], receiver_frame["y_tracking"]
+            x_tracking, y_tracking = receiver_frame["x_tracking"], receiver_frame["y_tracking"]
+            if isinstance(x_tracking, pd.Series):
+                x_tracking, y_tracking = x_tracking.iloc[0], y_tracking.iloc[0]
+            assert not pd.isna(x_tracking) and not pd.isna(y_tracking)
+            return x_tracking, y_tracking
         except KeyError as e:
             receiver = "BALL"
             try:
                 receiver_frame = df_tracking_indexed.loc[(row["frame_rec"], row["section"], receiver)]
-                return receiver_frame["x_tracking"], receiver_frame["y_tracking"]
+                x_tracking, y_tracking = receiver_frame["x_tracking"], receiver_frame["y_tracking"]
+                if isinstance(x_tracking, pd.Series):
+                    x_tracking, y_tracking = x_tracking.iloc[0], y_tracking.iloc[0]
+                assert not pd.isna(x_tracking) and not pd.isna(y_tracking)
+                return x_tracking, y_tracking
             except KeyError as e:
                 # get closest frame
                 df_tracking_player = df_tracking_indexed.loc[(slice(None), row["section"], receiver), :]
-                closest_frame = df_tracking_player.reset_index()["frame"].sub(row["frame_rec"]).abs().idxmin()
-                x_tracking = df_tracking_player.loc[closest_frame, "x_tracking"].iloc[0]
-                y_tracking = df_tracking_player.loc[closest_frame, "y_tracking"].iloc[0]
+                closest_frame = (df_tracking_player["frame"] - row["frame_rec"]).abs().idxmin()
+                x_tracking = df_tracking_player.loc[closest_frame, "x_tracking"]
+                y_tracking = df_tracking_player.loc[closest_frame, "y_tracking"]
+                if isinstance(x_tracking, pd.Series):
+                    x_tracking, y_tracking = x_tracking.iloc[0], y_tracking.iloc[0]
+                assert not pd.isna(x_tracking) and not pd.isna(y_tracking)
                 return x_tracking, y_tracking
 
         #     return get_target_x_y(row, df_tracking_indexed, "BALL")
 
     with st.spinner("Indexing tracking data..."):
+        assert "BALL" in df_tracking["player_id"].unique()
+        df_tracking["frame2"] = df_tracking["frame"]
         df_tracking_indexed = df_tracking.set_index(["frame", "section", "player_id"])
+        df_tracking_indexed = df_tracking_indexed.rename(columns={"frame2": "frame"})
 
+    ### TODO comment in again!! only out for testing
+    ## TODO REMOVE THIS THOUGH
+    # df_event["x_event"] = df_event["x_event_player_1"]
+    # df_event["y_event"] = df_event["y_event_player_1"]
+    # df_event["x_target"] = df_event["x_event_player_2"]
+    # df_event["y_target"] = df_event["y_event_player_2"]
+
+    for ev in ["event", "tracking"]:
+        df_event[f"x_{ev}_player_1"] = pd.to_numeric(df_event[f"x_{ev}_player_1"], errors="coerce")
+        df_event[f"x_{ev}_player_2"] = pd.to_numeric(df_event[f"x_{ev}_player_2"], errors="coerce")
+        df_event[f"y_{ev}_player_1"] = pd.to_numeric(df_event[f"y_{ev}_player_1"], errors="coerce")
+        df_event[f"y_{ev}_player_2"] = pd.to_numeric(df_event[f"y_{ev}_player_2"], errors="coerce")
     with st.spinner("Calculating x, y from tracking data..."):
+        # st.write("sections")
+        # st.write(df_tracking["section"].unique())
+        # st.write("event sections")
+        # st.write(df_event["section"].unique())
+        # st.write("indexed tracking_sections")
+        # st.write(df_tracking_indexed.reset_index()["section"].unique())
         keys = df_event.apply(lambda row: get_target_x_y(row, df_tracking_indexed, row["player_id_1"]), axis=1)  # TODO check if works
         df_event[["x_event", "y_event"]] = pd.DataFrame(keys.tolist(), index=df_event.index)
         df_event["x_event"] = df_event["x_event_player_1"].fillna(df_event["x_event"])
@@ -261,6 +300,7 @@ def augment_match_data(
         df_event["x_target"] = df_event["x_target"].fillna(df_event["x_tracking_player_2"])
         df_event["y_target"] = df_event["y_target"].fillna(df_event["y_tracking_player_2"])
         assert df_event["x_target"].notna().all()
+        assert df_event["y_target"].notna().all()
 
     # Playing direction
     df_tracking["playing_direction"] = accessible_space.infer_playing_direction(
@@ -270,30 +310,46 @@ def augment_match_data(
     assert len(df_tracking["playing_direction"].dropna().unique()) == 2
     df_tracking["x_norm"] = df_tracking["x_tracking"] * df_tracking["playing_direction"]
     df_tracking["y_norm"] = df_tracking["y_tracking"] * df_tracking["playing_direction"]
-    df_event = df_event.merge(df_tracking[["section", "ball_poss_team_id", "playing_direction"]].drop_duplicates(),
+    assert df_tracking["x_norm"].notna().any()
+    assert df_tracking["y_norm"].notna().any()
+    df_event = df_event.merge(df_tracking[["section", "ball_poss_team_id", "playing_direction"]].dropna().drop_duplicates(),
                               left_on=["section", "team_id_1"], right_on=["section", "ball_poss_team_id"], how="left")
+    assert df_event["playing_direction"].notna().any()
+    df_event["x_event"] = pd.to_numeric(df_event["x_event"], errors="coerce")
+    df_event["y_event"] = pd.to_numeric(df_event["y_event"], errors="coerce")
+    df_event["x_target"] = pd.to_numeric(df_event["x_target"], errors="coerce")
+    df_event["y_target"] = pd.to_numeric(df_event["y_target"], errors="coerce")
     df_event["x_norm"] = df_event["x_event"] * df_event["playing_direction"]
     df_event["y_norm"] = df_event["y_event"] * df_event["playing_direction"]
-    df_event["x_target_norm"] = df_event["x_target"] * df_event[
-        "playing_direction"]  # TODO move x_target calculation here
+    st.write(df_event[["x_event", "x_norm", "playing_direction"]])
+    assert df_event["x_norm"].notna().any()
+    df_event["x_target_norm"] = df_event["x_target"] * df_event["playing_direction"]  # TODO move x_target calculation here
     df_event["y_target_norm"] = df_event["y_target"] * df_event["playing_direction"]
 
     # Expected threat
     df_event["is_successful"] = df_event["event_outcome"] == "successfully_completed"
+    importlib.reload(defensive_network.models.value)
     xt_res = defensive_network.models.value.get_expected_threat(df_event, xt_model=xt_model)
     df_event["pass_xt"] = xt_res.delta_xt
 
     i_pass = df_event["event_type"] == "pass"
-    df_event.loc[i_pass, "pass_is_intercepted"] = (df_event.loc[i_pass, "event_outcome"] == "unsuccessful") & ~pd.isna(
-        df_event.loc[i_pass, "player_id_2"])
-    df_event.loc[i_pass, "pass_is_out"] = (df_event.loc[i_pass, "event_outcome"] == "unsuccessful") & pd.isna(
-        df_event.loc[i_pass, "player_id_2"])
-    df_event.loc[i_pass, "pass_is_successful"] = df_event.loc[i_pass, "event_outcome"] == "successfully_completed"
+    df_event.loc[i_pass, "pass_is_intercepted"] = (df_event.loc[i_pass, "event_outcome"] == "unsuccessful") & ~pd.isna(df_event.loc[i_pass, "player_id_2"])
+    df_event.loc[i_pass, "pass_is_out"] = (df_event.loc[i_pass, "event_outcome"] == "unsuccessful") & pd.isna(df_event.loc[i_pass, "player_id_2"])
+    df_event.loc[i_pass, "pass_is_successful"] = (df_event.loc[i_pass, "event_outcome"] == "successfully_completed")
+
+    # compare nans vs non-nan numbers
+    st.write(df_event.loc[i_pass, "x_target"].isna().sum())
+    st.write(df_event.loc[i_pass & df_event["pass_is_intercepted"], "x_target"].isna().sum(), len(df_event.loc[i_pass & df_event["pass_is_intercepted"], "x_target"]))
+    st.write(df_event.loc[i_pass & df_event["pass_is_out"], "x_target"].isna().sum(), len(df_event.loc[i_pass & df_event["pass_is_out"], "x_target"]))
+    st.write(df_event.loc[i_pass & df_event["pass_is_successful"], "x_target"].isna().sum(), len(df_event.loc[i_pass & df_event["pass_is_successful"], "x_target"]))
 
     # assert all three exist
     assert df_event.loc[i_pass, "pass_is_intercepted"].sum() > 0
     assert df_event.loc[i_pass, "pass_is_out"].sum() > 0
     assert df_event.loc[i_pass, "pass_is_successful"].sum() > 0
+
+    # assert df_event.loc[i_pass, "x_target"].notna().all()
+    # assert df_event.loc[i_pass, "x_target_norm"].notna().all()
 
     df_event.loc[i_pass, "outcome"] = df_event.loc[i_pass].apply(
         lambda x: "successful" if x["pass_is_successful"] else ("intercepted" if x["pass_is_intercepted"] else "out"),
@@ -339,7 +395,7 @@ def augment_match_data(
         # df_tracking["formation_instance"] = res.formation_instance
         # df_tracking["role_category"] = res.role_category
         importlib.reload(defensive_network.models.formation_v2)
-        res = defensive_network.models.formation_v2.detect_formation(df_tracking, do_formation_segment_plot=True)
+        res = defensive_network.models.formation_v2.detect_formation(df_tracking, do_formation_segment_plot=False)
         df_tracking["formation"] = res.formation
         df_tracking["role"] = res.position
 
@@ -362,27 +418,6 @@ def augment_match_data(
     frameplayerrole = df_tracking.groupby(["frame", "player_id"])["role"].first()#.str.replace("def", "off")
     df_tracking["role"] = df_tracking["role"]#.str.replace("def", "off")
     df_tracking["role_name"] = df_tracking["role"]#.map(role2name)
-
-    st.write("df_tracking")
-    st.write(df_tracking.head(50000))
-
-    st.write("frameplayerrole")
-    st.write(frameplayerrole)
-
-    # def _rn():
-    #     # st.write(df_tracking["role"])
-    #     df_tracking["role"] = df_tracking["role"].str.replace("def", "off")
-    #     # df_tracking["role"] = df_tracking["role"].apply(lambda x: str(x).replace("def", "off") if not pd.isna(x) else x)
-    #     # df_tracking["role_name"] = df_tracking.apply(lambda x: role2name.get(x["role"], x["role"]), axis=1)
-    #     df_tracking["role_name"] = df_tracking["role"].map(role2name)
-    #     # st.write(df_tracking[["role", "role_name"]])
-    #     # st.stop()
-    #     return df_tracking
-    #
-    # with st.spinner("role naming"):
-    #     df_tracking = _rn()
-    #     df_tracking["role"] = df_tracking["role"].apply(lambda x: str(x).replace("def", "off") if not pd.isna(x) else x)
-    #     df_tracking["role_name"] = df_tracking.apply(lambda x: role2name.get(x["role"], x["role"]), axis=1)
 
     df_event = df_event.merge(frameplayerrole.reset_index().rename(columns={"role": "role_1"}), how='left',
                               left_on=["frame", "player_id_1"], right_on=["frame", "player_id"]).drop(
@@ -420,11 +455,11 @@ def augment_match_data(
     assert df_event.loc[df_event["role_2"].notna(), "role_category_2"].notna().all(), "role_category_2 should not be NaN if role_2 is not NaN"
     assert df_event.loc[df_event["expected_receiver_role"].notna(), "expected_receiver_role_category"].notna().all(), "expected_receiver_role_category should not be NaN if expected_receiver_role is not NaN"
 
-    df_event["full_frame"] = df_event["section"].str.cat(df_event["frame"].astype(float).astype(str), sep="-")
+    df_event["full_frame"] = df_event["section"].astype(str).str.cat(df_event["frame"].astype(float).astype(str), sep="-")
     # df_event["full_frame_rec"] = ???
 
     df_event["original_frame_id"] = df_event["frame"].copy()
-    do_synchronize = True
+    do_synchronize = False
     if do_synchronize:
         with st.spinner("Synchronizing events and tracking data..."):
             df_event["original_frame_id"] = df_event["frame"].copy()
@@ -447,7 +482,7 @@ def augment_match_data(
     return df_tracking, df_event
 
 
-@st.cache_resource
+# @st.cache_resource
 def get_match_data(
     base_path, slugified_match_string, xt_model="ma2024", expected_receiver_model="power2017",
     formation_model="average_pos", plot_formation=True, overwrite_if_exists=False,

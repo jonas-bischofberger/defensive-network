@@ -19,8 +19,6 @@ SynchronizationResult = collections.namedtuple("SynchronizationResult", ["matche
 
 
 def synchronize(df_events, df_tracking, fps_tracking=25):
-    st.write("df_events")
-    st.write(df_events)
     df_events = df_events[
         (df_events["event_type"] != "referee") &
         (df_events["player_id_1"].notna())
@@ -40,7 +38,6 @@ def synchronize(df_events, df_tracking, fps_tracking=25):
     df_tracking["frame"] = df_tracking["frame"]
     df_tracking["ball"] = df_tracking["player_id"] == "BALL"
     assert df_tracking["ball"].any()
-    st.write(df_tracking.groupby("section")["ball"].value_counts())
     assert df_tracking.groupby("section")["ball"].any().all(), "Both halves must have ball tracking data"
 
     df_tracking["x"] = np.clip(df_tracking["x_tracking"].astype(float) + 52.5, 0, 105)
@@ -48,15 +45,12 @@ def synchronize(df_events, df_tracking, fps_tracking=25):
     df_tracking["z"] = 0.0
     df_tracking["acceleration"] = 0.0
 
-    df_events = df_events[(df_events["frame"] < 5000) | (df_events["section"] == "second_half")].reset_index(drop=True)
-    df_tracking = df_tracking[(df_tracking["frame"] < 5000) | (df_tracking["section"] == "second_half")].reset_index(drop=True)
+    # df_events = df_events[(df_events["frame"] < 5000) | (df_events["section"] == "second_half")].reset_index(drop=True)
+    # df_tracking = df_tracking[(df_tracking["frame"] < 5000) | (df_tracking["section"] == "second_half")].reset_index(drop=True)
     df_events = df_events.reset_index(drop=True)
     df_tracking = df_tracking.reset_index(drop=True)
 
     # Initialize event-tracking synchronizer with given event data (df_events),
-    st.write("df_events", df_events.shape, "df_tracking", df_tracking.shape)
-    st.write(df_events)
-    st.write(df_tracking.head(50000))
 
     # tracking data (df_tracking), and recording frequency of the tracking data (fps_tracking)
     ETSY = etsy.sync.EventTrackingSynchronizer(df_events, df_tracking, fps=fps_tracking)
@@ -69,8 +63,6 @@ def synchronize(df_events, df_tracking, fps_tracking=25):
     df_events["scores"] = ETSY.scores
 
     df_events = df_events.set_index("index")
-
-    st.write(df_events)
 
     return SynchronizationResult(matched_frames=df_events["matched_frame"], scores=df_events["scores"])
 

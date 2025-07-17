@@ -590,6 +590,16 @@ def append_to_parquet_on_drive(df_to_append, fpath: str, key_cols, overwrite_key
     # return None
     assert folder_id is not None, f"Folder path '{parent_path}' not found on Drive."
 
+    # --- Deduplication assertions
+    def assert_no_duplicate_keys(df, keys):
+        if df.duplicated(keys).any():
+            st.write(df.loc[df.duplicated(keys, keep=False)])
+            raise ValueError("Duplicate keys found")
+
+    def assert_no_duplicate_columns(df):
+        if df.columns.duplicated().any():
+            raise ValueError("Duplicate columns found")
+
     # --- Download existing file
     try:
         with st.spinner("Downloading existing file..."):
@@ -597,17 +607,12 @@ def append_to_parquet_on_drive(df_to_append, fpath: str, key_cols, overwrite_key
                 df_existing = download_parquet_from_drive(fpath, root_folder_id)
             else:
                 df_existing = download_csv_from_drive(fpath, root_folder_id)
+                df_existing = df_existing.drop_duplicates(key_cols)  # drop complete duplicate rows - fixes strange error
+                assert_no_duplicate_keys(df_existing, key_cols)
+                assert_no_duplicate_columns(df_existing)
+
     except FileNotFoundError:
         df_existing = pd.DataFrame(columns=df_to_append.columns)
-
-    # --- Deduplication assertions
-    def assert_no_duplicate_keys(df, keys):
-        if df.duplicated(keys).any():
-            raise ValueError("Duplicate keys found")
-
-    def assert_no_duplicate_columns(df):
-        if df.columns.duplicated().any():
-            raise ValueError("Duplicate columns found")
 
     assert_no_duplicate_keys(df_to_append, key_cols)
     assert_no_duplicate_columns(df_to_append)

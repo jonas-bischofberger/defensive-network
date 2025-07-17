@@ -137,8 +137,40 @@ def uniquify_keep_order(lst):
     return list(dict.fromkeys(lst))
 
 
+# def seconds_since_period_start_to_mmss(seconds, period_nr):
+#     """
+#     >>> seconds_since_period_start_to_mmss(100, 0)
+#     '01:40'
+#     >>> seconds_since_period_start_to_mmss(45*60+123, 0)
+#     '45+2:03'
+#     >>> seconds_since_period_start_to_mmss(45*60+123, 1)
+#     '90+2:03'
+#     >>> seconds_since_period_start_to_mmss(-66, 1)
+#     '45-1:06'
+#     """
+#     assert period_nr in {0, 1}, f"period_nr={period_nr} not in {{0, 1}}"
+#
+#     mins = int(seconds // 60)
+#     if mins >= 45:
+#         mins = 45
+#         extra_min_string = f"+{int((seconds - 45 * 60) // 60)}"
+#     elif mins < 0:
+#         mins = 0
+#         seconds = -seconds
+#         extra_min_string = f"-{int(seconds // 60)}"
+#     else:
+#         extra_min_string = ""
+#
+#     if period_nr == 1:
+#         mins += 45
+#
+#     return f"{mins:02d}{extra_min_string}:{int(seconds % 60):02d}"
+
 def seconds_since_period_start_to_mmss(seconds, period_nr):
     """
+    Converts seconds into a string representation of minutes and seconds,
+    with support for regular and extra time periods.
+
     >>> seconds_since_period_start_to_mmss(100, 0)
     '01:40'
     >>> seconds_since_period_start_to_mmss(45*60+123, 0)
@@ -147,21 +179,32 @@ def seconds_since_period_start_to_mmss(seconds, period_nr):
     '90+2:03'
     >>> seconds_since_period_start_to_mmss(-66, 1)
     '45-1:06'
+    >>> seconds_since_period_start_to_mmss(150, 2)
+    '92:30'
+    >>> seconds_since_period_start_to_mmss(15*60+1, 2)
+    '105+0:01'
+    >>> seconds_since_period_start_to_mmss(15*60+1, 3)
+    '120+0:01'
     """
-    assert period_nr in {0, 1}, f"period_nr={period_nr} not in {{0, 1}}"
+    assert period_nr in {0, 1, 2, 3}, f"period_nr={period_nr} not in {{0, 1, 2, 3}}"
+
+    period_base_minutes = {0: 0, 1: 45, 2: 90, 3: 105}
+    period_durations = {0: 45, 1: 45, 2: 15, 3: 15}
+
+    base_min = period_base_minutes[period_nr]
+    duration = period_durations[period_nr]
 
     mins = int(seconds // 60)
-    if mins >= 45:
-        mins = 45
-        extra_min_string = f"+{int((seconds - 45 * 60) // 60)}"
+
+    if mins >= duration:
+        display_min = base_min + duration
+        extra_min_string = f"+{int((seconds - duration * 60) // 60)}"
     elif mins < 0:
-        mins = 0
+        display_min = base_min
         seconds = -seconds
         extra_min_string = f"-{int(seconds // 60)}"
     else:
+        display_min = base_min + mins
         extra_min_string = ""
 
-    if period_nr == 1:
-        mins += 45
-
-    return f"{mins:02d}{extra_min_string}:{int(seconds % 60):02d}"
+    return f"{display_min:02d}{extra_min_string}:{int(seconds % 60):02d}"

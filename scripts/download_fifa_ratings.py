@@ -5,7 +5,9 @@ import time
 import defensive_network.parse.drive
 
 base_url = "https://www.futbin.com"
-league_url_template = "https://www.futbin.com/24/leagues/2215/gpfbl?page={page}&version=gold%2Csilver%2Cbronze"
+# base_url = "https://www.futbin.com"
+league_url_template = "https://www.futbin.com/24/leagues/2076/3-liga?page={page}&version=gold%2Csilver%2Cbronze"
+# league_url_template = "https://www.futbin.com/24/leagues/2215/gpfbl?page={page}&version=gold%2Csilver%2Cbronze"
 headers = {
     "User-Agent": "Mozilla/5.0"
 }
@@ -155,7 +157,7 @@ def main():
     import pandas as pd
     df = pd.DataFrame(all_players)
     df.to_csv("fifa_player_ratings.csv", index=False)
-    defensive_network.parse.drive.upload_csv_to_drive(df, "fifa_ratings.csv")
+    defensive_network.parse.drive.append_to_parquet_on_drive(df, "fifa_ratings.csv", key_cols=["url"], format="csv")
 
 
 if __name__ == '__main__':

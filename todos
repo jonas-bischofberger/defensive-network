@@ -21,9 +21,10 @@ Methods:
 # Run reduction again - there was a bug - then run involvement and matchsums again and check if results are ok now. Maybe do Resp etc. per Pass!
 
 TODOS
-- reprocess
-- check and harmonize  of cont/fault minus/plus (make fault negative, contribution positive, involvement absolute?)
+- reprocess all involvements and following data + add men's data
+- check and harmonize  of cont/fault minus/plus (make fault negative, contribution positive, valued involvement sum? raw involvement absolute sum?)
 - New KPI: Difference Involvement vs Responsibility, Absolute Involvement/Responsibility, Interceptions/Tackles per Pass
+- run a bit of analysis: e.g. x-y-plot fault vs contribution, inv vs resp etc.
 
 Conclusions
 - Which ICC higher than interceptions_per90? Shows higher match-to-match stability.

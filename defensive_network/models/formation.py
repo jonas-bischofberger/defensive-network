@@ -221,7 +221,7 @@ def detect_formation(
     return FormationResult(df_tracking["role"], df_tracking["role_name"], df_tracking["formation_instance"], df_tracking["role_category"])
 
 
-@st.cache_resource
+# @st.cache_resource
 def _read_parquet(fpath):
     return pd.read_parquet(fpath)
 

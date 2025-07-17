@@ -113,8 +113,8 @@ def get_responsibility(df_passes, dfg_responsibility_model, event_id_col="involv
     #
 
     df_passes["raw_relative_responsibility"] = df_passes.groupby(event_id_col)["raw_responsibility"].transform(lambda x: x / x.sum())
-    df_passes["valued_responsibility"] = df_passes["raw_responsibility"] * df_passes[value_col]
-    df_passes["valued_relative_responsibility"] = df_passes["raw_relative_responsibility"] * df_passes[value_col]
+    df_passes["valued_responsibility"] = df_passes["raw_responsibility"] * df_passes[value_col].abs()
+    df_passes["valued_relative_responsibility"] = df_passes["raw_relative_responsibility"] * df_passes[value_col].abs()
 
     assert len(df_passes) == n_passes, f"Number of passes changed during responsibility calculation: {len(df_passes)} != {n_passes}. Check context_cols."
 
