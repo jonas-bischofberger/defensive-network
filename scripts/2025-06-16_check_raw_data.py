@@ -1,8 +1,8 @@
 import pandas as pd
 import streamlit as st
 
-path = st.text_input("Enter the path to the raw data file:", "Y:/w_raw/events/events.csv")
-meta_path = st.text_input("Enter the path to the metadata file:", "Y:/w_raw/meta.csv")
+path = st.text_input("Enter the path to the raw data file:", "/Volumes/Extreme SSD/DFB data/1107 second half data")
+meta_path = st.text_input("Enter the path to the metadata file:", "/Volumes/Extreme SSD/DFB data/1107 second half data/meta.csv")
 df_meta = pd.read_csv(meta_path)
 df_meta["match_string"] = df_meta.apply(lambda row: f"{row['competition_name']} {row['season_name']}: {row['match_day']}.ST {row['match_title'].replace('-', ' - ')}", axis=1)
 
@@ -36,6 +36,9 @@ if path:
         files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith((".csv", ".parquet"))]
         dfs = []
         for f in files:
+            if '._' in f:
+                st.warning(f"{f}")
+                continue
             st.write(f"Processing file: {f}")
             df = _process_file(f)
             dfs.append(df)
