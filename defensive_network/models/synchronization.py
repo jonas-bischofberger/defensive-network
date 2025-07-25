@@ -2,16 +2,11 @@ import importlib
 
 import pandas as pd
 import numpy as np
-import etsy.sync
-import etsy.scoring
 import streamlit as st
 
 import collections
 
 # from defensive_network.parse.dfb.cdf import augment_match_data
-
-importlib.reload(etsy.sync)
-importlib.reload(etsy.scoring)
 
 # from defensive_network.tests.data import df_events, df_tracking
 
@@ -19,6 +14,11 @@ SynchronizationResult = collections.namedtuple("SynchronizationResult", ["matche
 
 
 def synchronize(df_events, df_tracking, fps_tracking=25):
+    import etsy.sync
+    import etsy.scoring
+    importlib.reload(etsy.sync)
+    importlib.reload(etsy.scoring)
+
     df_events = df_events[
         (df_events["event_type"] != "referee") &
         (df_events["player_id_1"].notna())

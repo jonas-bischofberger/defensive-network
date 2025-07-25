@@ -388,6 +388,7 @@ def calculate_icc(df: pd.DataFrame, metric: str, subject_id: str, covariate_col:
 
     # Fit mixed effects model
     try:
+        df[subject_id] = df[subject_id].astype(str)
         model = smf.mixedlm(formula, data=df, groups=df[subject_id])
     except patsy.PatsyError as e:
         st.write(e)
@@ -401,9 +402,6 @@ def calculate_icc(df: pd.DataFrame, metric: str, subject_id: str, covariate_col:
     # Calculate ICC
     icc = var_between / (var_between + var_within)
     return icc
-
-
-
 
 
 def aggregate_matchsums(df_player_matchsums, group_cols=["player_id"]):
@@ -737,15 +735,16 @@ def main():
         create_videos()
 
     if _do_analysis:
-        DEFAULT_MINUTES = st.number_input("Default minimal minutes played total", min_value=0, value=300)
-        DEFAULT_MINUTES_PER_MATCH = st.number_input("Default minimal minutes per match", min_value=0, value=30)
-
-        df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=False)
+        with st.spinner("Loading matchsums..."):
+            df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
         df_player_matchsums["is_rückrunde"] = df_player_matchsums["kickoff_time"].apply(lambda x: pd.to_datetime(x, errors="coerce").year == 2024)
         df_player_matchsums = df_player_matchsums[df_player_matchsums["role_category"] != "GK"]
 
         competitions = df_player_matchsums["competition_name"].unique()
-        selected_competitions = st.multiselect("Competitions", competitions, ["3. Liga"])
+        selected_competitions = st.multiselect("Competitions", competitions, ["FIFA Men's World Cup"])
+
+        DEFAULT_MINUTES = st.number_input("Default minimal minutes played total", min_value=0, value=300 if "FIFA Men's World Cup" not in selected_competitions else 150)
+        DEFAULT_MINUTES_PER_MATCH = st.number_input("Default minimal minutes per match", min_value=0, value=30)
 
         df_player_matchsums = df_player_matchsums[df_player_matchsums["competition_name"].isin(selected_competitions)]
 
@@ -875,11 +874,13 @@ def main():
             st.write("df_desc1")
             st.write(df_desc1)
 
-        if st.toggle("Season-by-season correlation", False):
+        if st.toggle("Season-by-season correlation", True):
             with st.expander("Season-by-season correlations"):
                 # df_agg_player_rr = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "is_rückrunde"])
                 # df_agg_player_rr = df_agg_player_rr.reset_index().set_index("player_id")
                 df_agg = df_agg_by_season_half.copy().reset_index()
+                st.write("df_agg", df_agg.shape)
+                st.write(df_agg)
                 min_minutes = st.number_input("Minimum minutes played by player for Season-by-season corr.", min_value=0, value=DEFAULT_MINUTES, key="min_minutes_corr")
                 df_agg = df_agg[df_agg["minutes_played"] > min_minutes]
                 df_hinrunde = df_agg[df_agg["is_rückrunde"] == False]
@@ -921,7 +922,6 @@ def main():
                         coarse_pos = pd.get_dummies(df_data_new["coarse_position"], drop_first=True).astype(float)  # One-hot encode
 
                         # Step 1: Regress x and y on the dummies
-
                         x_model = statsmodels.api.OLS(x, statsmodels.api.add_constant(coarse_pos)).fit()
                         y_model = statsmodels.api.OLS(y, statsmodels.api.add_constant(coarse_pos)).fit()
 
@@ -988,7 +988,7 @@ def main():
                 st.write(df_correlations.set_index("kpi").sort_values(by="abs_partial_correlation_coefficient", ascending=False))
 
         data = []
-        if st.toggle("ICC", False):
+        if st.toggle("ICC", True):
             min_minutes = st.number_input("Minimum minutes played by player for ICC.", min_value=0, value=DEFAULT_MINUTES_PER_MATCH)
             df_agg = df_agg_match_player_pos[df_agg_match_player_pos["minutes_played"] >= min_minutes].copy()
             df_agg["player_pos_minutes_played"] = df_agg.groupby(["player_id", "coarse_position"])["minutes_played"].transform("sum")
@@ -1002,6 +1002,7 @@ def main():
                 columns = st.columns(n_cols)
                 # player_col = "short_name"
                 player_col = "player_id"
+                df_agg[player_col] = df_agg[player_col].astype(str)  # make categorical for later in ICC calc statsmodels fixes bug
                 for kpi_nr, kpi in enumerate(df_agg.columns):
                     col = columns[kpi_nr % n_cols]
                     try:
@@ -1110,7 +1111,7 @@ def main():
 
             # st.stop()
 
-        if st.toggle("Histograms", False):
+        if st.toggle("Histograms", True):
             min_minutes_per_match_hist = st.number_input("Minimum minutes played per match for histograms.", min_value=0, value=DEFAULT_MINUTES_PER_MATCH, key="min_minutes_per_match_histograms_BAdsvs")
             min_minutes_total = st.number_input("Minimum total minutes played for histograms.", min_value=0, value=DEFAULT_MINUTES, key="min_minutes_total_histograms_BAdsvs")
             df_agg_player_pos_hist = df_agg_player_pos[df_agg_player_pos["minutes_played"] > min_minutes_total]
@@ -1142,7 +1143,7 @@ def main():
                         col.pyplot(plt.gcf())
                         plt.close()
 
-        if st.toggle("KPI correlations as heatmap", False):
+        if st.toggle("KPI correlations as heatmap", True):
             min_minutes_per_match_hist = st.number_input("Minimum minutes played per match for histograms.", min_value=0, value=DEFAULT_MINUTES_PER_MATCH, key="min_minutes_per_match_hist_KPI_heatmpa")
             min_minutes_total = st.number_input("Minimum total minutes played for histograms.", min_value=0, value=DEFAULT_MINUTES)
             df_agg_player_pos_hist = df_agg_player_pos[df_agg_player_pos["minutes_played"] > min_minutes_total]
@@ -1289,6 +1290,11 @@ def main():
 
                         df_agg_player_only_cb = df_agg_player[df_agg_player["coarse_position"] == "CB"]
                         correlation_coefficient_only_CBs = df_agg_player_only_cb[x_variable].corr(df_agg_player_only_cb[y_variable])
+                        spearman_correlation_only_cbs = df_agg_player_only_cb[x_variable].corr(df_agg_player_only_cb[y_variable], method="spearman")
+
+                        #                     df_data_new_only_CBs = df_data_new[df_data_new["coarse_position"] == "CB"]
+                        #                     correlation_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"]))
+                        #                     spearman_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"], method='spearman'))
 
                         plt.title(f"{x_variable}-{y_variable}")
                         col.write(f"{x_variable}-{y_variable}")
@@ -1309,12 +1315,24 @@ def main():
 
                         with st.spinner("Regress"):
                             df_agg_team = df_agg_team.dropna(subset=[x_variable, y_variable, "team_id", "position"])
+                            df_agg_team['team_id'] = df_agg_team['team_id'].astype(str)
+                            df_agg_team['coarse_position'] = df_agg_team['coarse_position'].astype(str)
 
                             # Regress x on team and position
                             try:
+                                # st.write("A")
+                                # st.write(x_variable)
+                                # st.write(df_agg_team)
+                                # st.write(df_agg_team[x_variable].describe())
+                                # st.write(df_agg_team["team_id"].describe())
+                                # st.write(df_agg_team["coarse_position"].describe())
                                 model_x = statsmodels.formula.api.ols(f'{x_variable} ~ C(team_id) + C(coarse_position)', data=df_agg_team).fit()
                             except ValueError as e:
                                 st.write(e)
+                                # st.write(x_variable)
+                                # st.write(df_agg_team[x_variable].describe())
+                                # st.write(df_agg_team["team_id"].describe())
+                                # st.write(df_agg_team["coarse_position"].describe())
                                 continue
                             resid_x = model_x.resid
 
@@ -1336,12 +1354,14 @@ def main():
                             resid_y_pos = model_y_pos.resid
                             corr_pos, pval_pos = pearsonr(resid_x_pos, resid_y_pos)
 
+
                             data.append({
                                 "r": correlation_coefficient, "abs_r": abs(correlation_coefficient), "x": x_variable,
                                 "y": y_variable,
                                 # "team_and_position_corrected_correlation": corr, "p": pval,
                                 "position_corrected_correlation_pos": corr_pos, "p_pos": pval_pos,
                                 "correlation_coefficient_only_CBs": correlation_coefficient_only_CBs,
+                                "spearman_correlation_only_cbs": spearman_correlation_only_cbs,
                                 "abs_cc_only_CBs": abs(correlation_coefficient_only_CBs)
                             })
 
@@ -1393,6 +1413,7 @@ def _create_matchsums(df_event, df_tracking, series_meta, df_lineup, df_involvem
         .agg(lambda x: (x.max() - x.min()).total_seconds() / 60)
         .sum()
     )
+
     df_possession["total_minutes"] = total_minutes
 
     # Points
@@ -1831,7 +1852,10 @@ def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target
                 # df_tracking = pd.read_parquet(fpath_tracking)
                 df_tracking = _get_parquet(fpath_tracking)
                 df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events, st_cache=False)
-                dfg_responsibility_model = defensive_network.parse.drive.download_csv_from_drive(f"responsibility_model_{competition_name.replace('Men\'s', 'Mens')}.csv", st_cache=False).reset_index(drop=True)
+                # dfg_responsibility_model = defensive_network.parse.drive.download_csv_from_drive(f"responsibility_model_{competition_name.replace('Men\'s', 'Mens')}.csv", st_cache=False).reset_index(drop=True)
+                safe_name = competition_name.replace("Men's", 'Mens')
+                dfg_responsibility_model = defensive_network.parse.drive.download_csv_from_drive(f"responsibility_model_{safe_name}.csv", st_cache=False).reset_index(drop=True)
+
                 # st.write("dfg_responsibility_model")
                 # st.write(dfg_responsibility_model)
             with st.spinner("Calculating Responsibility..."):

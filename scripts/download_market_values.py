@@ -141,8 +141,8 @@ def get_spielberichte_links(base_url="https://www.transfermarkt.de", schedule_ur
     return spielberichte_links
 
 
-def scrape_transfermarkt():
-    spielberichte_links = get_spielberichte_links()
+def scrape_transfermarkt(schedule_url="https://www.transfermarkt.de/3-liga/gesamtspielplan/wettbewerb/L3?saison_id=2023&spieltagVon=1&spieltagBis=38"):
+    spielberichte_links = get_spielberichte_links(schedule_url=schedule_url)
     st.write("spielberichte_links")
     st.write(spielberichte_links)
     dfs = []
@@ -162,16 +162,17 @@ def scrape_transfermarkt():
 
 
 def main_transfermarkt():
-    if st.toggle("Scrape Transfermarkt", False):
-        scrape_transfermarkt()
-    if st.toggle("Process Transfermarkt Data", True):
+    if st.toggle("Scrape Transfermarkt", True):
+        scrape_transfermarkt(schedule_url="https://www.transfermarkt.de/weltmeisterschaft/gesamtspielplan/pokalwettbewerb/FIWC/saison_id/2021")
+    if st.toggle("Process Transfermarkt Data", False):
         process_transfermarkt()
 
 
 def process_transfermarkt():
     df = pd.read_excel("transfermarkt_market_values.xlsx")
     df["name"] = df["name"].str.replace("-\n", "").str.strip()
-    reference_date = pd.to_datetime("2024-01-19")
+    reference_date = pd.to_datetime("2021-11-01")
+    # reference_date = pd.to_datetime("2024-01-19")
     df["difference_to_reference"] = (reference_date - df["date"]).abs().dt.days
     # drop duplicates but keep the closest date to the reference date
     df = df.sort_values(by=["name", "difference_to_reference"]).drop_duplicates(["name"]).reset_index(drop=True).drop(columns=["difference_to_reference"])

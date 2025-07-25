@@ -381,7 +381,7 @@ def plot_pass(
                       fc=arrow_color, ec=arrow_color, alpha=alpha, length_includes_head=True, linewidth=0.5,
                       label=additional_frame_col, edgecolor=None,
                       )
-            st.write(f"{additional_frame_cols=}, {float(p4ss[additional_frame_col])} <= {frame} <= {p4ss["frame_rec"]}, {alpha=}")
+            st.write(f"{additional_frame_cols=}, {float(p4ss[additional_frame_col])} <= {frame} <= {p4ss['frame_rec']}, {alpha=}")
             additional_frames_str += f"{additional_frame_col}:{p4ss[additional_frame_col]},"
 
     if additional_x_coordinates is not None:
