@@ -1852,10 +1852,8 @@ def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target
                 # df_tracking = pd.read_parquet(fpath_tracking)
                 df_tracking = _get_parquet(fpath_tracking)
                 df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events, st_cache=False)
-                # dfg_responsibility_model = defensive_network.parse.drive.download_csv_from_drive(f"responsibility_model_{competition_name.replace('Men\'s', 'Mens')}.csv", st_cache=False).reset_index(drop=True)
-                safe_name = competition_name.replace("Men's", 'Mens')
-                dfg_responsibility_model = defensive_network.parse.drive.download_csv_from_drive(f"responsibility_model_{safe_name}.csv", st_cache=False).reset_index(drop=True)
-
+                cn=competition_name.replace("Men's", "Mens")
+                dfg_responsibility_model = defensive_network.parse.drive.download_csv_from_drive(f"responsibility_model_{cn}.csv", st_cache=False).reset_index(drop=True)
                 # st.write("dfg_responsibility_model")
                 # st.write(dfg_responsibility_model)
             with st.spinner("Calculating Responsibility..."):
