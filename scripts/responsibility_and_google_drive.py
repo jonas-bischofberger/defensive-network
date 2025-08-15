@@ -12,6 +12,8 @@ import gc
 import importlib
 import math
 import os
+import thefuzz
+import thefuzz.process
 
 import patsy
 # import statsmodels.api as sm
@@ -751,8 +753,7 @@ def main():
         position_mapping = {'CB-3': 'CB', 'LB': 'FB', 'LCB-3': 'CB', 'LCB-4': 'CB', 'LDM': 'CM', 'LS': 'CF',
                             'LW': 'Winger', 'LZM': 'CM', 'RB': 'FB', 'RCB-3': 'CB', 'RCB-4': 'CB', 'RDM': 'CM',
                             'RS': 'CF', 'RW': 'Winger', 'RWB': 'FB', 'RZM': 'CM', 'ST': 'CF', 'ZDM': 'CM', 'ZOM': 'CAM',
-                            'LWB': 'FB'
-                            }
+                            'LWB': 'FB'}
         df_player_matchsums["coarse_position"] = df_player_matchsums["role_category"].map(position_mapping)
         assert df_player_matchsums["coarse_position"].notna().all(), "Some positions are not mapped to coarse positions"
         df_player_matchsums["player_pos_minutes_played"] = df_player_matchsums.groupby(["player_id", "coarse_position"])["minutes_played"].transform("sum")
@@ -863,6 +864,299 @@ def main():
             if kpi not in df_agg_match_player_pos.columns:
                 st.warning(f"{kpi} not in df_agg_match_player_pos")
         kpis = [kpi for kpi in kpis if kpi in df_agg_match_player_pos.columns]
+
+        if st.toggle("FIFA Correlations", True):
+            with st.expander("FIFA", True):
+                df_fifa_players = defensive_network.parse.drive.download_csv_from_drive("fifa_ratings.csv", st_cache=False)
+                files = defensive_network.parse.drive.list_files_in_drive_folder(".")
+                st.write("files")
+                st.write(files)
+                # df_soccerdonna = defensive_network.parse.drive.download_csv_from_drive("market_values.csv", st_cache=False)
+                # df_soccerdonna = defensive_network.parse.drive.download_excel_from_drive("market_values.xlsx", st_cache=False)
+                df_soccerdonna = pd.read_excel("C:/Users/j.bischofberger/Downloads/Neuer Ordner (7)/market_values.xlsx")  # TODO WHY
+                # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive("players_matchsums.csv")
+                # df_agg_player = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "position"])
+                # df_agg_player["coarse_position"] = df_agg_player["position"].map(position_mapping)
+                df_agg_player = df_agg_player_pos.copy()
+                st.write("df_agg_player 1")
+                st.write(df_agg_player)
+                # assert player pos is unique
+                assert df_agg_player[["player_id", "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
+                df_agg_player["full_name"] = (df_agg_player["first_name"] + " " + df_agg_player["last_name"]).str.strip()
+                min_minutes = st.number_input("Minimum minutes played by player for FIFA correlations.", min_value=0, value=DEFAULT_MINUTES)
+                df_agg_player = df_agg_player[df_agg_player["minutes_played"] > min_minutes]
+                assert df_agg_player[["player_id", "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
+
+                # df_agg_team = aggregate_matchsums(df_player_matchsums, group_cols=["team_id", "position", "player_id"]).reset_index()
+                # df_agg_team["full_name"] = df_agg_team["first_name"] + " " + df_agg_team["last_name"]
+                # df_agg_team["coarse_position"] = df_agg_team["position"].map(position_mapping)
+                df_agg_team = df_agg_team[df_agg_team["minutes_played"] > min_minutes]
+                df_agg_team["full_name"] = (df_agg_team["first_name"] + " " + df_agg_team["last_name"]).str.strip()
+
+                # Map FIFA names
+                df_fifa_players["name"] = df_fifa_players["name"].str.strip()
+                df_soccerdonna["name"] = df_soccerdonna["name"].str.strip()
+                fifa_names = df_fifa_players["name"].tolist()
+                soccerdonna_names = df_soccerdonna["name"].tolist()
+
+                manual_fifa_mapping = {
+                    "Sammy Jerabek": "Samantha Jerabek",
+                    "0 Letícia Santos": "Letícia Santos de Oliveira",
+                    "Allie Hess": "Alexandria Loy Hess",
+                    "João Cancelo": "João Pedro Cavaco Cancelo",
+                    "Steven Vitoria": "Steven de Sousa Vitória",
+                    "Pedri": "Pedro González López",
+                    "Dani Olmo": "Daniel Olmo Carvajal",
+                    "Rodri": "Rodrigo Hernández Cascante",
+                    "Gavi": "Pablo Martín Páez Gavira",
+                    "Ruben Dias": "Rúben Santos Gato Alves Dias",
+                    "Thiago Silva": "Thiago Emiliano da Silva",
+                    "Jose Gimenez": "José María Giménez",
+                    "Casemiro": "Carlos Henrique Venancio Casimiro",
+                    "Pepe": "Képler Laveran Lima Ferreira",
+                    "Raphinha": "Raphael Dias Belloli",
+                    "Marquinhos": "Marcos Aoás Corrêa",
+                    # 0 Letícia Santos	Letícia Santos de Oliveira
+                    # Allie Hess	Alexandria Loy Hess
+                }
+                fifa_mapping = manual_fifa_mapping.copy()
+                soccerdonna_mapping = dict()
+                assert df_agg_player[["player_id", "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
+
+                st.write("FIFA names")
+                st.write(df_fifa_players)
+
+                for idx, row in df_agg_player.iterrows():
+                    full_name = row['full_name']
+                    if full_name in manual_fifa_mapping:
+                        assert manual_fifa_mapping[full_name] in fifa_names, f"Manual mapping for {full_name} not in FIFA names"
+                        best_match, score = manual_fifa_mapping[full_name], 200
+                    else:
+                        best_match, score = thefuzz.process.extractOne(full_name, fifa_names)
+
+                    if score > 90:
+                        df_agg_player.at[idx, 'fifa_match'] = best_match
+                        df_agg_player.at[idx, 'match_score'] = score
+                        fifa_mapping[full_name]  = best_match
+                    else:
+                        # df_agg_player.at[idx, 'fifa_match'] = best_match
+                        # df_agg_player.at[idx, 'match_score'] = score
+                        fifa_mapping[full_name] = None
+
+                    # match Soccerdonna name
+                    best_match_soccerdonna, score_soccerdonna = thefuzz.process.extractOne(full_name, soccerdonna_names)
+
+                    if score_soccerdonna > 90:
+                        df_agg_player.at[idx, 'soccerdonna_name'] = best_match_soccerdonna
+                        df_agg_player.at[idx, 'soccerdonna_score'] = score_soccerdonna
+                        soccerdonna_mapping[full_name] = best_match_soccerdonna
+                    else:
+                        soccerdonna_mapping[full_name] = None
+
+                assert df_agg_player[["player_id", "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
+                df_agg_team["fifa_name"] = df_agg_team["full_name"].map(fifa_mapping)
+                df_agg_team = df_agg_team.merge(df_fifa_players, left_on="fifa_name", right_on="name", how="left")
+                df_agg_team["soccerdonna_name"] = df_agg_team["full_name"].map(soccerdonna_mapping)
+                df_agg_team = df_agg_team.merge(df_soccerdonna, left_on="soccerdonna_name", right_on="name", how="left")
+                st.write("df_agg_team")
+                st.write(df_agg_team)
+                st.write("df_agg_player before")
+                st.write(df_agg_player)
+
+                assert df_agg_player[["player_id", "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
+                df_fifa_players = df_fifa_players.drop_duplicates(subset=["name"])
+                st.write("df_fifa_players")
+                st.write(df_fifa_players)
+                df_agg_player = df_agg_player.merge(df_fifa_players, left_on="fifa_match", right_on="name", how="left")
+                assert df_agg_player[["player_id", "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
+                try:
+                    df_agg_player = df_agg_player.merge(df_soccerdonna, left_on="soccerdonna_name", right_on="name", how="left")
+                except KeyError as e:
+                    df_agg_player["market_value"] = np.nan
+                    st.write(e)
+                assert df_agg_player[["player_id", "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
+                # df_agg_player = df_agg_player.dropna(subset=["defending"])
+                st.write("df_agg_player")
+                st.write(df_agg_player)
+                # df_agg_player = df_agg_player[df_agg_player["minutes_played"] > 600]
+                # st.write("df_agg_team")
+                # st.write(df_agg_team)
+
+                data = []
+                x_variables = kpis
+                y_variables = ["def_awareness", "defending", "market_value"]
+                # xy_variables = [(x, y) for x in x_variables for y in y_variables]
+                for x_variable in x_variables:
+                    columns = st.columns(len(y_variables))
+                    for y_nr, y_variable in enumerate(y_variables):
+                        col = columns[y_nr]
+                        df = df_agg_player.copy().dropna(subset=[x_variable, y_variable, "coarse_position"])
+
+                        try:
+                            # sns.regplot(data=df_agg_player, x=x_variable, y=y_variable, hue="position", scatter=True, label='Trendline')
+                            fig = plt.figure()
+                            sns.lmplot(data=df, x=x_variable, y=y_variable, hue="coarse_position", scatter=True)
+                            # set lower ylim to 0
+                            plt.ylim(bottom=0)
+                            # set upper limit to max plus 10% of max
+                            max_y = df[y_variable].max()
+                            plt.ylim(top=1.1*max_y)
+                            col.write(plt.gcf())
+                            # st.stop()
+
+                            # make also a logarithmic plot
+                            fig_log = plt.figure()
+                            sns.lmplot(data=df, x=x_variable, y=y_variable, hue="coarse_position", scatter=True, logx=True)
+                            plt.ylim(bottom=0)
+                            plt.ylim(top=1.1*max_y)
+                            col.write(plt.gcf())
+
+                            # plt.close()
+
+                        except (ValueError, np.exceptions.DTypePromotionError, KeyError) as e:
+                            col.write(e)
+
+                        # for i, row in df_data_new.iterrows():
+                        #     plt.text(
+                        #         row[f"{kpi}_hinrunde"],  # x position
+                        #         row[f"{kpi}_rückrunde"],  # y position
+                        #         row["short_name_hinrunde"],
+                        #         fontsize=9,
+                        #         ha='right',
+                        #         va='bottom'
+                        #     )
+
+                        def bootstrapped_correlation_coefficient(x, y, n_bootstraps=1000):
+                            x = np.asarray(x)
+                            y = np.asarray(y)
+
+                            if x.shape != y.shape:
+                                raise ValueError("x and y must have the same shape.")
+
+                            n = len(x)
+                            bootstrapped_corrs = np.empty(n_bootstraps)
+
+                            i = 0
+                            while True:
+                                indices = np.random.randint(0, n, n)
+                                x_sample = x[indices]
+                                y_sample = y[indices]
+                                corr = np.corrcoef(x_sample, y_sample)[0, 1]
+                                bootstrapped_corrs[i] = corr
+                                i += 1
+                                if np.isnan(corr):
+                                    st.write(x_sample)
+                                    st.write(y_sample)
+                                    st.write(corr)
+                                    st.write("NaN correlation, skipping")
+                                    raise ValueError("NaN correlation, skipping")
+                                    continue
+                                if i >= n_bootstraps:
+                                    break
+
+                            upper = np.percentile(bootstrapped_corrs, 97.5)
+                            lower = np.percentile(bootstrapped_corrs, 2.5)
+                            estimate = np.mean(bootstrapped_corrs)
+                            st.write(f"Bootstrapped correlation coefficient: {estimate:.3f} (95% CI: [{lower:.3f}, {upper:.3f}])")
+                            return estimate, lower, upper
+
+                        try:
+                            correlation_coefficient = df[x_variable].corr(df[y_variable])
+                        except (ValueError, KeyError) as e:
+                            st.write(e)
+                            correlation_coefficient = np.nan
+
+                        df_agg_player_only_cb = df[df["coarse_position"] == "CB"]
+                        correlation_coefficient_only_CBs = df_agg_player_only_cb[x_variable].corr(df_agg_player_only_cb[y_variable])
+                        spearman_correlation_only_cbs = df_agg_player_only_cb[x_variable].corr(df_agg_player_only_cb[y_variable], method="spearman")
+                        correlation_coefficient_only_CBs_bs, cc_lower_only_CBs, cc_upper_only_CBs = bootstrapped_correlation_coefficient(
+                            df_agg_player_only_cb[x_variable], df_agg_player_only_cb[y_variable]
+                        )
+
+                        #                     df_data_new_only_CBs = df_data_new[df_data_new["coarse_position"] == "CB"]
+                        #                     correlation_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"]))
+                        #                     spearman_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"], method='spearman'))
+
+                        plt.title(f"{x_variable}-{y_variable}")
+                        col.write(f"{x_variable}-{y_variable}")
+                        #
+                        plt.xlabel(x_variable)
+                        plt.ylabel(y_variable)
+                        plt.title(f"Correlation of {x_variable} and {y_variable}")
+                        # col.write(fig)
+                        # col.write(fig_log)
+                        plt.close()
+                        #
+                        # st.write("BLA")
+                        # st.write("df_agg_team")
+                        # st.write(df_agg_team)
+
+                        # Assume df has columns: x, y, team, position
+
+                        # df_agg_team["position"] = df_agg_team["position_x"].fillna(df_agg_team["position_y"])
+
+                        with st.spinner("Regress"):
+                            df_agg_team = df_agg_team.dropna(subset=[x_variable, y_variable, "team_id", "position"])
+                            df_agg_team['team_id'] = df_agg_team['team_id'].astype(str)
+                            df_agg_team['coarse_position'] = df_agg_team['coarse_position'].astype(str)
+
+                            # Regress x on team and position
+                            try:
+                                # st.write("A")
+                                # st.write(x_variable)
+                                # st.write(df_agg_team)
+                                # st.write(df_agg_team[x_variable].describe())
+                                # st.write(df_agg_team["team_id"].describe())
+                                # st.write(df_agg_team["coarse_position"].describe())
+                                model_x = statsmodels.formula.api.ols(f'{x_variable} ~ C(team_id) + C(coarse_position)', data=df_agg_team).fit()
+                            except ValueError as e:
+                                st.write(e)
+                                # st.write(x_variable)
+                                # st.write(df_agg_team[x_variable].describe())
+                                # st.write(df_agg_team["team_id"].describe())
+                                # st.write(df_agg_team["coarse_position"].describe())
+                                continue
+                            resid_x = model_x.resid
+
+                            # Regress y on team and position
+                            model_y = statsmodels.formula.api.ols(f'{y_variable} ~ C(team_id) + C(coarse_position)', data=df_agg_team).fit()
+                            resid_y = model_y.resid
+
+                            # Correlation of residuals
+                            try:
+                                corr, pval = pearsonr(resid_x, resid_y)
+                            except ValueError as e:
+                                st.write(e)
+                                continue
+
+                            # Regress on position only
+                            model_x_pos = statsmodels.formula.api.ols(f'{x_variable} ~ C(coarse_position)', data=df_agg_team).fit()
+                            resid_x_pos = model_x_pos.resid
+                            model_y_pos = statsmodels.formula.api.ols(f'{y_variable} ~ C(coarse_position)', data=df_agg_team).fit()
+                            resid_y_pos = model_y_pos.resid
+                            corr_pos, pval_pos = pearsonr(resid_x_pos, resid_y_pos)
+
+
+                            data.append({
+                                "r": correlation_coefficient, "abs_r": abs(correlation_coefficient), "x": x_variable,
+                                "y": y_variable,
+                                # "team_and_position_corrected_correlation": corr, "p": pval,
+                                "position_corrected_correlation_pos": corr_pos, "p_pos": pval_pos,
+                                "correlation_coefficient_only_CBs": correlation_coefficient_only_CBs,
+                                "spearman_correlation_only_cbs": spearman_correlation_only_cbs,
+                                "abs_cc_only_CBs": abs(correlation_coefficient_only_CBs),
+
+                                "correlation_coefficient_only_CBs_bs": correlation_coefficient_only_CBs_bs,
+                                "abs_correlation_coefficient_only_CBs_bs": abs(correlation_coefficient_only_CBs_bs),
+                                "lower_level_025_only_CBs": cc_lower_only_CBs,
+                                "upper_level_975_only_CBs": cc_upper_only_CBs,
+                            })
+
+                df = pd.DataFrame(data)
+                # df["total_p"] = df["p"] + df["p_pos"]
+                # df["both_significant"] = (df["p"] < 0.05) & (df["p_pos"] < 0.05)
+                st.write("df")
+                st.write(df)
 
         if st.toggle("Matchsum Descriptives", False):
             # Position counts
@@ -1169,207 +1463,6 @@ def main():
                     plt.suptitle("Correlation Heatmap", y=1.02)
                     st.write(plt.gcf())
                     plt.close()
-
-        if st.toggle("FIFA Correlations", True):
-            with st.expander("FIFA", True):
-                import thefuzz
-                df_fifa_players = defensive_network.parse.drive.download_csv_from_drive("fifa_ratings.csv", st_cache=False)
-                files = defensive_network.parse.drive.list_files_in_drive_folder(".")
-                st.write("files")
-                st.write(files)
-                # df_soccerdonna = defensive_network.parse.drive.download_csv_from_drive("market_values.csv", st_cache=False)
-                # df_soccerdonna = defensive_network.parse.drive.download_excel_from_drive("market_values.xlsx", st_cache=False)
-                df_soccerdonna = pd.read_excel("C:/Users/Jonas/Downloads/market_values.xlsx")  # TODO WHY
-                st.write("df_soccerdonna")
-                st.write(df_soccerdonna)
-                # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive("players_matchsums.csv")
-                # df_agg_player = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "position"])
-                # df_agg_player["coarse_position"] = df_agg_player["position"].map(position_mapping)
-                df_agg_player = df_agg_player_pos.copy()
-                df_agg_player["full_name"] = df_agg_player["first_name"] + " " + df_agg_player["last_name"]
-                min_minutes = st.number_input("Minimum minutes played by player for FIFA correlations.", min_value=0, value=DEFAULT_MINUTES)
-                df_agg_player = df_agg_player[df_agg_player["minutes_played"] > min_minutes]
-
-                # df_agg_team = aggregate_matchsums(df_player_matchsums, group_cols=["team_id", "position", "player_id"]).reset_index()
-                # df_agg_team["full_name"] = df_agg_team["first_name"] + " " + df_agg_team["last_name"]
-                # df_agg_team["coarse_position"] = df_agg_team["position"].map(position_mapping)
-                df_agg_team = df_agg_team[df_agg_team["minutes_played"] > min_minutes]
-                df_agg_team["full_name"] = df_agg_team["first_name"] + " " + df_agg_team["last_name"]
-
-                # Map FIFA names
-                fifa_names = df_fifa_players["name"].tolist()
-                soccerdonna_names = df_soccerdonna["name"].tolist()
-
-                manual_fifa_mapping = {
-                    "Sammy Jerabek": "Samantha Jerabek",
-                    "0 Letícia Santos": "Letícia Santos de Oliveira",
-                    "Allie Hess": "Alexandria Loy Hess",
-                    # 0 Letícia Santos	Letícia Santos de Oliveira
-                    # Allie Hess	Alexandria Loy Hess
-                }
-                fifa_mapping = manual_fifa_mapping.copy()
-                soccerdonna_mapping = dict()
-
-                for idx, row in df_agg_player.iterrows():
-                    import thefuzz.process
-                    full_name = row['full_name']
-                    if full_name in manual_fifa_mapping:
-                        best_match, score = manual_fifa_mapping[full_name], 200
-                    else:
-                        best_match, score = thefuzz.process.extractOne(full_name, fifa_names)
-
-                    # st.write(full_name, ",", best_match, score)
-                    if score > 90:
-                        df_agg_player.at[idx, 'fifa_match'] = best_match
-                        df_agg_player.at[idx, 'match_score'] = score
-                        fifa_mapping[full_name]  = best_match
-                    else:
-                        fifa_mapping[full_name] = None
-
-                    # match Soccerdonna name
-                    best_match_soccerdonna, score_soccerdonna = thefuzz.process.extractOne(full_name, soccerdonna_names)
-
-                    if score_soccerdonna > 90:
-                        df_agg_player.at[idx, 'soccerdonna_name'] = best_match_soccerdonna
-                        df_agg_player.at[idx, 'soccerdonna_score'] = score_soccerdonna
-                        soccerdonna_mapping[full_name] = best_match_soccerdonna
-                    else:
-                        soccerdonna_mapping[full_name] = None
-
-                df_agg_team["fifa_name"] = df_agg_team["full_name"].map(fifa_mapping)
-                df_agg_team = df_agg_team.merge(df_fifa_players, left_on="fifa_name", right_on="name", how="left")
-                df_agg_team["soccerdonna_name"] = df_agg_team["full_name"].map(soccerdonna_mapping)
-                df_agg_team = df_agg_team.merge(df_soccerdonna, left_on="soccerdonna_name", right_on="name", how="left")
-                st.write("df_agg_team")
-                st.write(df_agg_team)
-
-                df_agg_player = df_agg_player.merge(df_fifa_players, left_on="fifa_match", right_on="name", how="left")
-                try:
-                    df_agg_player = df_agg_player.merge(df_soccerdonna, left_on="soccerdonna_name", right_on="name", how="left")
-                except KeyError as e:
-                    df_agg_player["market_value"] = np.nan
-                    st.write(e)
-                st.write("df_agg_player")
-                st.write(df_agg_player)
-                # df_agg_player = df_agg_player[df_agg_player["minutes_played"] > 600]
-                # st.write("df_agg_team")
-                # st.write(df_agg_team)
-
-                data = []
-                x_variables = kpis
-                y_variables = ["def_awareness", "defending", "market_value"]
-                # xy_variables = [(x, y) for x in x_variables for y in y_variables]
-                for x_variable in x_variables:
-                    columns = st.columns(len(y_variables))
-                    for y_nr, y_variable in enumerate(y_variables):
-                        col = columns[y_nr]
-                        try:
-                            # sns.regplot(data=df_agg_player, x=x_variable, y=y_variable, hue="position", scatter=True, label='Trendline')
-                            sns.lmplot(data=df_agg_player, x=x_variable, y=y_variable, hue="coarse_position", scatter=True)
-                            # set lower ylim to 0
-                            plt.ylim(bottom=0)
-
-                        except (ValueError, np.exceptions.DTypePromotionError, KeyError) as e:
-                            col.write(e)
-
-                        # for i, row in df_data_new.iterrows():
-                        #     plt.text(
-                        #         row[f"{kpi}_hinrunde"],  # x position
-                        #         row[f"{kpi}_rückrunde"],  # y position
-                        #         row["short_name_hinrunde"],
-                        #         fontsize=9,
-                        #         ha='right',
-                        #         va='bottom'
-                        #     )
-
-                        try:
-                            correlation_coefficient = df_agg_player[x_variable].corr(df_agg_player[y_variable])
-                        except (ValueError, KeyError) as e:
-                            st.write(e)
-                            correlation_coefficient = np.nan
-
-                        df_agg_player_only_cb = df_agg_player[df_agg_player["coarse_position"] == "CB"]
-                        correlation_coefficient_only_CBs = df_agg_player_only_cb[x_variable].corr(df_agg_player_only_cb[y_variable])
-                        spearman_correlation_only_cbs = df_agg_player_only_cb[x_variable].corr(df_agg_player_only_cb[y_variable], method="spearman")
-
-                        #                     df_data_new_only_CBs = df_data_new[df_data_new["coarse_position"] == "CB"]
-                        #                     correlation_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"]))
-                        #                     spearman_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"], method='spearman'))
-
-                        plt.title(f"{x_variable}-{y_variable}")
-                        col.write(f"{x_variable}-{y_variable}")
-                        #
-                        plt.xlabel(x_variable)
-                        plt.ylabel(y_variable)
-                        plt.title(f"Correlation of {x_variable} and {y_variable}")
-                        col.write(plt.gcf())
-                        plt.close()
-                        #
-                        # st.write("BLA")
-                        # st.write("df_agg_team")
-                        # st.write(df_agg_team)
-
-                        # Assume df has columns: x, y, team, position
-
-                        # df_agg_team["position"] = df_agg_team["position_x"].fillna(df_agg_team["position_y"])
-
-                        with st.spinner("Regress"):
-                            df_agg_team = df_agg_team.dropna(subset=[x_variable, y_variable, "team_id", "position"])
-                            df_agg_team['team_id'] = df_agg_team['team_id'].astype(str)
-                            df_agg_team['coarse_position'] = df_agg_team['coarse_position'].astype(str)
-
-                            # Regress x on team and position
-                            try:
-                                # st.write("A")
-                                # st.write(x_variable)
-                                # st.write(df_agg_team)
-                                # st.write(df_agg_team[x_variable].describe())
-                                # st.write(df_agg_team["team_id"].describe())
-                                # st.write(df_agg_team["coarse_position"].describe())
-                                model_x = statsmodels.formula.api.ols(f'{x_variable} ~ C(team_id) + C(coarse_position)', data=df_agg_team).fit()
-                            except ValueError as e:
-                                st.write(e)
-                                # st.write(x_variable)
-                                # st.write(df_agg_team[x_variable].describe())
-                                # st.write(df_agg_team["team_id"].describe())
-                                # st.write(df_agg_team["coarse_position"].describe())
-                                continue
-                            resid_x = model_x.resid
-
-                            # Regress y on team and position
-                            model_y = statsmodels.formula.api.ols(f'{y_variable} ~ C(team_id) + C(coarse_position)', data=df_agg_team).fit()
-                            resid_y = model_y.resid
-
-                            # Correlation of residuals
-                            try:
-                                corr, pval = pearsonr(resid_x, resid_y)
-                            except ValueError as e:
-                                st.write(e)
-                                continue
-
-                            # Regress on position only
-                            model_x_pos = statsmodels.formula.api.ols(f'{x_variable} ~ C(coarse_position)', data=df_agg_team).fit()
-                            resid_x_pos = model_x_pos.resid
-                            model_y_pos = statsmodels.formula.api.ols(f'{y_variable} ~ C(coarse_position)', data=df_agg_team).fit()
-                            resid_y_pos = model_y_pos.resid
-                            corr_pos, pval_pos = pearsonr(resid_x_pos, resid_y_pos)
-
-
-                            data.append({
-                                "r": correlation_coefficient, "abs_r": abs(correlation_coefficient), "x": x_variable,
-                                "y": y_variable,
-                                # "team_and_position_corrected_correlation": corr, "p": pval,
-                                "position_corrected_correlation_pos": corr_pos, "p_pos": pval_pos,
-                                "correlation_coefficient_only_CBs": correlation_coefficient_only_CBs,
-                                "spearman_correlation_only_cbs": spearman_correlation_only_cbs,
-                                "abs_cc_only_CBs": abs(correlation_coefficient_only_CBs)
-                            })
-
-                df = pd.DataFrame(data)
-                # df["total_p"] = df["p"] + df["p_pos"]
-                # df["both_significant"] = (df["p"] < 0.05) & (df["p_pos"] < 0.05)
-                st.write("df")
-                st.write(df)
 
 
 def _create_matchsums(df_event, df_tracking, series_meta, df_lineup, df_involvement):
