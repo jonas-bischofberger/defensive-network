@@ -639,7 +639,10 @@ def append_to_parquet_on_drive(df_to_append, fpath: str, key_cols, overwrite_key
     with st.spinner("Uploading combined Parquet file to Drive..."):
         file_id = upload_file_to_drive(local_temp_path, fpath, root_folder_id)
 
-    os.remove(local_temp_path)
+    try:
+        os.remove(local_temp_path)
+    except PermissionError:
+        st.warning(f"PermissionError: File {local_temp_path} is still in use. Please close it and try again later.")
 
     return file_id
 

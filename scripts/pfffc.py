@@ -3,6 +3,7 @@ import gc
 import importlib
 import json
 import os.path
+import re
 import time
 
 import slugify.slugify
@@ -104,6 +105,15 @@ def process_pfffc(event_file):
         # tracking_file = "C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/pff/Tracking Data/3812.jsonl/3812.jsonl"
         with st.spinner("Reading tracking data..."):
             df_tracking2 = pd.read_json(tracking_file, lines=True, compression='bz2')
+            st.write("period a", tracking_file, event_file)
+            st.write(df_tracking2.columns)
+            st.write(df_tracking2["period"].unique())
+            st.write(df_tracking2[["videoTimeMs", "frameNum", "period", "periodGameClockTime", "game_event_id"]])
+            with open(file, 'r') as f:
+                event_data = json.load(f)
+            df_event = pd.json_normalize(event_data)  #remove later
+            st.write("df_event")
+            st.write(df_event)
 
         event_id_to_frame = df_tracking2[["game_event_id", "frameNum"]].dropna().set_index("game_event_id")[
             "frameNum"].to_dict()
@@ -151,6 +161,8 @@ def process_pfffc(event_file):
             return df
 
         df = _get_dataa()
+        st.write("period b")
+        st.write(df["period_id"].unique())
 
         x_cols = [col for col in df.columns if col.endswith("_x")]
         y_cols = [col for col in df.columns if col.endswith("_y")]
@@ -160,7 +172,7 @@ def process_pfffc(event_file):
             df, frame_col="frame_id", coordinate_cols=coordinate_cols, players=players, player_to_team=player2team
         ).drop(columns=[col for col in df.columns if col.endswith("_d") or col.endswith("_s")])
         df_tracking = df_tracking[df_tracking["x"].notna() & df_tracking["y"].notna()]
-        st.write("01")
+        st.write("period c")
         st.write(df_tracking["period_id"].unique())
         # fr = 4226
         # st.write('df_tracking[df_tracking["frame_id"] == fr]', df_tracking[df_tracking["frame_id"] == fr].shape)
@@ -172,6 +184,13 @@ def process_pfffc(event_file):
             event_data = json.load(f)
 
         df_event = pd.json_normalize(event_data)
+        match_id = int(os.path.basename(file).split(".")[0])
+        st.write(f"{match_id=}")
+        if match_id in [10510, 10511]:  # Argentina - Netherlands and Croatia - Brazil lack tracking data for extra time
+            df_event = df_event[df_event["gameEvents.period"].isin([1, 2])]
+        if match_id == 3833:  # Poland - Saudi Arabia somehow has 1 event at period 0 with no tracking data
+            df_event = df_event[df_event["gameEvents.period"].isin([1, 2])]
+        st.write(df_event)
         return df_event, df_tracking, meta, df_roster, player2team, event_id_to_frame
 
     df_event, df_tracking, meta, df_roster, player2team, event_id_to_frame = _get_data(file)
@@ -378,6 +397,11 @@ def process_pfffc(event_file):
 
     assert df_event["player_id_2"].isna().any()
     df_tracking = df_tracking.drop_duplicates(keep="first", subset=["frame", "player_id"])
+
+    st.write("sections")
+    st.write(df_tracking["section"].unique())
+    st.write(df_event["section"].unique())
+
     df_tracking, df_event = defensive_network.parse.dfb.cdf.augment_match_data(
         meta, df_event, df_tracking, df_roster, edit_section=False
     )
@@ -471,14 +495,15 @@ def main():
         event_file = os.path.join(event_path, event_file)
 
         slugified_match_string = _get_slug(event_file)
-        if not overwrite_if_exists and slugified_match_string in existing_slugs:
-            st.info(f"Skipping {slugified_match_string} as it already exists in the drive.")
-            continue
+        # if not overwrite_if_exists and slugified_match_string in existing_slugs:
+        #     st.info(f"Skipping {slugified_match_string} as it already exists in the drive.")
+            # continue
 
         try:
             df_event, df_tracking, meta, df_roster, df_involvement = process_pfffc(event_file)
         except (AssertionError, KeyError) as e:
             st.write(e)
+            raise e
             continue
 
         gc.collect()
