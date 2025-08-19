@@ -160,6 +160,10 @@ def augment_match_data(
     # assert (section_start_frames == 0).all(), f"section_start_frames={section_start_frames}, need to adapt to that"  # TODO fix this around slugified_match_string 3-liga-2023-2024-17-st-1-fc-saarbrucken-preussen-munster
 
     i_frame_nan = df_event["frame"].isna()
+    st.write("section_times")
+    st.write(section_times)
+    st.write(df_event["section"].unique())
+    st.write(df_event)
     df_event.loc[i_frame_nan, "frame"] = df_event.loc[i_frame_nan].apply(lambda x: (x["datetime_event"] - section_times[x["section"]]).total_seconds() * fps, axis=1).round().astype(int)
     assert df_event["frame"].notna().all()
 

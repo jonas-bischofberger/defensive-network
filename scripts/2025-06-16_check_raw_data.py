@@ -14,12 +14,13 @@ if __name__ == '__main__':
     st.write(df_meta)
 
     def _process_file(fpath):
-        if fpath.endswith(".csv"):
-            df = pd.read_csv(fpath)
-        elif fpath.endswith(".parquet"):
-            df = pd.read_parquet(fpath)
-        else:
-            raise ValueError("Unsupported file format. Please provide a .csv or .parquet file.")
+        with st.spinner(f"Reading file: {fpath}"):
+            if fpath.endswith(".csv"):
+                df = pd.read_csv(fpath)
+            elif fpath.endswith(".parquet"):
+                df = pd.read_parquet(fpath)
+            else:
+                raise ValueError("Unsupported file format. Please provide a .csv or .parquet file.")
 
         st.write(df)
 
@@ -45,6 +46,7 @@ if __name__ == '__main__':
                 dfs.append(df)
             df = pd.concat(dfs, ignore_index=True)
 
+        df = df.drop_duplicates(subset="match_id").reset_index(drop=True)
         for match_day, df_matchday in df.groupby("match_day"):
             with st.expander(f"Match Day {match_day}: {len(df_matchday)} matches"):
                 for match_id, match_string in zip(df_matchday["match_id"], df_matchday["match_string"]):
@@ -52,4 +54,3 @@ if __name__ == '__main__':
             st.write("---")
         st.write(f"Total: {len(df)} matches")
         st.write(df)
-
