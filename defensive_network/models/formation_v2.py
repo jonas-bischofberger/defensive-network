@@ -351,7 +351,7 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
     # st.stop()
 
 
-    # Get ball in play phases
+    # 1. Get ball in play phases
     df_tracking["ball_in_play_phase_id"] = add_in_play_phase_id(df_tracking)
     dft_copy["ball_in_play_phase_id"] = add_in_play_phase_id(dft_copy)
 

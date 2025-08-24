@@ -65,9 +65,11 @@ def _read_df(fpath, **kwargs):
     return pd.read_csv(fpath, **kwargs)
 
 
-@st.cache_resource
+# @st.cache_resource
 def get_dfb_csv_files_in_folder(folder, exclude_files=None):
     tracking_cols = [
+        "frame,match_id,player_id,team_id,event_vendor,tracking_vendor,datetime_tracking,section,x_tracking,y_tracking,z_tracking,d_tracking,a_tracking,s_tracking,ball_status,ball_poss_team_id",
+        "frame,match_id,player_id,team_id,event_vendor,tracking_vendor,datetime_tracking,section,x_tracking,y_tracking,z_tracking,d_tracking,a_tracking,s_tracking,ball_status,ball_poss_team_id",
         "frame,match_id,player_id,team_id,event_vendor,tracking_vendor,datetime_tracking,section,x_tracking,y_tracking,z_tracking,d_tracking,a_tracking,s_tracking,ball_status,ball_poss_team_id",
         "frame,match_id,player_id,team_id,event_vendor,tracking_vendor,datetime_tracking,section,x_tracking,y_tracking,z_tracking,d_tracking,a_tracking,s_tracking,ball_status,ball_poss_team_id",
     ]
@@ -106,12 +108,12 @@ def get_dfb_csv_files_in_folder(folder, exclude_files=None):
             first_line = f.readline().strip()
         for header, ft in header_to_filetype:
             if isinstance(header, list):
-                if first_line in header:
+                if first_line.strip() in header:
                     file_type = ft
                 else:
                     continue
             elif isinstance(header, str):
-                if first_line == header:
+                if first_line.strip() == header:
                     file_type = ft
                 else:
                     continue
@@ -597,11 +599,11 @@ def main():
     _do_reduction = st.toggle("Upload reduced tracking data to Drive", False)
     _do_involvement = st.toggle("Process involvements", value=False)
     _calculate_responsibility_model = st.toggle("Calculate responsibility model", value=False)
-    _do_create_matchsums = st.toggle("Create matchsums", value=False)
+    _do_create_matchsums = st.toggle("Create matchsums", value=True)
     _do_videos = st.toggle("Create videos", value=False)
     _do_analysis = st.toggle("Do analysis", value=True)
 
-    folder = st.text_input("Folder", "Y:/w_raw")
+    folder = st.text_input("Folder", "Y:/m_raw/2324/")
     # if not os.path.exists(folder):
     #     st.warning(f"Folder {folder} does not exist")
         # return
@@ -618,7 +620,7 @@ def main():
     folder_full_tracking = os.path.join(folder, "finalized", folder_tracking)
     folder_drive_events = "events"
     fpath_drive_team_matchsums = "team_matchsums.csv"
-    fpath_drive_players_matchsums = "players_matchsums.csv"
+    fpath_drive_players_matchsums = "df_matchsums_player.csv"
     folder_drive_involvement = "involvement"
 
     # filetype_to_files = get_dfb_csv_files_in_folder(folder, [fpath_target_meta, fpath_target_lineup])
@@ -648,7 +650,10 @@ def main():
             event_matches = [f["name"].split(".")[0] for f in event_files]
             tracking_files = defensive_network.parse.drive.list_files_in_drive_folder(folder_drive_tracking)
             tracking_matches = [f["name"].split(".")[0] for f in tracking_files]
-            df_meta = df_meta[~df_meta["slugified_match_string"].isin(event_matches) & ~df_meta["slugified_match_string"].isin(tracking_matches)]
+            df_meta = df_meta[~df_meta["slugified_match_string"].isin(event_matches) | ~df_meta["slugified_match_string"].isin(tracking_matches)]
+
+        st.write("df_meta")
+        st.write(df_meta)
 
         df_lineups = defensive_network.parse.drive.download_csv_from_drive("lineups.csv")
         # df_meta = df_meta[df_meta["slugified_match_string"] == "bundesliga-2023-2024-12-st-rb-leipzig-1-fc-koln"]
@@ -761,7 +766,8 @@ def main():
         _do_fifa_correlations = st.toggle("FIFA correlations", True, key=f"fifa_correlations")
 
         with st.spinner("Loading matchsums..."):
-            df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
+            # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
+            df_player_matchsums = pd.read_csv("C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/df_matchsums_player.csv")  # TODO fix
 
         df_player_matchsums = df_player_matchsums[df_player_matchsums["role_category"] != "GK"]
         # df_player_matchsums["is_rückrunde"] = df_player_matchsums["kickoff_time"].apply(lambda x: pd.to_datetime(x, errors="coerce").year == 2024)
@@ -777,7 +783,9 @@ def main():
         for competition in selected_competitions:
             st.write(f"## {competition}")
             with st.spinner("Loading matchsums..."):
-                df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
+                # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
+                df_player_matchsums = pd.read_csv("C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/df_matchsums_player.csv")  # TODO fix
+
             df_player_matchsums = df_player_matchsums[df_player_matchsums["role_category"] != "GK"]
             df_player_matchsums["is_rückrunde"] = pd.to_datetime(df_player_matchsums["kickoff_time"].astype(str), errors="coerce").dt.tz_localize(None).dt.year == 2024
 
@@ -858,8 +866,8 @@ def main():
 
             position_mapping = {'CB-3': 'CB', 'LB': 'FB', 'LCB-3': 'CB', 'LCB-4': 'CB', 'LDM': 'CM', 'LS': 'CF',
                                 'LW': 'Winger', 'LZM': 'CM', 'RB': 'FB', 'RCB-3': 'CB', 'RCB-4': 'CB', 'RDM': 'CM',
-                                'RS': 'CF', 'RW': 'Winger', 'RWB': 'FB', 'RZM': 'CM', 'ST': 'CF', 'ZDM': 'CM', 'ZOM': 'CAM',
-                                'LWB': 'FB'
+                                'RS': 'CF', 'RW': 'Winger', 'RWB': 'FB', 'RZM': 'CM', 'ST': 'CF', 'ZDM': 'CM',
+                                'ZOM': 'CAM', 'LWB': 'FB'
                                 }
             df_player_matchsums["coarse_position"] = df_player_matchsums["role_category"].map(position_mapping)
             # st.write(df_player_matchsums[["role_category", "coarse_position"]].drop_duplicates())
@@ -877,6 +885,8 @@ def main():
             df_agg_player_pos = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "coarse_position"])
             df_agg_player_pos["player_minutes_played"] = df_agg_player_pos.groupby("player_id")["minutes_played"].transform("sum")
             # df_agg_match_player_pos["player_matches_played"] = df_agg_match_player_pos.groupby("player_id")["match_id"].transform("nunique")
+
+            df_agg_player_pos.to_excel("test.xlsx")
 
             df_agg_team = aggregate_matchsums(df_player_matchsums, group_cols=["team_id", "coarse_position", "player_id"]).reset_index()
             # df_agg_team["full_name"] = df_agg_team["first_name"] + " " + df_agg_team["last_name"]
@@ -986,8 +996,8 @@ def main():
                     # df_soccerdonna = defensive_network.parse.drive.download_csv_from_drive("market_values.csv", st_cache=False)
                     # df_soccerdonna = defensive_network.parse.drive.download_excel_from_drive("market_values.xlsx", st_cache=False)
                     # df_soccerdonna = pd.read_excel("C:/Users/j.bischofberger/Downloads/Neuer Ordner (7)/market_values.xlsx")  # TODO WHY
-                    # df_soccerdonna = pd.read_excel("C:/Users/Jonas/Downloads/market_values.xlsx")  # TODO WHY
-                    df_soccerdonna = pd.read_excel("C:/Users/j.bischofberger/Downloads/Neuer Ordner (7)/market_values.xlsx")  # TODO WHY
+                    df_soccerdonna = pd.read_excel("C:/Users/Jonas/Downloads/market_values.xlsx")  # TODO WHY
+                    # df_soccerdonna = pd.read_excel("C:/Users/j.bischofberger/Downloads/Neuer Ordner (7)/market_values.xlsx")  # TODO WHY
                     # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive("players_matchsums.csv")
                     # df_agg_player = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "position"])
                     # df_agg_player["coarse_position"] = df_agg_player["position"].map(position_mapping)
@@ -2354,94 +2364,109 @@ def process_involvements(df_meta, folder_tracking, folder_events, target_folder,
 
 
 def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target_fpath_team, target_fpath_players, folder_involvement="involvement", overwrite_if_exists=False):
-    existing_match_ids = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder(folder_events, st_cache=False)]
-    df_meta = df_meta[df_meta["slugified_match_string"].isin(existing_match_ids)]
+    @st.cache_resource
+    def __create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target_fpath_team, target_fpath_players, folder_involvement, overwrite_if_exists):
+        existing_match_ids = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder(folder_events, st_cache=False)]
+        df_meta = df_meta[df_meta["slugified_match_string"].isin(existing_match_ids)]
+        st.write(f"{overwrite_if_exists=}")
 
-    if not overwrite_if_exists:
-        st.write("1")
-        try:
+        if not overwrite_if_exists:
             st.write("1")
-            df_matchsums_player = defensive_network.parse.drive.download_csv_from_drive(target_fpath_players, st_cache=False)
-            st.write("1")
-            # df_matchsums_player.to_excel("df_matchsums_player.xlsx", index=True)
-            st.write("1")
-            df_matchsums_team = defensive_network.parse.drive.download_csv_from_drive(target_fpath_team, st_cache=False)
-            st.write("1")
-            match_ids = set(df_matchsums_player["match_id"]).intersection(df_matchsums_team["match_id"])
-            st.write("1")
-        except FileNotFoundError:
-            st.write("1")
-            match_ids = set()
-        st.write("1")
-
-        df_meta = df_meta[~df_meta["match_id"].isin(match_ids)]
-
-    dfs_player = []
-    dfs_team = []
-    match_nr = 0
-    match_strings = [match["match_string"] for _, match in df_meta.iterrows()]
-    st.write("match_strings")
-    st.write(match_strings)
-    for _, match in defensive_network.utility.general.progress_bar(df_meta.iterrows(), total=len(df_meta), desc="Creating matchsums"):
-        match_nr += 1
-        competition_name = match["competition_name"]
-        # if match_nr <= 104:
-        #     continue
-        df_lineup = df_lineups[df_lineups["match_id"] == match["match_id"]]
-        match_string = match["match_string"]
-        slugified_match_string = match["slugified_match_string"]
-        st.write(f"Creating matchsums for {match_string}")
-        fpath_tracking = os.path.join(folder_tracking, f"{slugified_match_string}.parquet")
-        fpath_events = os.path.join(folder_events, f"{slugified_match_string}.csv")
-        fpath_involvement = os.path.join(folder_involvement, f"{slugified_match_string}.csv")
-
-        # df_tracking = pd.read_parquet(fpath_tracking)
-        # df_events = pd.read_csv(fpath_events)
-        try:
-            # df_tracking = defensive_network.parse.drive.download_parquet_from_drive(fpath_tracking)
-            with st.spinner("Loading data..."):
-                df_involvement = defensive_network.parse.drive.download_csv_from_drive(fpath_involvement, st_cache=False)  # TODO no cache
-
-                # @st.cache_resource
-                def _get_parquet(fpath):
-                    return pd.read_parquet(fpath)
-
-                # df_tracking = pd.read_parquet(fpath_tracking)
-                df_tracking = _get_parquet(fpath_tracking)
-                df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events, st_cache=False)
-                cn=competition_name.replace("Men's", "Mens")
-                dfg_responsibility_model = defensive_network.parse.drive.download_csv_from_drive(f"responsibility_model_{cn}.csv", st_cache=False).reset_index(drop=True)
-                # st.write("dfg_responsibility_model")
-                # st.write(dfg_responsibility_model)
-            with st.spinner("Calculating Responsibility..."):
-                df_involvement["raw_responsibility"], df_involvement["relative_raw_responsibility"], df_involvement["valued_responsibility"], df_involvement["relative_valued_responsibility"] = defensive_network.models.responsibility.get_responsibility(df_involvement, dfg_responsibility_model)
-
-        except FileNotFoundError as e:
-            st.write(e)
-            continue
-
-        with st.spinner("Aggregating matchsums..."):
             try:
-                dfg_team, dfg_players = _create_matchsums(df_events, df_tracking, match, df_lineup, df_involvement)
-            except Exception as e:
+                st.write("1")
+                # df_matchsums_player = defensive_network.parse.drive.download_csv_from_drive(target_fpath_players, st_cache=False)
+                df_matchsums_player = pd.read_csv("C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/df_matchsums_player.csv")
+                st.write("1")
+                # df_matchsums_player.to_excel("df_matchsums_player.xlsx", index=True)
+                st.write("1")
+                df_matchsums_team = defensive_network.parse.drive.download_csv_from_drive(target_fpath_team, st_cache=False)
+                st.write("1")
+                match_ids = set(df_matchsums_player["match_id"]).intersection(df_matchsums_team["match_id"])
+                st.write("1")
+            except FileNotFoundError:
+                st.write("1")
+                match_ids = set()
+            st.write("1")
+
+            df_meta = df_meta[~df_meta["match_id"].isin(match_ids)]
+
+        dfs_player = []
+        dfs_team = []
+        match_nr = 0
+        match_strings = [match["match_string"] for _, match in df_meta.iterrows()]
+        st.write("match_strings")
+        st.write(match_strings)
+
+        # df_meta = df_meta[df_meta["slugified_match_string"] == "3-liga-2023-2024-1-st-erzgebirge-aue-fc-ingolstadt-04"]
+
+        for _, match in defensive_network.utility.general.progress_bar(df_meta.iterrows(), total=len(df_meta), desc="Creating matchsums"):
+            match_nr += 1
+            competition_name = match["competition_name"]
+            # if match_nr <= 104:
+            #     continue
+            df_lineup = df_lineups[df_lineups["match_id"] == match["match_id"]]
+            match_string = match["match_string"]
+            slugified_match_string = match["slugified_match_string"]
+            st.write(f"Creating matchsums for {match_string}")
+            fpath_tracking = os.path.join(folder_tracking, f"{slugified_match_string}.parquet")
+            fpath_events = os.path.join(folder_events, f"{slugified_match_string}.csv")
+            fpath_involvement = os.path.join(folder_involvement, f"{slugified_match_string}.csv")
+
+            # df_tracking = pd.read_parquet(fpath_tracking)
+            # df_events = pd.read_csv(fpath_events)
+            try:
+                # df_tracking = defensive_network.parse.drive.download_parquet_from_drive(fpath_tracking)
+                with st.spinner("Loading data..."):
+                    df_involvement = defensive_network.parse.drive.download_csv_from_drive(fpath_involvement, st_cache=False)  # TODO no cache
+
+                    # @st.cache_resource
+                    def _get_parquet(fpath):
+                        return pd.read_parquet(fpath)
+
+                    # df_tracking = pd.read_parquet(fpath_tracking)
+                    df_tracking = _get_parquet(fpath_tracking)
+                    df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events, st_cache=False)
+                    cn=competition_name.replace("Men's", "Mens")
+                    dfg_responsibility_model = defensive_network.parse.drive.download_csv_from_drive(f"responsibility_model_{cn}.csv", st_cache=False).reset_index(drop=True)
+                    # st.write("dfg_responsibility_model")
+                    # st.write(dfg_responsibility_model)
+                with st.spinner("Calculating Responsibility..."):
+                    df_involvement["raw_responsibility"], df_involvement["relative_raw_responsibility"], df_involvement["valued_responsibility"], df_involvement["relative_valued_responsibility"] = defensive_network.models.responsibility.get_responsibility(df_involvement, dfg_responsibility_model)
+
+            except FileNotFoundError as e:
                 st.write(e)
-                st.rerun()  # OR use st_autorefresh
+                continue
 
-        # st.write("dfg_team")
-        # st.write(dfg_team)
-        # st.write(dfg_team[["team_id", "match_id"]])
-        # st.write("dfg_players")
-        # st.write(dfg_players)
-        # st.write(dfg_players[["player_id", "role_category", "match_id"]])
+            with st.spinner("Aggregating matchsums..."):
+                try:
+                    dfg_team, dfg_players = _create_matchsums(df_events, df_tracking, match, df_lineup, df_involvement)
+                except Exception as e:
+                    st.write(e)
+                    st.rerun()  # OR use st_autorefresh
 
-        dfs_player.append(dfg_players)
-        dfs_team.append(dfg_team)
+            # st.write("dfg_team")
+            # st.write(dfg_team)
+            # st.write(dfg_team[["team_id", "match_id"]])
+            # st.write("dfg_players")
+            # st.write(dfg_players)
+            # st.write(dfg_players[["player_id", "role_category", "match_id"]])
 
-        with st.spinner("Uploading team data..."):
-            defensive_network.parse.drive.append_to_parquet_on_drive(dfg_team, target_fpath_team, key_cols=["team_id", "match_id"], overwrite_key_cols=True, format="csv")
-        with st.spinner("Uploading players data..."):
-            defensive_network.parse.drive.append_to_parquet_on_drive(dfg_players, target_fpath_players, key_cols=["player_id", "role_category", "match_id"], overwrite_key_cols=True, format="csv")
-        st.write("Uploaded!")
+            dfs_player.append(dfg_players)
+            dfs_team.append(dfg_team)
+
+        return dfs_player, dfs_team
+
+    dfs_player, dfs_team = __create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target_fpath_team, target_fpath_players, folder_involvement, overwrite_if_exists)
+
+    dfg_players = pd.concat(dfs_player)
+    dfg_team = pd.concat(dfs_team)
+
+    with st.spinner("Uploading team data..."):
+        defensive_network.parse.drive.append_to_parquet_on_drive(dfg_team, target_fpath_team, key_cols=["team_id", "match_id"], overwrite_key_cols=True, format="csv")
+    with st.spinner("Uploading players data..."):
+        # defensive_network.parse.drive.convert_to_parquet_and_append_to_parquet_on_drive(dfg_players, target_fpath_players, key_cols=["player_id", "role_category", "match_id"], overwrite_key_cols=True, format="csv")
+        defensive_network.parse.drive.append_to_parquet_on_drive(dfg_players, target_fpath_players, key_cols=["player_id", "role_category", "match_id"], overwrite_key_cols=True, format="csv")
+    st.write("Uploaded!")
 
     # dfg_team = pd.concat(dfs_team)
     # dfg_players = pd.concat(dfs_player)
@@ -2459,7 +2484,15 @@ def finalize_events_and_tracking_to_drive(folder_tracking, folder_events, df_met
     existing_match_ids_tracking = [file.rsplit(".", 1)[0] for file in os.listdir(folder_tracking)]
     existing_match_ids = [match for match in existing_match_ids_event if match in existing_match_ids_tracking]
 
-    df_meta = df_meta[df_meta["slugified_match_string"].isin(existing_match_ids)]
+    st.write("finalize_events_and_tracking_to_drive df_meta before filter")
+    st.write(df_meta)
+    st.write("tracking", existing_match_ids_tracking)
+    st.write(df_meta[df_meta["slugified_match_string"].isin(existing_match_ids_tracking)])
+
+    # df_meta = df_meta[df_meta["slugified_match_string"].isin(existing_match_ids)]
+    df_meta = df_meta[df_meta["slugified_match_string"] == "3-liga-2023-2024-1-st-erzgebirge-aue-fc-ingolstadt-04"]
+    st.write("finalize_events_and_tracking_to_drive df_meta after filter")
+    st.write(df_meta)
 
     for _, match in defensive_network.utility.general.progress_bar(df_meta.iterrows(), total=len(df_meta), desc="Finalizing matches"):
         import gc
@@ -2474,7 +2507,7 @@ def finalize_events_and_tracking_to_drive(folder_tracking, folder_events, df_met
 
         drive_path_events = os.path.join(target_folder_events, f"{slugified_match_string}.csv")
         drive_path_tracking = os.path.join(target_folder_tracking, f"{slugified_match_string}.parquet")
-
+        do_not_process_if_synchronized = False
         if do_not_process_if_synchronized:
             try:
                 df_event_existing = defensive_network.parse.drive.download_csv_from_drive(drive_path_events)
@@ -2484,7 +2517,8 @@ def finalize_events_and_tracking_to_drive(folder_tracking, folder_events, df_met
                     st.write(f"Skipping {match_string} because it is already synchronized")
                     continue
                 pass
-            except FileNotFoundError:
+            except FileNotFoundError as e:
+                st.write(e)
                 pass
 
         # @st.cache_resource
