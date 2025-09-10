@@ -86,7 +86,6 @@ def get_dfb_csv_files_in_folder(folder, exclude_files=None):
         "competition_name,competition_id,host,match_day,season_name,season_id,kickoff_time,match_id,event_vendor,tracking_vendor,match_title,home_team_name,home_team_id,guest_team_name,guest_team_id,result,country,stadium_id,stadium_name,precipitation,pitch_x,pitch_y,total_time_first_half,total_time_second_half,playing_time_first_half,playing_time_second_half,ds_parser_version,xg_tag,xg_sha1,xpass_tag,xpass_sha1,fps",
         "Unnamed: 0,competition_name,competition_id,host,match_day,season_name,season_id,kickoff_time,match_id,event_vendor,tracking_vendor,match_title,home_team_name,home_team_id,guest_team_name,guest_team_id,result,country,stadium_id,stadium_name,precipitation,pitch_x,pitch_y,total_time_first_half,total_time_second_half,playing_time_first_half,playing_time_second_half,ds_parser_version,xg_tag,xg_sha1,xpass_tag,xpass_sha1,fps,match_string,slugified_match_string",
     ]
-
     metaccccc = "competition_name,competition_id,host,match_day,season_name,season_id,kickoff_time,match_id,event_vendor,tracking_vendor,match_title,home_team_name,home_team_id,guest_team_name,guest_team_id,result,country,stadium_id,stadium_name,precipitation,pitch_x,pitch_y,total_time_first_half,total_time_second_half,playing_time_first_half,playing_time_second_half,ds_parser_version,xg_tag,xg_sha1,xpass_tag,xpass_sha1,fps"
 
     # csv_files = [f for f in os.listdir(folder) if f.endswith(".csv")]
@@ -450,12 +449,29 @@ def aggregate_matchsums(df_player_matchsums, group_cols=["player_id"]):
         # Minutes
         minutes_played=("minutes_played", "sum"),
     )
+    # st.write("cool")
+    # st.write(dfg["n_passes_with_contribution"] / dfg["minutes_played"] * 90)
+    # st.write((dfg["n_passes_with_contribution"] / dfg["minutes_played"] * 90).median())
+    # st.write((dfg["n_passes_with_contribution"] / dfg["minutes_played"] * 90).mean())
+    # st.stop()
+
+    # convert all cols to float
+    dfg = dfg.astype(float, errors="ignore")
+
     dfg["n_tackles"] = (dfg["n_tackles_won"] + dfg["n_tackles_lost"])
 
+    dfg["minutes_played"] = dfg["minutes_played"].astype(float)
+
     minutes_played_total = dfg["minutes_played"].copy()
+
+    # check all dtypes of dfg
+    for col in dfg.columns:
+        # st.write(f"{col}: {dfg[col].dtype}")
+        dfg[col] = dfg[col].astype(float)
+
     dfg = (dfg.div(dfg["minutes_played"], axis=0) * 90).rename(columns=lambda x: f"{x}_per90")
     dfg["minutes_played"] = minutes_played_total
-    dfg["tackles_won_share"] = dfg["n_tackles_won_per90"] / dfg["n_tackles_per90"]
+    dfg["tackles_won_share"] = dfg["n_tackles_won_per90"].astype(float) / dfg["n_tackles_per90"].astype(float)
 
     for col in ["short_name", "first_name", "last_name"]:
         df_player_matchsums[col] = df_player_matchsums[col].replace("0", "")
@@ -504,24 +520,24 @@ def aggregate_matchsums(df_player_matchsums, group_cols=["player_id"]):
         # n_tackles_lost=("n_tackles_lost", "sum"),
         n_passes_against=("n_passes_against", "sum"),
     )
-    dfg_per_pass["total_valued_contribution_responsibility_per_pass"] = dfg_per_pass["total_valued_contribution_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
-    dfg_per_pass["total_valued_fault_responsibility_per_pass"] = dfg_per_pass["total_valued_fault_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
-    dfg_per_pass["total_valued_responsibility_per_pass"] = dfg_per_pass["total_valued_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
-    dfg_per_pass["total_valued_involvement_per_pass"] = dfg_per_pass["total_valued_involvement"] / dfg_per_pass["n_passes_with_involvement"]
-    dfg_per_pass["total_valued_contribution_per_pass"] = dfg_per_pass["total_valued_contribution"] / dfg_per_pass["n_passes_with_involvement"]
-    dfg_per_pass["total_valued_fault_per_pass"] = dfg_per_pass["total_valued_fault"] / dfg_per_pass["n_passes_with_involvement"]
-    dfg_per_pass["total_raw_contribution_responsibility_per_pass"] = dfg_per_pass["total_raw_contribution_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
-    dfg_per_pass["total_raw_fault_responsibility_per_pass"] = dfg_per_pass["total_raw_fault_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
-    dfg_per_pass["total_raw_responsibility_per_pass"] = dfg_per_pass["total_raw_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
-    dfg_per_pass["total_raw_contribution_per_pass"] = dfg_per_pass["total_raw_contribution"] / dfg_per_pass["n_passes_with_involvement"]
-    dfg_per_pass["total_raw_fault_per_pass"] = dfg_per_pass["total_raw_fault"] / dfg_per_pass["n_passes_with_involvement"]
-    dfg_per_pass["total_raw_involvement_per_pass"] = dfg_per_pass["total_raw_involvement"] / dfg_per_pass["n_passes_with_involvement"]
-    dfg_per_pass["total_relative_raw_responsibility_per_pass"] = dfg_per_pass["total_relative_raw_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
-    dfg_per_pass["total_relative_raw_fault_responsibility_per_pass"] = dfg_per_pass["total_relative_raw_fault_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
-    dfg_per_pass["total_relative_raw_contribution_responsibility_per_pass"] = dfg_per_pass["total_relative_raw_contribution_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
-    dfg_per_pass["total_relative_valued_responsibility_per_pass"] = dfg_per_pass["total_relative_valued_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
-    dfg_per_pass["total_relative_valued_fault_responsibility_per_pass"] = dfg_per_pass["total_relative_valued_fault_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
-    dfg_per_pass["total_relative_valued_contribution_responsibility_per_pass"] = dfg_per_pass["total_relative_valued_contribution_responsibility"] / dfg_per_pass["n_passes_with_responsibility"]
+    dfg_per_pass["total_valued_contribution_responsibility_per_pass"] = dfg_per_pass["total_valued_contribution_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
+    dfg_per_pass["total_valued_fault_responsibility_per_pass"] = dfg_per_pass["total_valued_fault_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
+    dfg_per_pass["total_valued_responsibility_per_pass"] = dfg_per_pass["total_valued_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
+    dfg_per_pass["total_valued_involvement_per_pass"] = dfg_per_pass["total_valued_involvement"].astype(float) / dfg_per_pass["n_passes_with_involvement"].astype(float)
+    dfg_per_pass["total_valued_contribution_per_pass"] = dfg_per_pass["total_valued_contribution"].astype(float) / dfg_per_pass["n_passes_with_involvement"].astype(float)
+    dfg_per_pass["total_valued_fault_per_pass"] = dfg_per_pass["total_valued_fault"].astype(float) / dfg_per_pass["n_passes_with_involvement"].astype(float)
+    dfg_per_pass["total_raw_contribution_responsibility_per_pass"] = dfg_per_pass["total_raw_contribution_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
+    dfg_per_pass["total_raw_fault_responsibility_per_pass"] = dfg_per_pass["total_raw_fault_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
+    dfg_per_pass["total_raw_responsibility_per_pass"] = dfg_per_pass["total_raw_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
+    dfg_per_pass["total_raw_contribution_per_pass"] = dfg_per_pass["total_raw_contribution"].astype(float) / dfg_per_pass["n_passes_with_involvement"].astype(float)
+    dfg_per_pass["total_raw_fault_per_pass"] = dfg_per_pass["total_raw_fault"].astype(float) / dfg_per_pass["n_passes_with_involvement"].astype(float)
+    dfg_per_pass["total_raw_involvement_per_pass"] = dfg_per_pass["total_raw_involvement"].astype(float) / dfg_per_pass["n_passes_with_involvement"].astype(float)
+    dfg_per_pass["total_relative_raw_responsibility_per_pass"] = dfg_per_pass["total_relative_raw_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
+    dfg_per_pass["total_relative_raw_fault_responsibility_per_pass"] = dfg_per_pass["total_relative_raw_fault_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
+    dfg_per_pass["total_relative_raw_contribution_responsibility_per_pass"] = dfg_per_pass["total_relative_raw_contribution_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
+    dfg_per_pass["total_relative_valued_responsibility_per_pass"] = dfg_per_pass["total_relative_valued_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
+    dfg_per_pass["total_relative_valued_fault_responsibility_per_pass"] = dfg_per_pass["total_relative_valued_fault_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
+    dfg_per_pass["total_relative_valued_contribution_responsibility_per_pass"] = dfg_per_pass["total_relative_valued_contribution_responsibility"].astype(float) / dfg_per_pass["n_passes_with_responsibility"].astype(float)
 
 #         total_relative_raw_responsibility=("total_relative_raw_responsibility", "sum"),
     #         total_relative_raw_fault_responsibility=("total_relative_raw_fault_responsibility", "sum"),
@@ -572,6 +588,42 @@ def aggregate_matchsums(df_player_matchsums, group_cols=["player_id"]):
     dfg_per_pass = dfg_per_pass.rename(columns=lambda x: x.replace("total_", ""))
     dfg = dfg.join(dfg_per_pass, on=group_cols, rsuffix="_per_pass")
 
+    # responsibility - involvement
+    # dfg["responsibility_minus_involvement_per_pass"] = dfg["responsibility_per_pass"].astype(float) - dfg["involvement_per_pass"].astype(float)
+    dfg["valued_involvement_minus_responsibility_per_pass"] = dfg["valued_involvement_per_pass"].astype(float) - dfg["valued_responsibility_per_pass"].astype(float)
+    dfg["raw_involvement_minus_responsibility_per_pass"] = dfg["raw_involvement_per_pass"].astype(float) - dfg["raw_responsibility_per_pass"].astype(float)
+    dfg["raw_fault_minus_fault_responsibility_per_pass"] = dfg["raw_fault_per_pass"].astype(float) - dfg["raw_fault_responsibility_per_pass"].astype(float)
+    dfg["valued_fault_minus_fault_responsibility_per_pass"] = dfg["valued_fault_per_pass"].astype(float) - dfg["valued_fault_responsibility_per_pass"].astype(float)
+    dfg["raw_contribution_minus_contribution_responsibility_per_pass"] = dfg["raw_contribution_per_pass"].astype(float) - dfg["raw_contribution_responsibility_per_pass"].astype(float)
+    dfg["valued_contribution_minus_contribution_responsibility_per_pass"] = dfg["valued_contribution_per_pass"].astype(float) - dfg["valued_contribution_responsibility_per_pass"].astype(float)
+
+    # resp fault + fault
+    dfg["raw_fault_plus_fault_responsibility_per_pass"] = dfg["raw_fault_per_pass"].astype(float) + dfg["raw_fault_responsibility_per_pass"].astype(float)
+    dfg["valued_fault_plus_fault_responsibility_per_pass"] = dfg["valued_fault_per_pass"].astype(float) + dfg["valued_fault_responsibility_per_pass"].astype(float)
+
+#                 "raw_contribution_per_pass",
+#                 "raw_fault_per_pass",
+#                 "raw_involvement_per_pass",
+#                 "raw_contribution_responsibility_per_pass",
+#                 "raw_fault_responsibility_per_pass",
+#                 "raw_responsibility_per_pass",
+#
+#                 "valued_contribution_per_pass",
+#                 "valued_fault_per_pass",
+#                 "valued_involvement_per_pass",
+#                 "valued_contribution_responsibility_per_pass",
+#                 "valued_fault_responsibility_per_pass",
+#                 "valued_responsibility_per_pass",
+#
+
+    assert "raw_contribution_minus_contribution_responsibility_per_pass" in dfg.columns
+    # all per_pass metrics: create a per90 version
+    for col in dfg.columns:
+        if col.endswith("_per_pass"):
+            dfg[col.replace("_per_pass", "_per90")] = dfg[col].astype(float) * dfg["n_passes_against"].astype(float) / dfg["minutes_played"].astype(float) * 90
+
+    assert "raw_contribution_minus_contribution_responsibility_per90" in dfg.columns
+
     dfg_meta = df_player_matchsums.groupby(group_cols).agg(
         short_name=("short_name", "first"),
         first_name=("first_name", "first"),
@@ -580,6 +632,33 @@ def aggregate_matchsums(df_player_matchsums, group_cols=["player_id"]):
     )
     dfg = dfg.join(dfg_meta, on=group_cols)
 
+    dfg["n_interceptions_per_pass"] = dfg["n_interceptions_per90"].astype(float) * dfg["minutes_played"].astype(float) / 90 / dfg["n_passes_against"].astype(float)
+    dfg["n_passes_against_per90"] = dfg["n_passes_against"].astype(float) / dfg["minutes_played"].astype(float) * 90
+
+    # hochrechnen
+    dfg["raw_involvement_combined"] = dfg["raw_contribution_per_pass"] * 250 - dfg["raw_fault_per90"]
+    dfg["raw_involvement_combined2"] = dfg["raw_contribution_per_pass"] * 250 + dfg["raw_fault_per90"]
+    dfg["raw_responsibility_combined"] = dfg["raw_contribution_responsibility_per_pass"] * 250 - dfg["raw_fault_responsibility_per90"]
+    dfg["raw_responsibility_combined2"] = dfg["raw_contribution_responsibility_per_pass"] * 250 + dfg["raw_fault_responsibility_per90"]
+    dfg["raw_responsinvolvement_combined"] = dfg["raw_contribution_per_pass"] * 250 + dfg["raw_fault_responsibility_per90"]
+    dfg["valued_involvement_combined"] = dfg["valued_contribution_per_pass"] * 250 - dfg["valued_fault_per90"]
+    dfg["valued_involvement_combined2"] = dfg["valued_contribution_per_pass"] * 250 + dfg["valued_fault_per90"]
+    dfg["valued_responsibility_combined"] = dfg["valued_contribution_responsibility_per_pass"] * 250 - dfg["valued_fault_responsibility_per90"]
+    dfg["valued_responsibility_combined2"] = dfg["valued_contribution_responsibility_per_pass"] * 250 + dfg["valued_fault_responsibility_per90"]
+    dfg["valued_responsinvolvement_combined"] = dfg["valued_contribution_per_pass"] * 250 + dfg["valued_fault_responsibility_per90"]
+
+    # st.write("dfg")
+    # st.write(dfg[[
+    #     "raw_contribution_per_pass", "raw_fault_per90", "raw_involvement_combined", "raw_involvement_combined2",
+    #     "raw_responsibility_combined", "raw_responsibility_combined2", "minutes_played"
+    # ]].mean())
+    # i_enough_minutes = dfg["minutes_played"] > 45
+    # st.write(dfg.loc[i_enough_minutes, [
+    #     "raw_contribution_per_pass", "raw_fault_per90", "raw_involvement_combined", "raw_involvement_combined2",
+    #     "raw_responsibility_combined", "raw_responsibility_combined2", "minutes_played",
+    # ]])
+
+    assert "raw_contribution_minus_contribution_responsibility_per90" in dfg.columns
     return dfg.reset_index()
 
 
@@ -599,7 +678,7 @@ def main():
     _do_reduction = st.toggle("Upload reduced tracking data to Drive", False)
     _do_involvement = st.toggle("Process involvements", value=False)
     _calculate_responsibility_model = st.toggle("Calculate responsibility model", value=False)
-    _do_create_matchsums = st.toggle("Create matchsums", value=True)
+    _do_create_matchsums = st.toggle("Create matchsums", value=False)
     _do_videos = st.toggle("Create videos", value=False)
     _do_analysis = st.toggle("Do analysis", value=True)
 
@@ -661,16 +740,16 @@ def main():
 
     if _do_reduction:
         # def upload_reduced_tracking_data(df_meta, drive_folder_events, full_tracking_folder, drive_folder_tracking):
-        df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=False)
+        df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=True)
         upload_reduced_tracking_data(df_meta, folder_drive_events, folder_full_tracking, folder_drive_tracking)
 
     if _do_involvement:
-        df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=False)
+        df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=True)
         # df_meta = df_meta[(df_meta["match_id"] == "2d4fe74894566dc4b826bd608deaa53c") | (df_meta["slugified_match_string"] == "bundesliga-2023-2024-18-st-bayer-leverkusen-eintracht-frankfurt")].iloc[::-1]
         process_involvements(df_meta, folder_drive_tracking, folder_drive_events, folder_drive_involvement, overwrite_if_exists)
 
     if _calculate_responsibility_model:
-        df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=False)
+        df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=True)
         match_id_2_competition_name = df_meta.set_index("match_id")["competition_name"].to_dict()
 
         def calc_involvement_model(folder_drive_involvement, fpath_out="responsibility_model.csv", competition_name=None):
@@ -735,8 +814,8 @@ def main():
 
     if _do_create_matchsums:
         try:
-            df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=False)
-            df_lineups = defensive_network.parse.drive.download_csv_from_drive("lineups.csv", st_cache=False)
+            df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=True)
+            df_lineups = defensive_network.parse.drive.download_csv_from_drive("lineups.csv", st_cache=True)
             # df_meta = df_meta[df_meta["match_id"] == "2d4fe74894566dc4b826bd608deaa53c"]
             create_matchsums(folder_full_tracking, folder_drive_events, df_meta, df_lineups, fpath_drive_team_matchsums, fpath_drive_players_matchsums, overwrite_if_exists=overwrite_if_exists)
         except Exception as e:
@@ -761,20 +840,25 @@ def main():
         _do_seasonal_correlation = st.toggle("Season-by-season correlation", True, key=f"season_by_season_correlation")
         _do_icc = st.toggle("ICC", True, key=f"icc")
         _do_bootstrapped_icc = st.toggle("Bootstrapped Season-Level ICC (TAKES VERY LONG!!!)", False, key=f"bootstrapped_season_level_icc")
-        _do_histograms = st.toggle("Histograms", True, key=f"histograms")
+        _do_histograms = st.toggle("Histograms", False, key=f"histograms")
         _do_internal_correlations = st.toggle("KPI correlations as heatmap", True, f"kpi_heatmap")
         _do_fifa_correlations = st.toggle("FIFA correlations", True, key=f"fifa_correlations")
 
         with st.spinner("Loading matchsums..."):
             # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
-            df_player_matchsums = pd.read_csv("C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/df_matchsums_player.csv")  # TODO fix
+            df_player_matchsums = pd.read_csv("C:/Users/j.bischofberger/OneDrive - VfB Stuttgart 1893 AG/Desktop/code/defensive-network/df_matchsums_player.csv")  # TODO fix
 
         df_player_matchsums = df_player_matchsums[df_player_matchsums["role_category"] != "GK"]
         # df_player_matchsums["is_rückrunde"] = df_player_matchsums["kickoff_time"].apply(lambda x: pd.to_datetime(x, errors="coerce").year == 2024)
         # df_player_matchsums["is_rückrunde"] = pd.to_datetime(df_player_matchsums["kickoff_time"], errors="coerce").dt.tz_localize(None).year == 2024
         df_player_matchsums["is_rückrunde"] = pd.to_datetime(df_player_matchsums["kickoff_time"].astype(str), errors="coerce").dt.tz_localize(None).dt.year == 2024
         st.write(df_player_matchsums[["competition_name", "kickoff_time", "is_rückrunde"]])
+        st.write(df_player_matchsums.describe())
         st.write(df_player_matchsums)
+
+        # for each column: write range of matchsum
+        # for col in df_player_matchsums.columns:
+        #     st.write(col, df_player_matchsums[col].describe())
 
         competitions = df_player_matchsums["competition_name"].unique()
         # selected_competitions = st.multiselect("Competitions", competitions, ["FIFA Men's World Cup"])
@@ -784,13 +868,14 @@ def main():
             st.write(f"## {competition}")
             with st.spinner("Loading matchsums..."):
                 # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
-                df_player_matchsums = pd.read_csv("C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/df_matchsums_player.csv")  # TODO fix
+                # df_player_matchsums = pd.read_csv("C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/df_matchsums_player.csv")  # TODO fix
+                df_player_matchsums = pd.read_csv("C:/Users/j.bischofberger/OneDrive - VfB Stuttgart 1893 AG/Desktop/code/defensive-network/df_matchsums_player.csv")  # TODO fix
 
             df_player_matchsums = df_player_matchsums[df_player_matchsums["role_category"] != "GK"]
             df_player_matchsums["is_rückrunde"] = pd.to_datetime(df_player_matchsums["kickoff_time"].astype(str), errors="coerce").dt.tz_localize(None).dt.year == 2024
 
             with st.spinner("Getting meta..."):
-                df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=False)
+                df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=True)
             match_id_2_string = df_meta.set_index("match_id")["match_string"].to_dict()
             match_id_2_slugified_string = df_meta.set_index("match_id")["slugified_match_string"].to_dict()
             match_id_2_competition_name = df_meta.set_index("match_id")["competition_name"].to_dict()
@@ -800,6 +885,7 @@ def main():
             df_player_matchsums["slugified_match_string"] = df_player_matchsums["match_id"].map(match_id_2_slugified_string)
             df_player_matchsums["competition_name"] = df_player_matchsums["match_id"].map(match_id_2_competition_name)
             df_player_matchsums["expected_matches"] = df_player_matchsums["competition_name"].map(expected_matches)
+            df_player_matchsums["match_day"] = df_player_matchsums["match_day"].astype(str)
 
             # Print some statistics
             st.write("Available matches in MATCHSUMS")
@@ -828,15 +914,15 @@ def main():
                 n_slugs=("slugified_match_string", "nunique"),
                 n_expected_matches=("expected_matches", "first"),
             ))
-            event_slugs = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("events", st_cache=False)]
+            event_slugs = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("events", st_cache=True)]
             # st.write("event_slugs")
             # st.write(event_slugs)
             df_meta["has_event"] = df_meta["slugified_match_string"].isin(event_slugs)
-            tracking_slugs = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("tracking", st_cache=False)]
+            tracking_slugs = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("tracking", st_cache=True)]
             # st.write("tracking_slugs")
             # st.write(tracking_slugs)
             df_meta["has_tracking"] = df_meta["slugified_match_string"].isin(tracking_slugs)
-            involvement_slugs = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("involvement", st_cache=False)]
+            involvement_slugs = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("involvement", st_cache=True)]
             df_meta["has_involvement"] = df_meta["slugified_match_string"].isin(involvement_slugs)
             matchsum_slugs = df_player_matchsums["slugified_match_string"].tolist()
             df_meta["has_matchsums"] = df_meta["slugified_match_string"].isin(matchsum_slugs)
@@ -872,6 +958,7 @@ def main():
             df_player_matchsums["coarse_position"] = df_player_matchsums["role_category"].map(position_mapping)
             # st.write(df_player_matchsums[["role_category", "coarse_position"]].drop_duplicates())
             assert df_player_matchsums["coarse_position"].notna().all(), "Some positions are not mapped to coarse positions"
+            df_player_matchsums["minutes_played"] = df_player_matchsums["minutes_played"].astype(float)
             df_player_matchsums["player_pos_minutes_played"] = df_player_matchsums.groupby(["player_id", "coarse_position"])["minutes_played"].transform("sum")
 
             df_agg_match_player_pos = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "coarse_position", "match_id"])
@@ -883,6 +970,7 @@ def main():
             df_agg_match_player_pos = df_agg_match_player_pos.merge(df_meta[["match_id", "match_string"]].drop_duplicates(), on="match_id", how="left")
 
             df_agg_player_pos = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "coarse_position"])
+            assert "raw_contribution_minus_contribution_responsibility_per90" in df_agg_player_pos.columns
             df_agg_player_pos["player_minutes_played"] = df_agg_player_pos.groupby("player_id")["minutes_played"].transform("sum")
             # df_agg_match_player_pos["player_matches_played"] = df_agg_match_player_pos.groupby("player_id")["match_id"].transform("nunique")
 
@@ -900,10 +988,27 @@ def main():
             default_kpis = [
                 # Classic metrics
                 "n_interceptions_per90",
+                "n_interceptions_per_pass",
+                "n_passes_against_per90",
                 "n_tackles_won_per90",
                 "n_tackles_per90",
                 "tackles_won_share",
                 "n_passes_per90",
+
+                "raw_responsibility_combined",
+                "raw_responsibility_combined2",
+                "raw_involvement_combined",
+                "raw_involvement_combined2",
+                "valued_involvement_combined",
+                "valued_involvement_combined2",
+                "valued_responsibility_combined",
+                "valued_responsibility_combined2",
+                "raw_responsinvolvement_combined",
+                "valued_responsinvolvement_combined",
+                #     dfg["raw_involvement_combined"] = dfg["raw_contribution_per_pass"] * 250 - dfg["raw_fault_per90"]
+                #     dfg["raw_involvement_combined2"] = dfg["raw_contribution_per_pass"] * 250 + dfg["raw_fault_per90"]
+                #     dfg["raw_responsibility_combined"] = dfg["raw_contribution_responsibility_per_pass"] * 250 - dfg["raw_fault_responsibility_per90"]
+                #     dfg["raw_responsibility_combined2"] = dfg["raw_contribution_responsibility_per_pass"] * 250 + dfg["raw_fault_responsibility_per90"]
 
                 "raw_contribution_per_pass",
                 "raw_fault_per_pass",
@@ -930,7 +1035,10 @@ def main():
                 # "total_valued_contribution_responsibility_per90",
                 # "total_valued_fault_responsibility_per90",
                 # "total_valued_responsibility_per90",
-                #
+                # "total_raw_contribution_responsibility_per90",
+                # "total_raw_fault_responsibility_per90",
+                # "total_raw_responsibility_per90",
+
                 # "total_intrinsic_contribution_responsibility_per90",
                 # "total_intrinsic_fault_responsibility_per90",
                 # "total_intrinsic_responsibility_per90",
@@ -978,26 +1086,50 @@ def main():
                 # "total_raw_involvement_per_pass",
                 # "total_raw_contribution_per_pass",
                 # "raw_fault_per_pass",
+
+#     dfg["valued_responsibility_minus_involvement_per_pass"] = dfg["valued_responsibility_per_pass"].astype(float) - dfg["valued_involvement_per_pass"].astype(float)
+                #     dfg["raw_responsibility_minus_involvement_per_pass"] = dfg["raw_responsibility_per_pass"].astype(float) - dfg["raw_involvement_per_pass"].astype(float)
+                #     dfg["raw_fault_responsibility_minus_fault_per_pass"] = dfg["raw_fault_responsibility_per_pass"].astype(float) - dfg["raw_fault_per_pass"].astype(float)
+                #     dfg["valued_fault_responsibility_minus_fault_per_pass"] = dfg["valued_fault_responsibility_per_pass"].astype(float) - dfg["valued_fault_per_pass"].astype(float)
+                #     dfg["raw_contribution_responsibility_minus_contribution_per_pass"] = dfg["raw_contribution_responsibility_per_pass"].astype(float) - dfg["raw_contribution_per_pass"].astype(float)
+                #     dfg["valued_contribution_responsibility_minus_contribution_per_pass"] = dfg["valued_contribution_responsibility_per_pass"].astype(float) - dfg["valued_contribution_per_pass"].astype(float)
+                "valued_involvement_minus_responsibility_per_pass",
+                "raw_involvement_minus_responsibility_per_pass",
+                "raw_fault_minus_fault_responsibility_per_pass",
+                "valued_fault_minus_fault_responsibility_per_pass",
+                "raw_contribution_minus_contribution_responsibility_per_pass",
+                "valued_contribution_minus_contribution_responsibility_per_pass",
+
+                "raw_fault_plus_fault_responsibility_per_pass",
+                "valued_fault_plus_fault_responsibility_per_pass",
+
+                "n_tackles_lost_per90",
             ]
-            kpis = st.multiselect("KPIs", options=sorted(df_agg_player_pos.columns), default=sorted([kpi for kpi in default_kpis if kpi in df_agg_player_pos.columns or "per_pass" in kpi]), key=f"{competition}_kpis")
+            default_kpis += default_kpis + [kpi.replace("_per_pass", "_per90") for kpi in default_kpis if "_per_pass" in kpi]
+            assert "valued_contribution_minus_contribution_responsibility_per90" in default_kpis
+            kpis = st.multiselect("KPIs", options=sorted(df_agg_player_pos.columns), default=sorted([kpi for kpi in default_kpis if kpi in df_agg_player_pos.columns or "per_pass" in kpi or "per90" in kpi]), key=f"{competition}_kpis")
             for kpi in kpis:
                 if kpi not in df_agg_match_player_pos.columns:
                     st.warning(f"{kpi} not in df_agg_match_player_pos")
             kpis = [kpi for kpi in kpis if kpi in df_agg_match_player_pos.columns]
+            kpis = sorted(list(set((kpis))))
+
+            assert "raw_contribution_minus_contribution_responsibility_per90" in default_kpis
+            assert "raw_contribution_minus_contribution_responsibility_per90" in kpis
 
             ######### duplicate from remote??
             if _do_fifa_correlations:
                 with st.expander("FIFA", True):
-                    df_fifa_players = defensive_network.parse.drive.download_csv_from_drive("fifa_ratings.csv",
-                                                                                            st_cache=False)
-                    files = defensive_network.parse.drive.list_files_in_drive_folder(".")
+                    # df_fifa_players = defensive_network.parse.drive.download_csv_from_drive("fifa_ratings.csv", st_cache=True)
+                    df_fifa_players = pd.read_csv("C:/Users/j.bischofberger/Downloads/fifa_ratings (1).csv")
+                    # files = defensive_network.parse.drive.list_files_in_drive_folder(".", st_cache=True)
                     # st.write("files")
                     # st.write(files)
-                    # df_soccerdonna = defensive_network.parse.drive.download_csv_from_drive("market_values.csv", st_cache=False)
-                    # df_soccerdonna = defensive_network.parse.drive.download_excel_from_drive("market_values.xlsx", st_cache=False)
+                    # df_soccerdonna = defensive_network.parse.drive.download_csv_from_drive("market_values.csv", st_cache=True)
+                    # df_soccerdonna = defensive_network.parse.drive.download_excel_from_drive("market_values.xlsx", st_cache=True)
                     # df_soccerdonna = pd.read_excel("C:/Users/j.bischofberger/Downloads/Neuer Ordner (7)/market_values.xlsx")  # TODO WHY
-                    df_soccerdonna = pd.read_excel("C:/Users/Jonas/Downloads/market_values.xlsx")  # TODO WHY
-                    # df_soccerdonna = pd.read_excel("C:/Users/j.bischofberger/Downloads/Neuer Ordner (7)/market_values.xlsx")  # TODO WHY
+                    # df_soccerdonna = pd.read_excel("C:/Users/Jonas/Downloads/market_values.xlsx")  # TODO WHY
+                    df_soccerdonna = pd.read_excel("C:/Users/j.bischofberger/Downloads/Neuer Ordner (7)/market_values.xlsx")  # TODO WHY
                     # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive("players_matchsums.csv")
                     # df_agg_player = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "position"])
                     # df_agg_player["coarse_position"] = df_agg_player["position"].map(position_mapping)
@@ -1007,13 +1139,10 @@ def main():
                     # assert player pos is unique
                     assert df_agg_player[["player_id",
                                           "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
-                    df_agg_player["full_name"] = (
-                                df_agg_player["first_name"] + " " + df_agg_player["last_name"]).str.strip()
-                    min_minutes = st.number_input("Minimum minutes played by player for FIFA correlations.",
-                                                  min_value=0, value=DEFAULT_MINUTES, key=f"{competition}_min_minutes_fifa")
+                    df_agg_player["full_name"] = (df_agg_player["first_name"] + " " + df_agg_player["last_name"]).str.strip()
+                    min_minutes = st.number_input("Minimum minutes played by player for FIFA correlations.", min_value=0, value=DEFAULT_MINUTES, key=f"{competition}_min_minutes_fifa")
                     df_agg_player = df_agg_player[df_agg_player["minutes_played"] > min_minutes]
-                    assert df_agg_player[["player_id",
-                                          "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
+                    assert df_agg_player[["player_id", "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
 
                     # df_agg_team = aggregate_matchsums(df_player_matchsums, group_cols=["team_id", "position", "player_id"]).reset_index()
                     # df_agg_team["full_name"] = df_agg_team["first_name"] + " " + df_agg_team["last_name"]
@@ -1074,8 +1203,7 @@ def main():
                             fifa_mapping[full_name] = None
 
                         # match Soccerdonna name
-                        best_match_soccerdonna, score_soccerdonna = thefuzz.process.extractOne(full_name,
-                                                                                               soccerdonna_names)
+                        best_match_soccerdonna, score_soccerdonna = thefuzz.process.extractOne(full_name, soccerdonna_names)
 
                         if score_soccerdonna > 90:
                             df_agg_player.at[idx, 'soccerdonna_name'] = best_match_soccerdonna
@@ -1111,8 +1239,7 @@ def main():
                     except KeyError as e:
                         df_agg_player["market_value"] = np.nan
                         st.write(e)
-                    assert df_agg_player[["player_id",
-                                          "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
+                    assert df_agg_player[["player_id", "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
                     # df_agg_player = df_agg_player.dropna(subset=["defending"])
                     st.write("df_agg_player")
                     st.write(df_agg_player)
@@ -1122,37 +1249,47 @@ def main():
 
                     data = []
                     x_variables = kpis
+                    assert "valued_fault_plus_fault_responsibility_per90" in x_variables
+                    assert "n_tackles_lost_per90" in x_variables
+                    assert "n_interceptions_per_pass" in x_variables
+                    assert "n_passes_against_per90" in x_variables
                     y_variables = ["def_awareness", "defending", "market_value"]
                     # xy_variables = [(x, y) for x in x_variables for y in y_variables]
                     for x_variable in x_variables:
+                        df_agg_player[x_variable] = pd.to_numeric(df_agg_player[x_variable], errors="coerce")
                         columns = st.columns(len(y_variables))
                         for y_nr, y_variable in enumerate(y_variables):
+                            df_agg_player[y_variable] = pd.to_numeric(df_agg_player[y_variable], errors="coerce")
                             col = columns[y_nr]
                             df = df_agg_player.copy().dropna(subset=[x_variable, y_variable, "coarse_position"])
 
                             try:
                                 # sns.regplot(data=df_agg_player, x=x_variable, y=y_variable, hue="position", scatter=True, label='Trendline')
-                                fig = plt.figure()
-                                sns.lmplot(data=df, x=x_variable, y=y_variable, hue="coarse_position", scatter=True)
-                                # set lower ylim to 0
-                                plt.ylim(bottom=0)
-                                # set upper limit to max plus 10% of max
-                                max_y = df[y_variable].max()
-                                plt.ylim(top=1.1 * max_y)
-                                col.write(plt.gcf())
-                                # st.stop()
+                                plot = False
+                                if plot:
+                                    fig = plt.figure()
+                                    sns.lmplot(data=df, x=x_variable, y=y_variable, hue="coarse_position", scatter=True)
+                                    # set lower ylim to 0
+                                    plt.ylim(bottom=0)
+                                    # set upper limit to max plus 10% of max
+                                    max_y = df[y_variable].max()
+                                    plt.ylim(top=1.1 * max_y)
+                                    col.write(plt.gcf())
+                                    # st.stop()
 
-                                # make also a logarithmic plot
-                                # fig_log = plt.figure()
-                                # sns.lmplot(data=df, x=x_variable, y=y_variable, hue="coarse_position", scatter=True,
-                                #            logx=True)
-                                # plt.ylim(bottom=0)
-                                # if not df[y_variable].isna().all():
-                                #     # max_y = df[y_variable].max()
-                                #     plt.ylim(top=1.1 * max_y)
-                                # col.write(plt.gcf())
+                                    # make also a logarithmic plot
+                                    # fig_log = plt.figure()
+                                    # sns.lmplot(data=df, x=x_variable, y=y_variable, hue="coarse_position", scatter=True,
+                                    #            logx=True)
+                                    # plt.ylim(bottom=0)
+                                    # if not df[y_variable].isna().all():
+                                    #     # max_y = df[y_variable].max()
+                                    #     plt.ylim(top=1.1 * max_y)
+                                    # col.write(plt.gcf())
 
-                                # plt.close()
+                                    # plt.close()
+                                else:
+                                    col.write("-")
 
                             except (ValueError, np.exceptions.DTypePromotionError, KeyError) as e:
                                 col.write(e)
@@ -1206,14 +1343,14 @@ def main():
                             except (ValueError, KeyError) as e:
                                 st.write(e)
                                 correlation_coefficient = np.nan
-                            summary_data.append({"type": "pearson_correlation", "competition_name": competition, "x_variable": x_variable, "y_variable": y_variable, "value": correlation_coefficient, "min_minutes_to_include_player": min_minutes})
+                            summary_data.append({"type": "pearson_correlation", "competition_name": competition, "kpi": x_variable, "other_variable": y_variable, "value": correlation_coefficient, "min_minutes_to_include_player": min_minutes})
 
                             df_agg_player_only_cb = df[df["coarse_position"] == "CB"]
                             assert len(df_agg_player_only_cb) > 0, "No CBs in df_agg_player_only_cb"
                             correlation_coefficient_only_CBs = df_agg_player_only_cb[x_variable].corr(df_agg_player_only_cb[y_variable])
-                            summary_data.append({"type": "pearson_correlation_only_cbs", "competition_name": competition, "x_variable": x_variable, "y_variable": y_variable, "value": correlation_coefficient_only_CBs, "min_minutes_to_include_player": min_minutes})
+                            summary_data.append({"type": "pearson_correlation_only_cbs", "competition_name": competition, "kpi": x_variable, "other_variable": y_variable, "value": correlation_coefficient_only_CBs, "min_minutes_to_include_player": min_minutes})
                             spearman_correlation_only_cbs = df_agg_player_only_cb[x_variable].corr(df_agg_player_only_cb[y_variable], method="spearman")
-                            summary_data.append({"type": "spearman_correlation_only_cbs", "competition_name": competition, "x_variable": x_variable, "y_variable": y_variable, "value": spearman_correlation_only_cbs, "min_minutes_to_include_player": min_minutes})
+                            summary_data.append({"type": "spearman_correlation_only_cbs", "competition_name": competition, "kpi": x_variable, "other_variable": y_variable, "value": spearman_correlation_only_cbs, "min_minutes_to_include_player": min_minutes})
                             correlation_coefficient_only_CBs_bs, cc_lower_only_CBs, cc_upper_only_CBs = bootstrapped_correlation_coefficient(
                                 df_agg_player_only_cb[x_variable], df_agg_player_only_cb[y_variable]
                             )
@@ -1226,24 +1363,24 @@ def main():
                                 "value": correlation_coefficient_only_CBs_bs,
                                 "ci_upper": cc_upper_only_CBs,
                                 "ci_lower": cc_lower_only_CBs,
-                                "x_variable": x_variable,
-                                "y_variable": y_variable,
+                                "kpi": x_variable,
+                                "other_variable": y_variable,
                                 "competition_name": competition,
                                 "alhpa": 0.05,
                                 "min_minutes_to_include_player": min_minutes,
                             })
 
                             df_summary = pd.DataFrame(summary_data)
-
-                            plt.title(f"{x_variable}-{y_variable}")
-                            col.write(f"{x_variable}-{y_variable}")
                             #
-                            plt.xlabel(x_variable)
-                            plt.ylabel(y_variable)
-                            plt.title(f"Correlation of {x_variable} and {y_variable}")
-                            # col.write(fig)
-                            # col.write(fig_log)
-                            plt.close()
+                            # plt.title(f"{x_variable}-{y_variable}")
+                            # col.write(f"{x_variable}-{y_variable}")
+                            # #
+                            # plt.xlabel(x_variable)
+                            # plt.ylabel(y_variable)
+                            # plt.title(f"Correlation of {x_variable} and {y_variable}")
+                            # # col.write(fig)
+                            # # col.write(fig_log)
+                            # plt.close()
                             #
                             # st.write("BLA")
                             # st.write("df_agg_team")
@@ -1374,22 +1511,24 @@ def main():
                         # correlation plot with trendline
                         # sns.scatterplot(data=df_hinrunde, x=kpi, y=df_rückrunde[kpi], hue="is_rückrunde")
                         # sns.regplot(data=df_agg, x=kpi, y="is_rückrunde", scatter=True, color='blue', label='Trendline')
-                        try:
-                            # sns.regplot(data=df_data_new, x=f"{kpi}_hinrunde", y=f"{kpi}_rückrunde", scatter=True, color='blue', label='Trendline')
-                            sns.lmplot(data=df_data_new, x=f"{kpi}_hinrunde", y=f"{kpi}_rückrunde", hue="coarse_position", scatter=True)
+                        plot = False
+                        if plot:
+                            try:
+                                # sns.regplot(data=df_data_new, x=f"{kpi}_hinrunde", y=f"{kpi}_rückrunde", scatter=True, color='blue', label='Trendline')
+                                sns.lmplot(data=df_data_new, x=f"{kpi}_hinrunde", y=f"{kpi}_rückrunde", hue="coarse_position", scatter=True)
 
-                        except (ValueError, np.exceptions.DTypePromotionError) as e:
-                            continue
+                            except (ValueError, np.exceptions.DTypePromotionError) as e:
+                                continue
 
-                        for i, row in df_data_new.iterrows():
-                            plt.text(
-                                row[f"{kpi}_hinrunde"],  # x position
-                                row[f"{kpi}_rückrunde"],  # y position
-                                row["short_name_hinrunde"],
-                                fontsize=9,
-                                ha='right',
-                                va='bottom'
-                            )
+                            for i, row in df_data_new.iterrows():
+                                plt.text(
+                                    row[f"{kpi}_hinrunde"],  # x position
+                                    row[f"{kpi}_rückrunde"],  # y position
+                                    row["short_name_hinrunde"],
+                                    fontsize=9,
+                                    ha='right',
+                                    va='bottom'
+                                )
 
                         try:
                             # correlation_coefficient = df_hinrunde[kpi].corr(df_rückrunde[kpi])
@@ -1416,37 +1555,45 @@ def main():
                             partial_corr = np.nan
 
                         df_data_new_only_CBs = df_data_new[df_data_new["coarse_position"] == "CB"]
-                        correlation_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"]))
-                        spearman_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"], method='spearman'))
+                        try:
+                            correlation_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"]))
+                            spearman_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"], method='spearman'))
+                        except ValueError as e:
+                            correlation_coefficient_only_CBs = np.nan
+                            spearman_coefficient_only_CBs = np.nan
 
                         columns = st.columns(2)
-                        plt.title(f"{kpi} (r={correlation_coefficient:.2f})")
-                        columns[0].write(kpi)
-                        columns[1].write(f"r={correlation_coefficient:.2f}, partial_r={partial_corr:.2f}, r_only_CBs={correlation_coefficient_only_CBs:.2f}, spearman_only_CBs={spearman_coefficient_only_CBs:.2f}")
-                        # st.write(correlation_coefficient)
-                        #
-                        plt.xlabel("Hinrunde")
-                        plt.ylabel("Rückrunde")
-                        plt.title(f"Correlation of {kpi} between Hinrunde and Rückrunde")
+                        if plot:
+                            plt.title(f"{kpi} (r={correlation_coefficient:.2f})")
+                            columns[0].write(kpi)
+                            columns[1].write(f"r={correlation_coefficient:.2f}, partial_r={partial_corr:.2f}, r_only_CBs={correlation_coefficient_only_CBs:.2f}, spearman_only_CBs={spearman_coefficient_only_CBs:.2f}")
+                            # st.write(correlation_coefficient)
+                            #
+                            plt.xlabel("Hinrunde")
+                            plt.ylabel("Rückrunde")
+                            plt.title(f"Correlation of {kpi} between Hinrunde and Rückrunde")
 
-                        # plot diagonal
-                        plt.plot(
-                            [df_data_new[f"{kpi}_hinrunde"].min(), df_data_new[f"{kpi}_hinrunde"].max()],
-                            [df_data_new[f"{kpi}_rückrunde"].min(), df_data_new[f"{kpi}_rückrunde"].max()],
-                            color='black', linestyle='--', label='Diagonal'
-                        )
-                        columns[0].write(plt.gcf())
+                            # plot diagonal
+                            plt.plot(
+                                [df_data_new[f"{kpi}_hinrunde"].min(), df_data_new[f"{kpi}_hinrunde"].max()],
+                                [df_data_new[f"{kpi}_rückrunde"].min(), df_data_new[f"{kpi}_rückrunde"].max()],
+                                color='black', linestyle='--', label='Diagonal'
+                            )
+                            columns[0].write(plt.gcf())
 
-                        plt.close()
+                            plt.close()
 
-                        plt.figure()
-                        # scatter plot with trendline
-                        sns.regplot(data=df_data_new, x=f"{kpi}_hinrunde", y=f"{kpi}_rückrunde", scatter=True, color='blue', label='Trendline')
-                        plt.xlabel(f"{kpi} Hinrunde")
-                        plt.ylabel(f"{kpi} Rückrunde")
-                        plt.title(f"Scatter plot of {kpi} between Hinrunde and Rückrunde")
-                        columns[1].write(plt.gcf())
-                        plt.close()
+                            plt.figure()
+                            # scatter plot with trendline
+                            sns.regplot(data=df_data_new, x=f"{kpi}_hinrunde", y=f"{kpi}_rückrunde", scatter=True, color='blue', label='Trendline')
+                            plt.xlabel(f"{kpi} Hinrunde")
+                            plt.ylabel(f"{kpi} Rückrunde")
+                            plt.title(f"Scatter plot of {kpi} between Hinrunde and Rückrunde")
+                            columns[1].write(plt.gcf())
+                            plt.close()
+                        else:
+                            columns[0].write("-")
+                            columns[1].write("-")
 
                         data.append({
                             "kpi": kpi,
@@ -1470,16 +1617,20 @@ def main():
                             summary_data.append({
                                 "type": label,
                                 "competition_name": competition,
-                                "x_variable": None,
-                                "y_variable": kpi,
+                                "kpi": kpi,
                                 "value": corr_coeff,
                                 "n_players": df_data_new["player_id"].nunique(),
                                 "n_CBs": df_data_new[df_data_new["coarse_position"] == "CB"]["player_id"].nunique(),
                             })
 
+                        # break  # TODO remove
+
                     df_correlations = pd.DataFrame(data)
                     st.write("df_correlations")
                     st.write(df_correlations.set_index("kpi").sort_values(by="abs_partial_correlation_coefficient", ascending=False))
+                    df_summary = pd.DataFrame(summary_data)
+                    st.write("df_summary season-by-season")
+                    st.write(df_summary)
 
             data = []
             if _do_icc:
@@ -1508,7 +1659,7 @@ def main():
                                 "type": "match_level_icc",
                                 "competition_name": competition,
                                 # "x_variable": None,
-                                "y_variable": kpi,
+                                "kpi": kpi,
                                 "value": icc,
                                 # "alpha": 0.05,
                                 "min_minutes_to_include_match_performance": min_minutes,
@@ -1524,26 +1675,35 @@ def main():
                         df_agg = df_agg.sort_values(by=kpi, ascending=False)
                         assert kpi in df_agg.columns and "short_name" in df_agg.columns, f"Columns {kpi} or short_name not found in df_agg"
                         # plt.figure(figsize=(16, 9))
-                        sns.boxplot(data=df_agg, x="short_name", y=kpi, hue="coarse_position", width=1, dodge=False)
-                        plt.xticks(rotation=90)
-                        plt.xticks(fontsize=4)  # adjust the value as needed
-                        plt.title(f"Discriminability of '{kpi}'")
-                        col.write(plt.gcf())
-                        plt.close()
+                        plot = False
+                        if plot:
+                            sns.boxplot(data=df_agg, x="short_name", y=kpi, hue="coarse_position", width=1, dodge=False)
+                            plt.xticks(rotation=90)
+                            plt.xticks(fontsize=4)  # adjust the value as needed
+                            plt.title(f"Discriminability of '{kpi}'")
+                            col.write(plt.gcf())
+                            plt.close()
+                        else:
+                            col.write("-")
+
+                        # break  # TODO remove
 
                 df_icc = pd.DataFrame(data)
                 st.write("df_icc")
                 st.write(df_icc)
+                df_summary = pd.DataFrame(summary_data)
+                st.write("df_summary ICC")
+                st.write(df_summary)
 
             if _do_bootstrapped_icc:
-                min_minutes_per_match = st.number_input("Minimum minutes played by player for Season-Level ICC.", min_value=0, value=DEFAULT_MINUTES_PER_MATCH, key=f"{competition}_min_minutes_per_match")
+                min_minutes_per_match = st.number_input("Minimum minutes played by player for Season-Level ICC.", min_value=0, value=DEFAULT_MINUTES_PER_MATCH, key=f"{competition}_min_minutes_per_match_bootstrap")
                 df_base_matchsums = df_player_matchsums.copy()
                 df_base_matchsums = df_base_matchsums[df_base_matchsums["minutes_played"] >= min_minutes_per_match]
-                min_minutes = st.number_input("Minimum minutes played by player-pos for Season-Level ICC.", min_value=0, value=DEFAULT_MINUTES, key=f"{competition}_min_minutes")
+                min_minutes = st.number_input("Minimum minutes played by player-pos for Season-Level ICC.", min_value=0, value=DEFAULT_MINUTES, key=f"{competition}_min_minutes_bootstrap")
                 df_base_matchsums = df_base_matchsums[df_base_matchsums["player_pos_minutes_played"] >= min_minutes].copy()
                 st.write(f"Using {len(df_base_matchsums)} match performances of {len(df_base_matchsums['player_id'].unique())} players that played at least {min_minutes} minutes for bootstrapped ICC calculation.")
 
-                def bootstrap_aggregate(df, group_cols, n_bootstrap=15, random_state=None):
+                def bootstrap_aggregate(df, group_cols, n_bootstrap=200, random_state=None):
                     st.write(f"{n_bootstrap=}")
                     rng = np.random.default_rng(random_state)
                     results = []
@@ -1608,8 +1768,8 @@ def main():
                     summary_data.append({
                         "type": "bootstrapped_season_level_icc (corrected by position)",
                         "competition_name": competition,
-                        "x_variable": None,
-                        "y_variable": kpi,
+                        "kpi": kpi,
+                        "other_variable": None,
                         "value": icc,
                         "n_bootstrap": df_agg["n_bootstrap"].unique()[0],
                     })
@@ -1617,8 +1777,8 @@ def main():
                     summary_data.append({
                         "type": "bootstrapped_season_level_icc (corrected by position and player)",
                         "competition_name": competition,
-                        "x_variable": None,
-                        "y_variable": kpi,
+                        "kpi": kpi,
+                        "other_variable": None,
                         "value": icc_posplayer,
                         "n_bootstrap": df_agg["n_bootstrap"].unique()[0],
                     })
@@ -1626,8 +1786,8 @@ def main():
                     summary_data.append({
                         "type": "bootstrapped_season_level_icc (raw)",
                         "competition_name": competition,
-                        "x_variable": None,
-                        "y_variable": kpi,
+                        "kpi": kpi,
+                        "other_variable": None,
                         "value": uncorrected_icc,
                         "n_bootstrap": df_agg["n_bootstrap"].unique()[0],
                     })
@@ -1635,12 +1795,14 @@ def main():
                     summary_data.append({
                         "type": "bootstrapped_season_level_icc (raw, corrected by position and player)",
                         "competition_name": competition,
-                        "x_variable": None,
-                        "y_variable": kpi,
+                        "kpi": kpi,
+                        "other_variable": None,
                         "value": icc_posplayer_uncorrected,
                         "n_bootstrap": df_agg["n_bootstrap"].unique()[0],
                     })
                     data.append({"kpi": kpi, "icc": icc, "uncorrected_icc": uncorrected_icc, "icc_posplayer": icc_posplayer, "icc_posplayer_uncorrected": icc_posplayer_uncorrected})
+
+                    # break # TODO remove
 
                 df = pd.DataFrame(data)
                 st.write("df")
@@ -1692,6 +1854,8 @@ def main():
                         df_agg_match_player_pos_hist
                     ], ["Season-Level", "Match-Level"]):
                         # heatmap
+
+                        kpis = sorted(list(set((kpis))))
                         corr_matrix = df_agg[kpis].corr()
                         sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f", square=True, cbar_kws={"shrink": .8}, annot_kws={"size": 4})
                         plt.suptitle("Correlation Heatmap", y=1.02)
@@ -1701,11 +1865,23 @@ def main():
                         # add correlations to summary data
                         for kpi1 in kpis:
                             for kpi2 in kpis:
-                                correlation = corr_matrix.loc[kpi1, kpi2]
+                                if kpi1 == kpi2:
+                                    continue
+                                import pandas.errors
+                                correlation = corr_matrix.at[kpi1, kpi2]
+                                assert pd.api.types.is_scalar(correlation), f"Expected scalar correlation, got {type(correlation)} for ({kpi1}, {kpi2})"
+
+                                # st.write(f"{kpi1=}, {kpi2=}")
+                                # print("corr_matrix")
+                                # print(corr_matrix)
+                                # print("correlation")
+                                # print(correlation)
+                                # st.write("correlation")
+                                # st.write(correlation)
                                 summary_data.append({
                                     "type": f"internal_correlation (Pearson, {label})",
                                     "competition_name": competition,
-                                    "x_variable": kpi1, "y_variable": kpi2, "value": correlation,
+                                    "kpi": kpi1, "other_variable": kpi2, "value": correlation,
                                     "min_minutes_to_include_player": min_minutes_per_match_hist if label == "Season-Level" else None,
                                     "min_minutes_to_include_match_performance": min_minutes_per_match_hist if label == "Match-Level" else None,
                                 })
@@ -1732,219 +1908,184 @@ def main():
                                 summary_data.append({
                                     "type": f"internal_correlation_only_CB (Pearson, {label})",
                                     "competition_name": competition,
-                                    "x_variable": kpi1, "y_variable": kpi2, "value": correlation,
+                                    "kpi": kpi1, "other_variable": kpi2, "value": correlation,
                                     "min_minutes_to_include_player": min_minutes_per_match_hist if label == "Season-Level" else None,
                                     "min_minutes_to_include_match_performance": min_minutes_per_match_hist if label == "Match-Level" else None,
                                 })
 
-
-            # if st.toggle("FIFA Correlations", True, key=f"{competition}_fifa_correlations"):
-            #     with st.expander("FIFA", False):
-            #         df_fifa_players = defensive_network.parse.drive.download_csv_from_drive("fifa_ratings.csv", st_cache=False)
-            #         files = defensive_network.parse.drive.list_files_in_drive_folder(".")
-            #         st.write("files")
-            #         st.write(files)
-            #         # df_soccerdonna = defensive_network.parse.drive.download_csv_from_drive("market_values.csv", st_cache=False)
-            #         # df_soccerdonna = defensive_network.parse.drive.download_excel_from_drive("market_values.xlsx", st_cache=False)
-            #         df_soccerdonna = pd.read_excel("C:/Users/Jonas/Downloads/market_values.xlsx")  # TODO WHY
-            #         st.write("df_soccerdonna")
-            #         st.write(df_soccerdonna)
-            #         # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive("players_matchsums.csv")
-            #         # df_agg_player = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "position"])
-            #         # df_agg_player["coarse_position"] = df_agg_player["position"].map(position_mapping)
-            #         df_agg_player = df_agg_player_pos.copy()
-            #         df_agg_player["full_name"] = df_agg_player["first_name"] + " " + df_agg_player["last_name"]
-            #         min_minutes = st.number_input("Minimum minutes played by player for FIFA correlations.", min_value=0, value=DEFAULT_MINUTES, key=f"{competition}_min_minutes_fifasdf")
-            #         df_agg_player = df_agg_player[df_agg_player["minutes_played"] > min_minutes]
-            #
-            #         # df_agg_team = aggregate_matchsums(df_player_matchsums, group_cols=["team_id", "position", "player_id"]).reset_index()
-            #         # df_agg_team["full_name"] = df_agg_team["first_name"] + " " + df_agg_team["last_name"]
-            #         # df_agg_team["coarse_position"] = df_agg_team["position"].map(position_mapping)
-            #         df_agg_team = df_agg_team[df_agg_team["minutes_played"] > min_minutes]
-            #         df_agg_team["full_name"] = df_agg_team["first_name"] + " " + df_agg_team["last_name"]
-            #
-            #         # Map FIFA names
-            #         fifa_names = df_fifa_players["name"].tolist()
-            #         soccerdonna_names = df_soccerdonna["name"].tolist()
-            #
-            #         manual_fifa_mapping = {
-            #             "Sammy Jerabek": "Samantha Jerabek",
-            #             "0 Letícia Santos": "Letícia Santos de Oliveira",
-            #             "Allie Hess": "Alexandria Loy Hess",
-            #             # 0 Letícia Santos	Letícia Santos de Oliveira
-            #             # Allie Hess	Alexandria Loy Hess
-            #         }
-            #         fifa_mapping = manual_fifa_mapping.copy()
-            #         soccerdonna_mapping = dict()
-            #
-            #         for idx, row in df_agg_player.iterrows():
-            #             full_name = row['full_name']
-            #             if full_name in manual_fifa_mapping:
-            #                 best_match, score = manual_fifa_mapping[full_name], 200
-            #             else:
-            #                 best_match, score = thefuzz.process.extractOne(full_name, fifa_names)
-            #
-            #             # st.write(full_name, ",", best_match, score)
-            #             if score > 90:
-            #                 df_agg_player.at[idx, 'fifa_match'] = best_match
-            #                 df_agg_player.at[idx, 'match_score'] = score
-            #                 fifa_mapping[full_name]  = best_match
-            #             else:
-            #                 fifa_mapping[full_name] = None
-            #
-            #             # match Soccerdonna name
-            #             best_match_soccerdonna, score_soccerdonna = thefuzz.process.extractOne(full_name, soccerdonna_names)
-            #
-            #             if score_soccerdonna > 90:
-            #                 df_agg_player.at[idx, 'soccerdonna_name'] = best_match_soccerdonna
-            #                 df_agg_player.at[idx, 'soccerdonna_score'] = score_soccerdonna
-            #                 soccerdonna_mapping[full_name] = best_match_soccerdonna
-            #             else:
-            #                 soccerdonna_mapping[full_name] = None
-            #
-            #         df_agg_team["fifa_name"] = df_agg_team["full_name"].map(fifa_mapping)
-            #         df_agg_team = df_agg_team.merge(df_fifa_players, left_on="fifa_name", right_on="name", how="left")
-            #         df_agg_team["soccerdonna_name"] = df_agg_team["full_name"].map(soccerdonna_mapping)
-            #         df_agg_team = df_agg_team.merge(df_soccerdonna, left_on="soccerdonna_name", right_on="name", how="left")
-            #         st.write("df_agg_team")
-            #         st.write(df_agg_team)
-            #
-            #         df_agg_player = df_agg_player.merge(df_fifa_players, left_on="fifa_match", right_on="name", how="left")
-            #         try:
-            #             df_agg_player = df_agg_player.merge(df_soccerdonna, left_on="soccerdonna_name", right_on="name", how="left")
-            #         except KeyError as e:
-            #             df_agg_player["market_value"] = np.nan
-            #             st.write(e)
-            #         st.write("df_agg_player")
-            #         st.write(df_agg_player)
-            #         # df_agg_player = df_agg_player[df_agg_player["minutes_played"] > 600]
-            #         # st.write("df_agg_team")
-            #         # st.write(df_agg_team)
-            #
-            #         data = []
-            #         x_variables = kpis
-            #         y_variables = ["def_awareness", "defending", "market_value"]
-            #         # xy_variables = [(x, y) for x in x_variables for y in y_variables]
-            #         for x_variable in x_variables:
-            #             columns = st.columns(len(y_variables))
-            #             for y_nr, y_variable in enumerate(y_variables):
-            #                 col = columns[y_nr]
-            #                 try:
-            #                     # sns.regplot(data=df_agg_player, x=x_variable, y=y_variable, hue="position", scatter=True, label='Trendline')
-            #                     sns.lmplot(data=df_agg_player, x=x_variable, y=y_variable, hue="coarse_position", scatter=True)
-            #                     # set lower ylim to 0
-            #                     plt.ylim(bottom=0)
-            #
-            #                 except (ValueError, np.exceptions.DTypePromotionError, KeyError) as e:
-            #                     col.write(e)
-            #
-            #                 # for i, row in df_data_new.iterrows():
-            #                 #     plt.text(
-            #                 #         row[f"{kpi}_hinrunde"],  # x position
-            #                 #         row[f"{kpi}_rückrunde"],  # y position
-            #                 #         row["short_name_hinrunde"],
-            #                 #         fontsize=9,
-            #                 #         ha='right',
-            #                 #         va='bottom'
-            #                 #     )
-            #
-            #                 try:
-            #                     correlation_coefficient = df_agg_player[x_variable].corr(df_agg_player[y_variable])
-            #                 except (ValueError, KeyError) as e:
-            #                     st.write(e)
-            #                     correlation_coefficient = np.nan
-            #
-            #                 df_agg_player_only_cb = df_agg_player[df_agg_player["coarse_position"] == "CB"]
-            #                 correlation_coefficient_only_CBs = df_agg_player_only_cb[x_variable].corr(df_agg_player_only_cb[y_variable])
-            #                 spearman_correlation_only_cbs = df_agg_player_only_cb[x_variable].corr(df_agg_player_only_cb[y_variable], method="spearman")
-            #
-            #                 #                     df_data_new_only_CBs = df_data_new[df_data_new["coarse_position"] == "CB"]
-            #                 #                     correlation_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"]))
-            #                 #                     spearman_coefficient_only_CBs = float(df_data_new_only_CBs[f"{kpi}_hinrunde"].corr(df_data_new_only_CBs[f"{kpi}_rückrunde"], method='spearman'))
-            #
-            #                 plt.title(f"{x_variable}-{y_variable}")
-            #                 col.write(f"{x_variable}-{y_variable}")
-            #                 #
-            #                 plt.xlabel(x_variable)
-            #                 plt.ylabel(y_variable)
-            #                 plt.title(f"Correlation of {x_variable} and {y_variable}")
-            #                 col.write(plt.gcf())
-            #                 plt.close()
-            #                 #
-            #                 # st.write("BLA")
-            #                 # st.write("df_agg_team")
-            #                 # st.write(df_agg_team)
-            #
-            #                 # Assume df has columns: x, y, team, position
-            #
-            #                 # df_agg_team["position"] = df_agg_team["position_x"].fillna(df_agg_team["position_y"])
-            #
-            #                 with st.spinner("Regress"):
-            #                     df_agg_team = df_agg_team.dropna(subset=[x_variable, y_variable, "team_id", "position"])
-            #                     df_agg_team['team_id'] = df_agg_team['team_id'].astype(str)
-            #                     df_agg_team['coarse_position'] = df_agg_team['coarse_position'].astype(str)
-            #
-            #                     # Regress x on team and position
-            #                     try:
-            #                         # st.write("A")
-            #                         # st.write(x_variable)
-            #                         # st.write(df_agg_team)
-            #                         # st.write(df_agg_team[x_variable].describe())
-            #                         # st.write(df_agg_team["team_id"].describe())
-            #                         # st.write(df_agg_team["coarse_position"].describe())
-            #                         model_x = statsmodels.formula.api.ols(f'{x_variable} ~ C(team_id) + C(coarse_position)', data=df_agg_team).fit()
-            #                     except ValueError as e:
-            #                         st.write(e)
-            #                         # st.write(x_variable)
-            #                         # st.write(df_agg_team[x_variable].describe())
-            #                         # st.write(df_agg_team["team_id"].describe())
-            #                         # st.write(df_agg_team["coarse_position"].describe())
-            #                         continue
-            #                     resid_x = model_x.resid
-            #
-            #                     # Regress y on team and position
-            #                     model_y = statsmodels.formula.api.ols(f'{y_variable} ~ C(team_id) + C(coarse_position)', data=df_agg_team).fit()
-            #                     resid_y = model_y.resid
-            #
-            #                     # Correlation of residuals
-            #                     try:
-            #                         corr, pval = pearsonr(resid_x, resid_y)
-            #                     except ValueError as e:
-            #                         st.write(e)
-            #                         continue
-            #
-            #                     # Regress on position only
-            #                     model_x_pos = statsmodels.formula.api.ols(f'{x_variable} ~ C(coarse_position)', data=df_agg_team).fit()
-            #                     resid_x_pos = model_x_pos.resid
-            #                     model_y_pos = statsmodels.formula.api.ols(f'{y_variable} ~ C(coarse_position)', data=df_agg_team).fit()
-            #                     resid_y_pos = model_y_pos.resid
-            #                     corr_pos, pval_pos = pearsonr(resid_x_pos, resid_y_pos)
-            #
-            #
-            #                     data.append({
-            #                         "r": correlation_coefficient, "abs_r": abs(correlation_coefficient), "x": x_variable,
-            #                         "y": y_variable,
-            #                         # "team_and_position_corrected_correlation": corr, "p": pval,
-            #                         "position_corrected_correlation_pos": corr_pos, "p_pos": pval_pos,
-            #                         "correlation_coefficient_only_CBs": correlation_coefficient_only_CBs,
-            #                         "spearman_correlation_only_cbs": spearman_correlation_only_cbs,
-            #                         "abs_cc_only_CBs": abs(correlation_coefficient_only_CBs)
-            #                     })
-            #
-            #         df = pd.DataFrame(data)
-            #         # df["total_p"] = df["p"] + df["p_pos"]
-            #         # df["both_significant"] = (df["p"] < 0.05) & (df["p_pos"] < 0.05)
-            #         st.write("df")
-            #         st.write(df)
+                            # break  # TODO remove
+                        # break  # TODO remove
 
         df_summary = pd.DataFrame(summary_data)
+        df_summary.to_excel("C:/Users/j.bischofberger/Downloads/df_summary_total.xlsx")
         st.write("Final summary")
         st.write(df_summary)
         st.write("All present types:", df_summary["type"].unique())
         with st.spinner("Saving summary to Drive..."):
-            defensive_network.parse.drive.append_to_parquet_on_drive(df_summary, f"summary.csv", key_cols=["type", "competition_name", "x_variable", "y_variable"], format="csv")
+            defensive_network.parse.drive.append_to_parquet_on_drive(df_summary, f"summary2.csv", key_cols=["type", "competition_name", "kpi", "other_variable"], format="csv")
         st.write(f"Saved summary to Drive!")
 
+    _do_summary = True
+    if _do_summary:
+        # df_summary = defensive_network.parse.drive.download_csv_from_drive(f"summary2.csv", st_cache=True)
+        # df_summary = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_summary.csv")
+        df_summary1 = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_summary_2025_09_05_14_53.csv")
+        df_summary2 = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_bootstrap_15.csv")
+        st.write("df_summary2")
+        st.write(df_summary2)
+        df_summary = pd.concat([df_summary1, df_summary2])
+
+        # df_summar1 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_bl_3liga.csv")
+        # df_summar2 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_world_cup.csv")
+        # df_summary = pd.concat([df_summar1, df_summar2])
+        # df_summary1 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_2025_08_29.csv")
+        # df_summary2 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_2025_08_29_internal.csv")
+        # df_summary3 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_2025_08_29_icc.csv")
+        # df_summary = pd.concat([df_summary1,
+                                # df_summary2,
+                                # df_summary3])
+        st.write("df_summary")
+        st.write(df_summary)
+
+        i_invalid = (df_summary["competition_name"] == "FIFA Men's World Cup") & (df_summary["type"].str.contains("seasonal_"))
+        df_summary = df_summary.loc[~i_invalid]
+
+        i = df_summary["type"].str.contains("internal")
+        df_summary = df_summary.loc[~i]
+        df_summary["other_variable"] = df_summary["other_variable"].fillna("")
+
+        # i = df_summary["type"].str.contains("seasonal_") | df_summary["type"].str.contains("match_level_icc")
+        # df_summary.loc[i, "value"] = df_summary.loc[i, "other_variable"]
+        # df_summary.loc[i, "other_variable"] = ""
+
+        # drop internal correlations
+        # df_summary = df_summary.drop(columns=[col for col in df_summary.columns if "internal_" in col])
+        def foo(x):
+            try:
+                return float(x)
+            except ValueError:
+                return np.nan
+        df_summary["value"] = df_summary["value"].apply(foo)
+        st.write(df_summary.dtypes)
+        st.write("df_summary")
+        st.write(df_summary)
+        st.write(df_summary.dtypes)
+        st.write(df_summary["type"].unique())
+
+        df_pivot = df_summary.pivot_table(index=["competition_name", "kpi"], columns=["type", "other_variable"], values="value")#.groupby("kpi").mean()
+        df_pivot = df_pivot.groupby("kpi").mean()
+        st.write("df_pivot")
+        st.write(df_pivot)
+        df_pivot_A = df_pivot.drop(columns=[col for col in df_pivot.columns if col[0].startswith("internal_correlation") or col[0].startswith("spearman_") or "bootstrap" in col[0] or "only_cbs" not in col[0]]).copy()
+        df_pivot_A.columns = ['_'.join(filter(None, col)).strip() for col in df_pivot_A.columns.values]
+
+        for col in df_pivot_A.columns:
+            abs_col = f"abs_{col}"
+            df_pivot_A[abs_col] = df_pivot_A[col].abs()
+
+        st.write("df_pivot_A")
+        st.write(df_pivot_A)
+
+        df_pivot.columns = ['_'.join(filter(None, col)).strip() for col in df_pivot.columns.values]
+        st.write("df_pivot")
+        st.write(df_pivot)
+
+        df_pivot_B = df_pivot[[col for col in df_pivot.columns if "seasonal" in col or "match_level_icc" in col or "bootstrapped_season_level_icc (corrected by position)" in col]]
+        st.write("df_pivot B")
+        st.write(df_pivot_B)
+
+        assert not df_pivot_B.empty
+
+        df_pivot_final = df_pivot_A.join(df_pivot_B).reset_index()
+        st.write("df_pivot_final")
+        st.write(df_pivot_final)
+
+        def metrics_scatter(df_full):
+            st.write("df_full")
+            st.write(df_full)
+            # df_full = df_full[~df_full["kpi"].str.endswith("_per_pass") & ~df_full["kpi"].str.contains("relative_")]
+            df_full = df_full[
+                ~df_full["kpi"].str.contains("relative_") &
+                ~df_full["kpi"].str.contains("combined2") &
+                ~df_full["kpi"].str.contains("_plus_") &
+                ~df_full["kpi"].str.contains("_minus_")
+            ]
+
+            # Decide color per KPI
+            def get_color(kpi):
+                if "fault" in kpi:
+                    return "red"
+                elif "contribution" in kpi:
+                    return "green"
+                elif "interception" in kpi or "tackle" in kpi or "passes" in kpi:
+                    return "yellow"
+                else:
+                    return "blue"
+
+            colors = df_full["kpi"].apply(get_color)
+
+            # Plot Validity Score vs Robustness, label by KPI
+            plt.figure(figsize=(12, 10))
+
+            x = "Validity Score"
+            y = "Robustness (and Discrimination) Score"
+
+            plt.scatter(df_full[x], df_full[y], c=colors, alpha=0.7)
+
+            # Annotate points with KPI names, offset labels slightly to reduce overlap
+            for i, row in df_full.iterrows():
+                plt.annotate(row["kpi"], (row[x], row[y]),
+                             textcoords="offset points", xytext=(5,5), ha='left', fontsize=7)
+
+            plt.xlabel(x)
+            plt.ylabel(y)
+            plt.title("Validity vs Robustness (all KPIs labeled)")
+            plt.grid(True, linestyle="--", alpha=0.6)
+            plt.axhline(y=0, color='grey', linestyle='-')
+            plt.axvline(x=0, color='grey', linestyle='-')
+            plt.savefig("C:/Users/j.bischofberger/Downloads/xy.png")
+
+            st.write(plt.gcf())
+            # plt.show()
+
+        df_pivot_final["expected_direction"] = (df_pivot_final["kpi"].str.contains("fault") | df_pivot_final["kpi"].str.contains("n_passes_against_")).map({False: 1, True: -1})
+        import scipy.stats
+        df_pivot_final["pearson_correlation_only_cbs_def_awareness_directed"] = df_pivot_final["pearson_correlation_only_cbs_def_awareness"] * df_pivot_final["expected_direction"]
+        df_pivot_final["pearson_correlation_only_cbs_defending_directed"] = df_pivot_final["pearson_correlation_only_cbs_defending"] * df_pivot_final["expected_direction"]
+        df_pivot_final["pearson_correlation_only_cbs_market_value_directed"] = df_pivot_final["pearson_correlation_only_cbs_market_value"] * df_pivot_final["expected_direction"]
+        for score_col in [
+            "pearson_correlation_only_cbs_def_awareness_directed",
+            "pearson_correlation_only_cbs_defending_directed",
+            "pearson_correlation_only_cbs_market_value_directed",
+            "match_level_icc",
+            "bootstrapped_season_level_icc (corrected by position)",
+            "seasonal_autocorrelation (Partial)",
+            "seasonal_autocorrelation_only_CBs (Person)",
+        ]:
+            df_pivot_final[f"z_{score_col}"] = scipy.stats.zscore(df_pivot_final[score_col], nan_policy="omit")
+
+        df_pivot_final["Validity Score"] = (
+            df_pivot_final["z_pearson_correlation_only_cbs_def_awareness_directed"] +
+            df_pivot_final["pearson_correlation_only_cbs_defending_directed"] +
+            2 * df_pivot_final["z_pearson_correlation_only_cbs_market_value_directed"]
+        ) / 4
+        df_pivot_final["Robustness (and Discrimination) Score"] = (
+            df_pivot_final["z_match_level_icc"] * 3 +
+            df_pivot_final["z_seasonal_autocorrelation (Partial)"] +
+            df_pivot_final["z_seasonal_autocorrelation_only_CBs (Person)"]
+        ) / 6
+        # df_pivot_final["z_bootstrapped_season_level_icc (corrected by position)"] +
+
+        # df_pivot_final["Validity Score"] = (df_pivot_final["pearson_correlation_only_cbs_def_awareness"] * df_pivot_final["expected_direction"] +
+        #                                     df_pivot_final["pearson_correlation_only_cbs_defending"] * df_pivot_final["expected_direction"] +
+        #                                     2 * df_pivot_final["pearson_correlation_only_cbs_market_value"] * df_pivot_final["expected_direction"])
+        # df_pivot_final["Robustness (and Discrimination) Score"] = (df_pivot_final["match_level_icc"] * 3 +
+        #                                                            df_pivot_final["bootstrapped_season_level_icc (corrected by position)"] +
+        #                                                            df_pivot_final["seasonal_autocorrelation (Partial)"] +
+        #                                                            df_pivot_final["seasonal_autocorrelation_only_CBs (Person)"])
+        metrics_scatter(df_pivot_final)
+
+# =[@[abs_pearson_correlation_only_cbs_def_awareness]]+[@[abs_pearson_correlation_only_cbs_defending]]+2*[@[abs_pearson_correlation_only_cbs_market_value]]
 
 def _create_matchsums(df_event, df_tracking, series_meta, df_lineup, df_involvement):
     dfgs = []
@@ -2164,6 +2305,10 @@ def _create_matchsums(df_event, df_tracking, series_meta, df_lineup, df_involvem
     )
     dfgs_players.append(dfg_contribution)
 
+    st.write("df_involvement")
+    st.write(df_involvement)
+    st.stop()
+
     dfg_involvement = df_involvement.groupby(involvement_group_cols, observed=False).agg(
         # Involvement
         total_raw_involvement=("raw_involvement", "sum"),
@@ -2247,6 +2392,8 @@ def _create_matchsums(df_event, df_tracking, series_meta, df_lineup, df_involvem
     # st.write("dfg_players")
     # st.write(dfg_players)
     # st.stop()
+
+    # for dfg_players
 
     return dfg_team, dfg_players
 
@@ -2366,7 +2513,7 @@ def process_involvements(df_meta, folder_tracking, folder_events, target_folder,
 def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target_fpath_team, target_fpath_players, folder_involvement="involvement", overwrite_if_exists=False):
     @st.cache_resource
     def __create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target_fpath_team, target_fpath_players, folder_involvement, overwrite_if_exists):
-        existing_match_ids = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder(folder_events, st_cache=False)]
+        existing_match_ids = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder(folder_events, st_cache=True)]
         df_meta = df_meta[df_meta["slugified_match_string"].isin(existing_match_ids)]
         st.write(f"{overwrite_if_exists=}")
 
@@ -2374,12 +2521,12 @@ def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target
             st.write("1")
             try:
                 st.write("1")
-                # df_matchsums_player = defensive_network.parse.drive.download_csv_from_drive(target_fpath_players, st_cache=False)
+                # df_matchsums_player = defensive_network.parse.drive.download_csv_from_drive(target_fpath_players, st_cache=True)
                 df_matchsums_player = pd.read_csv("C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/df_matchsums_player.csv")
                 st.write("1")
                 # df_matchsums_player.to_excel("df_matchsums_player.xlsx", index=True)
                 st.write("1")
-                df_matchsums_team = defensive_network.parse.drive.download_csv_from_drive(target_fpath_team, st_cache=False)
+                df_matchsums_team = defensive_network.parse.drive.download_csv_from_drive(target_fpath_team, st_cache=True)
                 st.write("1")
                 match_ids = set(df_matchsums_player["match_id"]).intersection(df_matchsums_team["match_id"])
                 st.write("1")
@@ -2417,7 +2564,7 @@ def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target
             try:
                 # df_tracking = defensive_network.parse.drive.download_parquet_from_drive(fpath_tracking)
                 with st.spinner("Loading data..."):
-                    df_involvement = defensive_network.parse.drive.download_csv_from_drive(fpath_involvement, st_cache=False)  # TODO no cache
+                    df_involvement = defensive_network.parse.drive.download_csv_from_drive(fpath_involvement, st_cache=True)  # TODO no cache
 
                     # @st.cache_resource
                     def _get_parquet(fpath):
@@ -2425,9 +2572,9 @@ def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target
 
                     # df_tracking = pd.read_parquet(fpath_tracking)
                     df_tracking = _get_parquet(fpath_tracking)
-                    df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events, st_cache=False)
+                    df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events, st_cache=True)
                     cn=competition_name.replace("Men's", "Mens")
-                    dfg_responsibility_model = defensive_network.parse.drive.download_csv_from_drive(f"responsibility_model_{cn}.csv", st_cache=False).reset_index(drop=True)
+                    dfg_responsibility_model = defensive_network.parse.drive.download_csv_from_drive(f"responsibility_model_{cn}.csv", st_cache=True).reset_index(drop=True)
                     # st.write("dfg_responsibility_model")
                     # st.write(dfg_responsibility_model)
                 with st.spinner("Calculating Responsibility..."):
@@ -2651,7 +2798,7 @@ def create_videos(overwrite_if_exists=False, only_n_frames_per_half=5000):
     # folder_animation = os.path.join(folder, "animation")
     # match_slugified_strings_to_animate = [os.path.splitext(file)[0] for file in os.listdir(folder_tracking)]
 
-    existing_matches = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("tracking", st_cache=False)]
+    existing_matches = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("tracking", st_cache=True)]
     # existing_matches = [file.split(".")[0] for file in os.listdir(os.path.join(os.path.dirname(__file__), "../../../w_raw/preprocessed/tracking"))]
     # st.write("existing_matches")
     # st.write("existing_matches")
@@ -2673,7 +2820,7 @@ def create_videos(overwrite_if_exists=False, only_n_frames_per_half=5000):
         # df_event = pd.read_csv(os.path.join(folder_events, f"{match_slugified_string}.csv"))
         # df_tracking = pd.read_parquet(os.path.join(folder_tracking, f"{match_slugified_string}.parquet"))
         try:
-            df_event = defensive_network.parse.drive.download_csv_from_drive(f"events/{match_slugified_string}.csv", st_cache=False)
+            df_event = defensive_network.parse.drive.download_csv_from_drive(f"events/{match_slugified_string}.csv", st_cache=True)
             # df_event = defensive_network.parse.dfb.cdf.get_events(base_path, match_slugified_string)
         except FileNotFoundError as e:
             # st.write(e)
