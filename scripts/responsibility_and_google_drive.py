@@ -23,6 +23,7 @@ from scipy.stats import pearsonr
 import numpy as np
 import statsmodels.formula.api
 import statsmodels.api
+import matplotlib.patheffects
 
 import pandas as pd
 import slugify
@@ -58,6 +59,105 @@ importlib.reload(defensive_network.parse.drive)
 importlib.reload(defensive_network.models.responsibility)
 importlib.reload(defensive_network.models.synchronization)
 importlib.reload(defensive_network.models.involvement)
+
+
+# pip install pillow requests pycountry
+import io, requests, os
+from PIL import Image
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+import pycountry
+
+# Subdivision flags (England, Scotland, etc.) use special codes on FlagCDN
+SUBDIV_MAP = {
+    "England": "gb-eng",
+    "Scotland": "gb-sct",
+    "Wales": "gb-wls",
+    "Northern Ireland": "gb-nir",
+}
+
+# Common naming fixes so pycountry resolves them
+NAME_FIXES = {
+    "USA": "United States",
+    "Czech Republic": "Czechia",
+    "South Korea": "Korea, Republic of",
+    "North Korea": "Korea, Democratic People's Republic of",
+    "Ivory Coast": "Côte d'Ivoire",
+    "DR Congo": "Congo, The Democratic Republic of the",
+    "UAE": "United Arab Emirates",
+    "Russia": "Russian Federation",
+    "Iran": "Iran, Islamic Republic of",
+    "Cape Verde": "Cabo Verde",
+    "Bolivia": "Bolivia, Plurinational State of",
+    "Syria": "Syrian Arab Republic",
+    "Moldova": "Moldova, Republic of",
+    "Vatican": "Holy See",
+}
+
+def country_to_code(name: str) -> str | None:
+    """Return a lowercase ISO2 or subdivision code usable on FlagCDN."""
+    name = (name or "").strip()
+    if not name:
+        return None
+    if name in SUBDIV_MAP:
+        return SUBDIV_MAP[name]
+    fixed = NAME_FIXES.get(name, name)
+    try:
+        return pycountry.countries.lookup(fixed).alpha_2.lower()
+    except LookupError:
+        return None
+
+# In-memory cache so we fetch each flag only once
+_FLAG_IMG_CACHE: dict[str, Image.Image] = {}
+
+def fetch_flag_image(code: str, size_px: int = 160) -> Image.Image | None:
+    """
+    Get a PNG flag image from FlagCDN (e.g., 'de', 'es', 'qa', 'gb-eng').
+    size_px can be 20, 40, 64, 80, 160, etc. We'll use w<size>.
+    """
+    if not code:
+        return None
+    key = f"{code}_{size_px}"
+    if key in _FLAG_IMG_CACHE:
+        return _FLAG_IMG_CACHE[key]
+
+    # https://flagcdn.com/w40/ua.png
+    url = f"https://flagcdn.com/w{size_px}/{code}.png"
+    try:
+        r = requests.get(url, timeout=5)
+        r.raise_for_status()
+        st.write(r.status_code, url)
+        img = Image.open(io.BytesIO(r.content)).convert("RGBA")
+        _FLAG_IMG_CACHE[key] = img
+        return img
+    except Exception as e:
+        st.write(e)
+        return None
+
+def flag_marker_scatter(ax, df, xcol: str, ycol: str, team_col: str = "team_name",
+                        size_px: int = 64, zoom: float = 0.16, fallback_s: int = 28):
+    """
+    Draw flag images at (x, y) instead of point markers.
+    - size_px: request size from CDN (40–80 is typical)
+    - zoom: scales the image on-figure; tweak to taste
+    """
+    for _, r in df.iterrows():
+        code = country_to_code(str(r[team_col]))
+        img  = fetch_flag_image(code, size_px=size_px)
+        # st.write(code, img)
+        x, y = r[xcol], r[ycol]
+        if img is None:
+            ax.scatter([x], [y], s=fallback_s)  # fallback if no flag available
+            continue
+        ab = AnnotationBbox(
+            OffsetImage(img, zoom=zoom),
+            (x, y),
+            frameon=False,
+            pad=0.0,
+            box_alignment=(0.5, 0.5),
+            zorder=3
+        )
+        ax.add_artist(ab)
+
 
 
 # @st.cache_resource
@@ -634,6 +734,8 @@ def aggregate_matchsums(df_player_matchsums, group_cols=["player_id"]):
 
     dfg["n_interceptions_per_pass"] = dfg["n_interceptions_per90"].astype(float) * dfg["minutes_played"].astype(float) / 90 / dfg["n_passes_against"].astype(float)
     dfg["n_passes_against_per90"] = dfg["n_passes_against"].astype(float) / dfg["minutes_played"].astype(float) * 90
+    dfg["n_tackles_per_pass"] = dfg["n_tackles_per90"].astype(float) * dfg["minutes_played"].astype(float) / 90 / dfg["n_passes_against"].astype(float)
+    dfg["n_tackles_won_per_pass"] = dfg["n_tackles_won_per90"].astype(float) * dfg["minutes_played"].astype(float) / 90 / dfg["n_passes_against"].astype(float)
 
     # hochrechnen
     dfg["raw_involvement_combined"] = dfg["raw_contribution_per_pass"] * 250 - dfg["raw_fault_per90"]
@@ -745,7 +847,9 @@ def main():
 
     if _do_involvement:
         df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=True)
-        # df_meta = df_meta[(df_meta["match_id"] == "2d4fe74894566dc4b826bd608deaa53c") | (df_meta["slugified_match_string"] == "bundesliga-2023-2024-18-st-bayer-leverkusen-eintracht-frankfurt")].iloc[::-1]
+        only_process_wc_final = st.toggle("Only process World Cup final", value=False)
+        if only_process_wc_final:
+            df_meta = df_meta[df_meta["match_string"] == "FIFA Men's World Cup 2022: 8.ST Argentina - France"]
         process_involvements(df_meta, folder_drive_tracking, folder_drive_events, folder_drive_involvement, overwrite_if_exists)
 
     if _calculate_responsibility_model:
@@ -836,10 +940,11 @@ def main():
 
         summary_data = []
 
+        _do_best_players = st.toggle("Best players", True, key=f"best_players")
         _do_descriptives = st.toggle("Matchsum Descriptives", True, key=f"matchsum_descriptives")
         _do_seasonal_correlation = st.toggle("Season-by-season correlation", True, key=f"season_by_season_correlation")
         _do_icc = st.toggle("ICC", True, key=f"icc")
-        _do_bootstrapped_icc = st.toggle("Bootstrapped Season-Level ICC (TAKES VERY LONG!!!)", False, key=f"bootstrapped_season_level_icc")
+        _do_bootstrapped_icc = st.toggle("Bootstrapped Season-Level ICC (TAKES VERY LONG!!!)", True, key=f"bootstrapped_season_level_icc")
         _do_histograms = st.toggle("Histograms", False, key=f"histograms")
         _do_internal_correlations = st.toggle("KPI correlations as heatmap", True, f"kpi_heatmap")
         _do_fifa_correlations = st.toggle("FIFA correlations", True, key=f"fifa_correlations")
@@ -970,6 +1075,7 @@ def main():
             df_agg_match_player_pos = df_agg_match_player_pos.merge(df_meta[["match_id", "match_string"]].drop_duplicates(), on="match_id", how="left")
 
             df_agg_player_pos = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "coarse_position"])
+            df_agg_player_pos_team = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "team_name", "coarse_position"])
             assert "raw_contribution_minus_contribution_responsibility_per90" in df_agg_player_pos.columns
             df_agg_player_pos["player_minutes_played"] = df_agg_player_pos.groupby("player_id")["minutes_played"].transform("sum")
             # df_agg_match_player_pos["player_matches_played"] = df_agg_match_player_pos.groupby("player_id")["match_id"].transform("nunique")
@@ -1117,11 +1223,98 @@ def main():
             assert "raw_contribution_minus_contribution_responsibility_per90" in default_kpis
             assert "raw_contribution_minus_contribution_responsibility_per90" in kpis
 
+            if _do_best_players:
+                for kpi1, kpi2 in [
+                    ("valued_fault_per90", "raw_contribution_per_pass"),
+                    ("valued_responsibility_combined", "raw_involvement_combined"),
+                    ("valued_fault_per90", "valued_fault_responsibility_per90"),
+                ]:
+                    break
+
+                    with st.expander(f"Scatter {kpi1} vs. {kpi2}", False):
+                        min_minutes = st.number_input(f"Minimum minutes played by player for scatter {kpi1} vs. {kpi2}.", min_value=0, value=DEFAULT_MINUTES, key=f"{competition}_min_minutes_scatter_{kpi1}_{kpi2}")
+
+                        for pos in df_agg_player_pos_team["coarse_position"].unique():
+                            df_agg_player_pos_scatter = df_agg_player_pos_team[
+                                (df_agg_player_pos_team["minutes_played"] > min_minutes)
+                                & (df_agg_player_pos_team["coarse_position"] == pos)
+                            ]
+                            plt.figure(figsize=(10, 10))
+
+                            nice_labels = {
+                                "valued_fault_per90": "Valued Fault per 90",
+                                "raw_contribution_per_pass": "Raw Contribution per Pass",
+                            }
+
+                            flip_x = True if ("fault" in kpi1 or "minus" in kpi1 or "lost" in kpi1) else False
+                            flip_y = True if ("fault" in kpi2 or "minus" in kpi2 or "lost" in kpi2) else False
+
+                            plt.xlabel(nice_labels.get(kpi1, kpi1))
+                            plt.ylabel(nice_labels.get(kpi2, kpi2))
+
+                            if flip_x:
+                                plt.gca().invert_xaxis()
+                            if flip_y:
+                                plt.gca().invert_yaxis()
+
+                            # grid
+                            # plt.grid(visible=True, which='major', color='#666666', linestyle='-', alpha=0.5)
+                            plt.gca().axhline(df_agg_player_pos_scatter[kpi2].mean(), color='grey', lw=1)
+                            plt.gca().axvline(df_agg_player_pos_scatter[kpi1].mean(), color='grey', lw=1)
+
+                            plt.scatter(df_agg_player_pos_scatter[kpi1], df_agg_player_pos_scatter[kpi2])
+                            flag_marker_scatter(
+                                plt.gca(),
+                                df_agg_player_pos_scatter,
+                                xcol=kpi1,
+                                ycol=kpi2,
+                                team_col="team_name",  # contains "Spain", "Qatar", "Germany", ...
+                                size_px=40,  # tries https://flagcdn.com/w64/<code>.png
+                                zoom=0.6,  # tweak for on-plot size
+                            )
+
+                            df_agg_player_pos_scatter["name"] = (df_agg_player_pos_scatter["first_name"].astype(str) + ". " + df_agg_player_pos_scatter["last_name"]).str.strip()
+                            df_agg_player_pos_scatter["name"] = (df_agg_player_pos_scatter["name"].apply(lambda x: x if len(x.split(" ")) == 1 else x.split(" ")[0][0] + ". " + " ".join(x.split(" ")[1:]))).str.strip(".")
+                            df_agg_player_pos_scatter["name"] = df_agg_player_pos_scatter["name"].apply(lambda x: {"M. Jae Kim": "Min-jae Kim", "Y. Kim": "Young-gwon Kim"}.get(x, x))
+                            for i, row in df_agg_player_pos_scatter.iterrows():
+                                if row[kpi1] > df_agg_player_pos_scatter[kpi1].quantile(0.65) or row[kpi2] > df_agg_player_pos_scatter[kpi2].quantile(0.65) or row[kpi1] < df_agg_player_pos_scatter[kpi1].quantile(0.35) or row[kpi2] < df_agg_player_pos_scatter[kpi2].quantile(0.35) \
+                                    or row[kpi1] > df_agg_player_pos_scatter[kpi1].quantile(0.75) and row[kpi2] > df_agg_player_pos_scatter[kpi2].quantile(0.75) \
+                                    or row[kpi1] < df_agg_player_pos_scatter[kpi1].quantile(0.4) and row[kpi2] < df_agg_player_pos_scatter[kpi2].quantile(0.4):
+                                    plt.text(row[kpi1], row[kpi2]-0.015, row["name"], va="bottom", ha="center")
+                            st.write("df_agg_player_pos_scatter " + pos)
+                            st.write(df_agg_player_pos_scatter)
+                            st.write(plt.gcf())
+
+                for kpi in kpis:
+                    with st.expander(f"Best players by {kpi}", False):
+                        st.write("df_agg_player_pos_team")
+                        st.write(df_agg_player_pos_team)
+                        playerid2mainpos = df_agg_player_pos_team.groupby("player_id").apply(lambda x: x.loc[x["minutes_played"].idxmax()]["coarse_position"]).to_dict()
+                        df_agg_player_pos_team["player_main_position"] = df_agg_player_pos_team["player_id"].map(playerid2mainpos)
+                        st.write("df_agg_player_pos_team")
+                        st.write(df_agg_player_pos_team)
+                        for pos in df_agg_player_pos_team["coarse_position"].unique():
+                            st.write(f"### Best players in {pos} ###")
+                            min_minutes = 150 #st.number_input(f"Minimum minutes played by player for best player listing in {pos}.", min_value=0, value=90, key=f"{competition}_{pos}_min_minutes_best_players")
+                            df_agg_player_pos_pos2 = df_agg_player_pos_team[
+                                (df_agg_player_pos_team["player_main_position"] == pos)
+                                & (df_agg_player_pos_team["coarse_position"] == pos)
+                            ]
+                            df_agg_player_pos_pos2 = df_agg_player_pos_pos2[df_agg_player_pos_pos2["minutes_played"] > min_minutes]
+                            st.write(f"#### Best players in {pos} by {kpi} ####")
+                            ascending = True if ("fault" in kpi or "minus" in kpi or "lost" in kpi) else False
+                            df_sorted = df_agg_player_pos_pos2.sort_values(by=kpi, ascending=ascending)
+                            df_sorted["name"] = (df_sorted["first_name"] + " " + df_sorted["last_name"]).str.strip()
+                            st.write(df_sorted[["name", "team_name", kpi, "coarse_position", "minutes_played"]].head(10))
+                            st.write("...")
+                            st.write(df_sorted[["name", "team_name", kpi, "coarse_position", "minutes_played"]].tail(10))
+                # st.stop()
+
             ######### duplicate from remote??
             if _do_fifa_correlations:
                 with st.expander("FIFA", True):
                     # df_fifa_players = defensive_network.parse.drive.download_csv_from_drive("fifa_ratings.csv", st_cache=True)
-                    df_fifa_players = pd.read_csv("C:/Users/j.bischofberger/Downloads/fifa_ratings (1).csv")
+                    df_fifa_players = pd.read_csv("C:/Users/j.bischofberger/Downloads/fifa_ratings.csv")
                     # files = defensive_network.parse.drive.list_files_in_drive_folder(".", st_cache=True)
                     # st.write("files")
                     # st.write(files)
@@ -1137,8 +1330,7 @@ def main():
                     # st.write("df_agg_player 1")
                     # st.write(df_agg_player)
                     # assert player pos is unique
-                    assert df_agg_player[["player_id",
-                                          "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
+                    assert df_agg_player[["player_id", "coarse_position"]].duplicated().sum() == 0, "Player position is not unique"
                     df_agg_player["full_name"] = (df_agg_player["first_name"] + " " + df_agg_player["last_name"]).str.strip()
                     min_minutes = st.number_input("Minimum minutes played by player for FIFA correlations.", min_value=0, value=DEFAULT_MINUTES, key=f"{competition}_min_minutes_fifa")
                     df_agg_player = df_agg_player[df_agg_player["minutes_played"] > min_minutes]
@@ -1265,7 +1457,7 @@ def main():
 
                             try:
                                 # sns.regplot(data=df_agg_player, x=x_variable, y=y_variable, hue="position", scatter=True, label='Trendline')
-                                plot = False
+                                plot = True
                                 if plot:
                                     fig = plt.figure()
                                     sns.lmplot(data=df, x=x_variable, y=y_variable, hue="coarse_position", scatter=True)
@@ -1511,7 +1703,7 @@ def main():
                         # correlation plot with trendline
                         # sns.scatterplot(data=df_hinrunde, x=kpi, y=df_rückrunde[kpi], hue="is_rückrunde")
                         # sns.regplot(data=df_agg, x=kpi, y="is_rückrunde", scatter=True, color='blue', label='Trendline')
-                        plot = False
+                        plot = True
                         if plot:
                             try:
                                 # sns.regplot(data=df_data_new, x=f"{kpi}_hinrunde", y=f"{kpi}_rückrunde", scatter=True, color='blue', label='Trendline')
@@ -1563,6 +1755,7 @@ def main():
                             spearman_coefficient_only_CBs = np.nan
 
                         columns = st.columns(2)
+                        plot = True
                         if plot:
                             plt.title(f"{kpi} (r={correlation_coefficient:.2f})")
                             columns[0].write(kpi)
@@ -1675,7 +1868,7 @@ def main():
                         df_agg = df_agg.sort_values(by=kpi, ascending=False)
                         assert kpi in df_agg.columns and "short_name" in df_agg.columns, f"Columns {kpi} or short_name not found in df_agg"
                         # plt.figure(figsize=(16, 9))
-                        plot = False
+                        plot = True
                         if plot:
                             sns.boxplot(data=df_agg, x="short_name", y=kpi, hue="coarse_position", width=1, dodge=False)
                             plt.xticks(rotation=90)
@@ -1696,9 +1889,9 @@ def main():
                 st.write(df_summary)
 
             if _do_bootstrapped_icc:
-                min_minutes_per_match = st.number_input("Minimum minutes played by player for Season-Level ICC.", min_value=0, value=DEFAULT_MINUTES_PER_MATCH, key=f"{competition}_min_minutes_per_match_bootstrap")
+                # min_minutes_per_match = st.number_input("Minimum minutes played by player for Season-Level ICC.", min_value=0, value=DEFAULT_MINUTES_PER_MATCH, key=f"{competition}_min_minutes_per_match_bootstrap")
                 df_base_matchsums = df_player_matchsums.copy()
-                df_base_matchsums = df_base_matchsums[df_base_matchsums["minutes_played"] >= min_minutes_per_match]
+                # df_base_matchsums = df_base_matchsums[df_base_matchsums["minutes_played"] >= min_minutes_per_match]
                 min_minutes = st.number_input("Minimum minutes played by player-pos for Season-Level ICC.", min_value=0, value=DEFAULT_MINUTES, key=f"{competition}_min_minutes_bootstrap")
                 df_base_matchsums = df_base_matchsums[df_base_matchsums["player_pos_minutes_played"] >= min_minutes].copy()
                 st.write(f"Using {len(df_base_matchsums)} match performances of {len(df_base_matchsums['player_id'].unique())} players that played at least {min_minutes} minutes for bootstrapped ICC calculation.")
@@ -1927,163 +2120,216 @@ def main():
 
     _do_summary = True
     if _do_summary:
-        # df_summary = defensive_network.parse.drive.download_csv_from_drive(f"summary2.csv", st_cache=True)
-        # df_summary = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_summary.csv")
-        df_summary1 = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_summary_2025_09_05_14_53.csv")
-        df_summary2 = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_bootstrap_15.csv")
-        st.write("df_summary2")
-        st.write(df_summary2)
-        df_summary = pd.concat([df_summary1, df_summary2])
-
-        # df_summar1 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_bl_3liga.csv")
-        # df_summar2 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_world_cup.csv")
-        # df_summary = pd.concat([df_summar1, df_summar2])
-        # df_summary1 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_2025_08_29.csv")
-        # df_summary2 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_2025_08_29_internal.csv")
-        # df_summary3 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_2025_08_29_icc.csv")
-        # df_summary = pd.concat([df_summary1,
-                                # df_summary2,
-                                # df_summary3])
-        st.write("df_summary")
-        st.write(df_summary)
-
-        i_invalid = (df_summary["competition_name"] == "FIFA Men's World Cup") & (df_summary["type"].str.contains("seasonal_"))
-        df_summary = df_summary.loc[~i_invalid]
-
-        i = df_summary["type"].str.contains("internal")
-        df_summary = df_summary.loc[~i]
-        df_summary["other_variable"] = df_summary["other_variable"].fillna("")
-
-        # i = df_summary["type"].str.contains("seasonal_") | df_summary["type"].str.contains("match_level_icc")
-        # df_summary.loc[i, "value"] = df_summary.loc[i, "other_variable"]
-        # df_summary.loc[i, "other_variable"] = ""
-
-        # drop internal correlations
-        # df_summary = df_summary.drop(columns=[col for col in df_summary.columns if "internal_" in col])
-        def foo(x):
-            try:
-                return float(x)
-            except ValueError:
-                return np.nan
-        df_summary["value"] = df_summary["value"].apply(foo)
-        st.write(df_summary.dtypes)
-        st.write("df_summary")
-        st.write(df_summary)
-        st.write(df_summary.dtypes)
-        st.write(df_summary["type"].unique())
-
-        df_pivot = df_summary.pivot_table(index=["competition_name", "kpi"], columns=["type", "other_variable"], values="value")#.groupby("kpi").mean()
-        df_pivot = df_pivot.groupby("kpi").mean()
-        st.write("df_pivot")
-        st.write(df_pivot)
-        df_pivot_A = df_pivot.drop(columns=[col for col in df_pivot.columns if col[0].startswith("internal_correlation") or col[0].startswith("spearman_") or "bootstrap" in col[0] or "only_cbs" not in col[0]]).copy()
-        df_pivot_A.columns = ['_'.join(filter(None, col)).strip() for col in df_pivot_A.columns.values]
-
-        for col in df_pivot_A.columns:
-            abs_col = f"abs_{col}"
-            df_pivot_A[abs_col] = df_pivot_A[col].abs()
-
-        st.write("df_pivot_A")
-        st.write(df_pivot_A)
-
-        df_pivot.columns = ['_'.join(filter(None, col)).strip() for col in df_pivot.columns.values]
-        st.write("df_pivot")
-        st.write(df_pivot)
-
-        df_pivot_B = df_pivot[[col for col in df_pivot.columns if "seasonal" in col or "match_level_icc" in col or "bootstrapped_season_level_icc (corrected by position)" in col]]
-        st.write("df_pivot B")
-        st.write(df_pivot_B)
-
-        assert not df_pivot_B.empty
-
-        df_pivot_final = df_pivot_A.join(df_pivot_B).reset_index()
-        st.write("df_pivot_final")
-        st.write(df_pivot_final)
-
-        def metrics_scatter(df_full):
-            st.write("df_full")
-            st.write(df_full)
-            # df_full = df_full[~df_full["kpi"].str.endswith("_per_pass") & ~df_full["kpi"].str.contains("relative_")]
-            df_full = df_full[
-                ~df_full["kpi"].str.contains("relative_") &
-                ~df_full["kpi"].str.contains("combined2") &
-                ~df_full["kpi"].str.contains("_plus_") &
-                ~df_full["kpi"].str.contains("_minus_")
-            ]
-
-            # Decide color per KPI
-            def get_color(kpi):
-                if "fault" in kpi:
-                    return "red"
-                elif "contribution" in kpi:
-                    return "green"
-                elif "interception" in kpi or "tackle" in kpi or "passes" in kpi:
-                    return "yellow"
-                else:
-                    return "blue"
-
-            colors = df_full["kpi"].apply(get_color)
-
-            # Plot Validity Score vs Robustness, label by KPI
-            plt.figure(figsize=(12, 10))
-
-            x = "Validity Score"
-            y = "Robustness (and Discrimination) Score"
-
-            plt.scatter(df_full[x], df_full[y], c=colors, alpha=0.7)
-
-            # Annotate points with KPI names, offset labels slightly to reduce overlap
-            for i, row in df_full.iterrows():
-                plt.annotate(row["kpi"], (row[x], row[y]),
-                             textcoords="offset points", xytext=(5,5), ha='left', fontsize=7)
-
-            plt.xlabel(x)
-            plt.ylabel(y)
-            plt.title("Validity vs Robustness (all KPIs labeled)")
-            plt.grid(True, linestyle="--", alpha=0.6)
-            plt.axhline(y=0, color='grey', linestyle='-')
-            plt.axvline(x=0, color='grey', linestyle='-')
-            plt.savefig("C:/Users/j.bischofberger/Downloads/xy.png")
-
-            st.write(plt.gcf())
-            # plt.show()
-
-        df_pivot_final["expected_direction"] = (df_pivot_final["kpi"].str.contains("fault") | df_pivot_final["kpi"].str.contains("n_passes_against_")).map({False: 1, True: -1})
-        import scipy.stats
-        df_pivot_final["pearson_correlation_only_cbs_def_awareness_directed"] = df_pivot_final["pearson_correlation_only_cbs_def_awareness"] * df_pivot_final["expected_direction"]
-        df_pivot_final["pearson_correlation_only_cbs_defending_directed"] = df_pivot_final["pearson_correlation_only_cbs_defending"] * df_pivot_final["expected_direction"]
-        df_pivot_final["pearson_correlation_only_cbs_market_value_directed"] = df_pivot_final["pearson_correlation_only_cbs_market_value"] * df_pivot_final["expected_direction"]
-        for score_col in [
-            "pearson_correlation_only_cbs_def_awareness_directed",
-            "pearson_correlation_only_cbs_defending_directed",
-            "pearson_correlation_only_cbs_market_value_directed",
-            "match_level_icc",
-            "bootstrapped_season_level_icc (corrected by position)",
-            "seasonal_autocorrelation (Partial)",
-            "seasonal_autocorrelation_only_CBs (Person)",
+        #             "": 380,
+        #             "Bundesliga": 132,
+        for competitions in [
+            ["FIFA Men's World Cup"],
+            ["3. Liga"],
+            ["Bundesliga"],
+            ["FIFA Men's World Cup", "3. Liga", "Bundesliga"],
         ]:
-            df_pivot_final[f"z_{score_col}"] = scipy.stats.zscore(df_pivot_final[score_col], nan_policy="omit")
+            st.write("###" + ", ".join(competitions))
+            # df_summary = defensive_network.parse.drive.download_csv_from_drive(f"summary2.csv", st_cache=True)
+            # df_summary = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_summary.csv")
+            df_summary_original = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_summary_2025_09_05_14_53.csv")
+            # df_summary2 = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_bootstrap_15.csv")
+            # st.write("df_summary2")
+            # st.write(df_summary2)
+            # df_summary = pd.concat([df_summary1, df_summary2])
 
-        df_pivot_final["Validity Score"] = (
-            df_pivot_final["z_pearson_correlation_only_cbs_def_awareness_directed"] +
-            df_pivot_final["pearson_correlation_only_cbs_defending_directed"] +
-            2 * df_pivot_final["z_pearson_correlation_only_cbs_market_value_directed"]
-        ) / 4
-        df_pivot_final["Robustness (and Discrimination) Score"] = (
-            df_pivot_final["z_match_level_icc"] * 3 +
-            df_pivot_final["z_seasonal_autocorrelation (Partial)"] +
-            df_pivot_final["z_seasonal_autocorrelation_only_CBs (Person)"]
-        ) / 6
-        # df_pivot_final["z_bootstrapped_season_level_icc (corrected by position)"] +
 
-        # df_pivot_final["Validity Score"] = (df_pivot_final["pearson_correlation_only_cbs_def_awareness"] * df_pivot_final["expected_direction"] +
-        #                                     df_pivot_final["pearson_correlation_only_cbs_defending"] * df_pivot_final["expected_direction"] +
-        #                                     2 * df_pivot_final["pearson_correlation_only_cbs_market_value"] * df_pivot_final["expected_direction"])
-        # df_pivot_final["Robustness (and Discrimination) Score"] = (df_pivot_final["match_level_icc"] * 3 +
-        #                                                            df_pivot_final["bootstrapped_season_level_icc (corrected by position)"] +
-        #                                                            df_pivot_final["seasonal_autocorrelation (Partial)"] +
-        #                                                            df_pivot_final["seasonal_autocorrelation_only_CBs (Person)"])
-        metrics_scatter(df_pivot_final)
+            df_summary = df_summary_original.copy()
+
+            df_summary = df_summary[df_summary["competition_name"].isin(competitions)]
+
+            def get_df_pivot(df_summary):
+
+                # df_summar1 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_bl_3liga.csv")
+                # df_summar2 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_world_cup.csv")
+                # df_summary = pd.concat([df_summar1, df_summar2])
+                # df_summary1 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_2025_08_29.csv")
+                # df_summary2 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_2025_08_29_internal.csv")
+                # df_summary3 = pd.read_csv("C:/Users/j.bischofberger/Downloads/df_summary_2025_08_29_icc.csv")
+                # df_summary = pd.concat([df_summary1,
+                                        # df_summary2,
+                                        # df_summary3])
+                i_invalid = (df_summary["competition_name"] == "FIFA Men's World Cup") & (df_summary["type"].str.contains("seasonal_"))
+                df_summary = df_summary.loc[~i_invalid]
+
+                i = df_summary["type"].str.contains("internal")
+                df_summary = df_summary.loc[~i]
+                df_summary["other_variable"] = df_summary["other_variable"].fillna("")
+
+                # i = df_summary["type"].str.contains("seasonal_") | df_summary["type"].str.contains("match_level_icc")
+                # df_summary.loc[i, "value"] = df_summary.loc[i, "other_variable"]
+                # df_summary.loc[i, "other_variable"] = ""
+
+                # drop internal correlations
+                # df_summary = df_summary.drop(columns=[col for col in df_summary.columns if "internal_" in col])
+                def foo(x):
+                    try:
+                        return float(x)
+                    except ValueError:
+                        return np.nan
+                df_summary["value"] = df_summary["value"].apply(foo)
+
+                df_pivot = df_summary.pivot_table(index=["competition_name", "kpi"], columns=["type", "other_variable"], values="value")#.groupby("kpi").mean()
+                df_pivot = df_pivot.groupby("kpi").mean()
+                df_pivot_A = df_pivot.drop(columns=[col for col in df_pivot.columns if col[0].startswith("internal_correlation") or col[0].startswith("spearman_") or "bootstrap" in col[0] or "only_cbs" not in col[0]]).copy()
+                df_pivot_A.columns = ['_'.join(filter(None, col)).strip() for col in df_pivot_A.columns.values]
+
+                for col in df_pivot_A.columns:
+                    abs_col = f"abs_{col}"
+                    df_pivot_A[abs_col] = df_pivot_A[col].abs()
+
+                df_pivot.columns = ['_'.join(filter(None, col)).strip() for col in df_pivot.columns.values]
+
+                df_pivot_B = df_pivot[[col for col in df_pivot.columns if "seasonal" in col or "match_level_icc" in col or "bootstrapped_season_level_icc (corrected by position)" in col]]
+
+                assert not df_pivot_B.empty
+
+                df_pivot_final = df_pivot_A.join(df_pivot_B).reset_index()
+
+                df_pivot_final["expected_direction"] = (df_pivot_final["kpi"].str.contains("fault") | df_pivot_final["kpi"].str.contains("n_passes_against_")).map({False: 1, True: -1})
+                import scipy.stats
+                df_pivot_final["pearson_correlation_only_cbs_def_awareness_directed"] = df_pivot_final["pearson_correlation_only_cbs_def_awareness"] * df_pivot_final["expected_direction"]
+                df_pivot_final["pearson_correlation_only_cbs_defending_directed"] = df_pivot_final["pearson_correlation_only_cbs_defending"] * df_pivot_final["expected_direction"]
+                df_pivot_final["pearson_correlation_only_cbs_market_value_directed"] = df_pivot_final["pearson_correlation_only_cbs_market_value"] * df_pivot_final["expected_direction"]
+
+                return df_pivot_final
+
+            df_pivot_final = get_df_pivot(df_summary)
+
+            df_pivot_original = get_df_pivot(df_summary_original)
+
+            def metrics_scatter(df_full):
+                # df_full = df_full[~df_full["kpi"].str.endswith("_per_pass") & ~df_full["kpi"].str.contains("relative_")]
+                df_full = df_full[
+                    ~df_full["kpi"].str.contains("relative_") &
+                    ~df_full["kpi"].str.contains("combined2") &
+                    ~df_full["kpi"].str.contains("_plus_") &
+                    ~df_full["kpi"].str.contains("_minus_") &
+                    ~df_full["kpi"].str.contains("_lost") &
+                    ~df_full["kpi"].str.contains("n_passes_per90") &
+                    ~df_full["kpi"].str.contains("responsinvolvement")
+                ]
+
+                # Decide color per KPI
+                def get_color(kpi):
+                    if "fault" in kpi:
+                        return "#C5162A"
+                    elif "contribution" in kpi:
+                        return "#009E73"
+                    elif any(w in kpi for w in ("interception", "tackle", "passes")):
+                        return "#E69F00"
+                    else:
+                        return "#0072B2"
+
+                df_full["color"] = df_full["kpi"].apply(get_color)
+                colors = df_full["color"].tolist()
+
+                # Plot Validity Score vs Robustness, label by KPI
+                plt.figure(figsize=(12, 10))
+
+                x = "Robustness Score"
+                y = "Validity Score"
+
+                plt.scatter(df_full[x], df_full[y], c=colors, alpha=0.7)
+
+                df_full["nice_kpi"] = df_full["kpi"].str.replace("_", " ").str.title().str.replace("N ", "").str.replace("Per90", "per 90").str.replace("Per Pass", "per pass")
+                df_full["label_on_top"] = False
+
+                # Annotate points with KPI names, offset labels slightly to reduce overlap
+                DY = 6
+                for i, row in df_full.iterrows():
+                    dy_signed = DY if row["label_on_top"] else -DY
+                    plt.annotate(
+                        row["nice_kpi"], (row[x], row[y]), textcoords="offset points", ha="center",
+                        xytext=(0, dy_signed),
+                        fontsize=7, path_effects=[matplotlib.patheffects.withStroke(linewidth=1, foreground="white")],
+                        va='bottom' if row["label_on_top"] else 'top', color=row["color"]
+                    )
+
+                plt.xlabel(x)
+                plt.ylabel(y)
+                plt.grid(True, linestyle="--", alpha=0.6)
+                plt.axhline(y=0, color='grey', linestyle='-')
+                plt.axvline(x=0, color='grey', linestyle='-')
+                if len(competitions) == 1:
+                    plt.xlim(-3.2, 3.2)
+                    plt.ylim(-3.2, 3.2)
+                plt.savefig("C:/Users/j.bischofberger/Downloads/xy.png")
+
+                st.write(plt.gcf())
+                # plt.show()
+
+            for score_col in [
+                "pearson_correlation_only_cbs_def_awareness_directed",
+                "pearson_correlation_only_cbs_defending_directed",
+                "pearson_correlation_only_cbs_market_value_directed",
+                "match_level_icc",
+                "bootstrapped_season_level_icc (corrected by position)",
+                "seasonal_autocorrelation (Partial)",
+                "seasonal_autocorrelation_only_CBs (Person)",
+            ]:
+                try:
+                    mu, sigma = df_pivot_original[score_col].mean(skipna=True), df_pivot_original[score_col].std(ddof=0, skipna=True)
+                    # df_pivot_final[f"z_{score_col}"] = scipy.stats.zscore(df_pivot_final[score_col], nan_policy="omit")
+                    df_pivot_final[f"z_{score_col}"] = (df_pivot_final[score_col] - mu) / sigma
+                except KeyError:
+                    df_pivot_final[score_col] = np.nan
+                    df_pivot_final[f"z_{score_col}"] = np.nan
+
+            # df_pivot_final["Validity Score"] = (
+            #     df_pivot_final["z_pearson_correlation_only_cbs_def_awareness_directed"] +
+            #     df_pivot_final["pearson_correlation_only_cbs_defending_directed"] +
+            #     2 * df_pivot_final["z_pearson_correlation_only_cbs_market_value_directed"]
+            # ) / 4
+            # df_pivot_final["Validity Score"] = df_pivot_final
+            # df_pivot_final["Robustness (and Discrimination) Score"] = (
+            #     df_pivot_final["z_match_level_icc"] * 3 +
+            #     df_pivot_final["z_seasonal_autocorrelation (Partial)"] +
+            #     df_pivot_final["z_seasonal_autocorrelation_only_CBs (Person)"]
+            # ) / 6
+
+            df_pivot_final["validity_enumerator"] = df_pivot_final["z_pearson_correlation_only_cbs_def_awareness_directed"].fillna(0) + df_pivot_final["z_pearson_correlation_only_cbs_market_value_directed"].fillna(0)
+            df_pivot_final["validity_denominator"] = (~df_pivot_final["pearson_correlation_only_cbs_def_awareness_directed"].isna()).astype(int) + (~df_pivot_final["pearson_correlation_only_cbs_market_value_directed"].isna()).astype(int)
+            # df_pivot_final["validity_enumerator"] = df_pivot_final["z_pearson_correlation_only_cbs_def_awareness_directed"].fillna(0) + \
+            #                                          df_pivot_final["z_pearson_correlation_only_cbs_defending_directed"].fillna(0) + \
+            #                                          2 * df_pivot_final["z_pearson_correlation_only_cbs_market_value_directed"].fillna(0)
+            # df_pivot_final["validity_denominator"] = (~df_pivot_final["pearson_correlation_only_cbs_def_awareness_directed"].isna()).astype(int) + \
+            #                                            (~df_pivot_final["pearson_correlation_only_cbs_defending_directed"].isna()).astype(int) + \
+            #                                            2 * (~df_pivot_final["pearson_correlation_only_cbs_market_value_directed"].isna()).astype(int)
+            df_pivot_final["Validity Score"] = df_pivot_final["validity_enumerator"] / df_pivot_final["validity_denominator"].replace(0, np.nan)
+
+            df_pivot_final["robustness_enumerator"] = df_pivot_final["z_match_level_icc"].fillna(0) + \
+                                                       df_pivot_final["z_bootstrapped_season_level_icc (corrected by position)"].fillna(0) + \
+                                                       df_pivot_final["z_seasonal_autocorrelation (Partial)"].fillna(0)
+            df_pivot_final["robustness_denominator"] = (~df_pivot_final["match_level_icc"].isna()).astype(int) + \
+                                                         (~df_pivot_final["bootstrapped_season_level_icc (corrected by position)"].isna()).astype(int) + \
+                                                         (~df_pivot_final["seasonal_autocorrelation (Partial)"].isna()).astype(int)
+            # df_pivot_final["robustness_enumerator"] = df_pivot_final["z_match_level_icc"].fillna(0) * 3 + \
+            #                                            df_pivot_final["z_bootstrapped_season_level_icc (corrected by position)"].fillna(0) + \
+            #                                            df_pivot_final["z_seasonal_autocorrelation (Partial)"].fillna(0) + \
+            #                                            df_pivot_final["z_seasonal_autocorrelation_only_CBs (Person)"].fillna(0)
+            # df_pivot_final["robustness_denominator"] = 3 * (~df_pivot_final["match_level_icc"].isna()).astype(int) + \
+            #                                              (~df_pivot_final["bootstrapped_season_level_icc (corrected by position)"].isna()).astype(int) + \
+            #                                              (~df_pivot_final["seasonal_autocorrelation (Partial)"].isna()).astype(int) + \
+            #                                              (~df_pivot_final["seasonal_autocorrelation_only_CBs (Person)"].isna()).astype(int)
+            df_pivot_final["Robustness Score"] = df_pivot_final["robustness_enumerator"] / df_pivot_final["robustness_denominator"].replace(0, np.nan)
+
+            st.write(df_pivot_final)
+
+            # df_pivot_final["z_bootstrapped_season_level_icc (corrected by position)"] +
+
+            # df_pivot_final["Validity Score"] = (df_pivot_final["pearson_correlation_only_cbs_def_awareness"] * df_pivot_final["expected_direction"] +
+            #                                     df_pivot_final["pearson_correlation_only_cbs_defending"] * df_pivot_final["expected_direction"] +
+            #                                     2 * df_pivot_final["pearson_correlation_only_cbs_market_value"] * df_pivot_final["expected_direction"])
+            # df_pivot_final["Robustness (and Discrimination) Score"] = (df_pivot_final["match_level_icc"] * 3 +
+            #                                                            df_pivot_final["bootstrapped_season_level_icc (corrected by position)"] +
+            #                                                            df_pivot_final["seasonal_autocorrelation (Partial)"] +
+            #                                                            df_pivot_final["seasonal_autocorrelation_only_CBs (Person)"])
+            metrics_scatter(df_pivot_final)
 
 # =[@[abs_pearson_correlation_only_cbs_def_awareness]]+[@[abs_pearson_correlation_only_cbs_defending]]+2*[@[abs_pearson_correlation_only_cbs_market_value]]
 
@@ -2480,7 +2726,9 @@ def process_involvements(df_meta, folder_tracking, folder_events, target_folder,
         # st.write("df_involvement")
         # st.write(df_involvement)
         defensive_network.utility.pitch.plot_passes_with_involvement(
-            df_involvement, df_tracking, responsibility_col="raw_intrinsic_relative_responsibility", n_passes=5
+            df_involvement, df_tracking, n_passes=500,
+            # responsibility_col="raw_intrinsic_relative_responsibility",
+            responsibility_col=None,
         )
         assert len(df_involvement) > 100
         defensive_network.parse.drive.upload_csv_to_drive(df_involvement, target_fpath)

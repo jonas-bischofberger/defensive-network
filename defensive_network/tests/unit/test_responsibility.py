@@ -1,5 +1,11 @@
 import importlib
 
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+
+import streamlit as st
+
 import defensive_network.utility.general
 import defensive_network.utility.pitch
 import defensive_network.models.involvement
@@ -13,12 +19,18 @@ importlib.reload(defensive_network.models.responsibility)
 def test_responsibility_correctness():
     from defensive_network.tests.data import df_events, df_tracking
 
-    df_involvement = defensive_network.models.involvement.get_involvement(df_events, df_tracking, tracking_frame_col="frame_id", event_frame_col="frame_id", model_radius=10, tracking_defender_meta_cols=["player_name", "player_position"])
+    st.write("df_tracking.head()")
+    st.write(df_tracking.head())
+    df_involvement = defensive_network.models.involvement.get_involvement(
+        df_events, df_tracking, tracking_frame_col="frame_id", event_frame_col="frame_id",
+        model_radius=10, tracking_defender_meta_cols=["player_name", "player_position"]
+    )
 
     defensive_network.utility.pitch.plot_passes(df_events, df_tracking)
 
     dfg_responsibility = defensive_network.models.responsibility.get_responsibility_model(df_involvement, ["player_position", "unified_receiver_position", "defender_player_position"])
-    df_involvement["responsibility"] = defensive_network.models.responsibility.get_responsibility(df_involvement, dfg_responsibility)
+
+    df_involvement["responsibility"] = defensive_network.models.responsibility.get_responsibility(df_involvement, dfg_responsibility, context_cols=["player_position", "unified_receiver_position", "defender_player_position"]).raw_responsibility
     defensive_network.utility.pitch.plot_passes_with_involvement(df_involvement, df_tracking, tracking_frame_col="frame_id", pass_frame_col="frame_id", n_passes=1000000)
 
     # MF -> ST
@@ -52,3 +64,7 @@ def test_responsibility_correctness():
     assert (df_involvement.loc[i4 & (df_involvement["defender_player_position"] == "MF"), "responsibility"].round(2) == 0.42).all()
     assert (df_involvement.loc[i4 & (df_involvement["defender_player_position"] == "ST"), "responsibility"].round(2) == 0.42).all()
     assert (df_involvement.loc[i4 & (df_involvement["defender_player_position"] == "DF"), "responsibility"].round(2) == 0.0).all()
+
+
+if __name__ == '__main__':
+    test_responsibility_correctness()

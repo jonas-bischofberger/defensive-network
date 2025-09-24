@@ -309,8 +309,8 @@ def get_involvement(
     event_team_col="team_id_1", event_raw_x_col="x_event", event_raw_y_col="y_event", event_raw_target_x_col="x_target",
     event_raw_target_y_col="y_target", event_receiver_col="player_id_2", event_value_col="pass_xt",
     tracking_frame_col="full_frame", tracking_x_col="x_tracking", tracking_y_col="y_tracking",
-    tracking_team_col="team_id", tracking_player_col="player_id", ball_tracking_player_id="BALL", tracking_player_name_col="player_name",
-    involvement_model_success_pos_value="circle_circle_rectangle",
+    tracking_team_col="team_id", tracking_player_col="player_id", ball_tracking_player_id="BALL",
+    tracking_player_name_col="player_name", involvement_model_success_pos_value="circle_circle_rectangle",
     involvement_model_success_neg_value="circle_passer", involvement_model_out="circle_passer",
     involvement_model_intercepted="intercepter", model_radius=5, tracking_defender_meta_cols=None,
 ):
@@ -360,7 +360,8 @@ def get_involvement(
     i_success_and_pos_value = df_passes[event_success_col] & (df_passes[event_value_col] >= 0)
     df_passes.loc[i_success_and_pos_value, "involvement_type"] = "success_and_pos_value"
 
-    df_tracking["role_category"] = df_tracking["role"]
+    if "role" in df_tracking.columns:  # TODO fix outside
+        df_tracking["role_category"] = df_tracking["role"]
     df_involvement_success = _get_involvement_by_model(
         df_passes.loc[i_success_and_pos_value], df_tracking,
         tracking_frame_col, tracking_team_col,

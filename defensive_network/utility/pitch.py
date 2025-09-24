@@ -306,6 +306,10 @@ def plot_pass(
     else:
         make_pass_transparent = True
 
+    st.write(f"{p4ss=}")
+    st.write("df_frame")
+    st.write(df_frame)
+
     # if ball_tracking_player_id not in df_tracking[tracking_player_col]:
     #     return
     # accessible_space.interface._check_ball_in_tracking_data(df_frame, tracking_player_col, ball_tracking_player_id)
@@ -319,6 +323,20 @@ def plot_pass(
     factor=1
 
     plot_pitch()
+
+    # df_frame[tracking_team_col] = df_frame[tracking_team_col].astype(str)
+    # df_frame[tracking_player_col] = df_frame[tracking_player_col].astype(str)
+    # p4ss[pass_team_col] = str(p4ss[pass_team_col])
+    # p4ss[pass_player_name_col] = str(p4ss[pass_player_name_col])
+
+    st.write(pd.api.types.is_numeric_dtype(df_frame[tracking_team_col]))
+
+    st.write(df_frame[tracking_team_col].dtype, df_frame[tracking_team_col].unique())
+
+    try:
+        df_frame[tracking_team_col] = df_frame[tracking_team_col].astype(float, errors="raise")
+    except ValueError as e:
+        pass
 
     assert p4ss[pass_team_col] in df_frame[tracking_team_col].unique(), f"Pass team {p4ss[pass_team_col]} not in tracking data {df_frame[tracking_team_col].unique()}"
     if plot_tracking_data and df_frame is not None:
@@ -405,6 +423,8 @@ def plot_pass_involvement(
     plot_model="circle_circle_rectangle", plot_expected_receiver=True, model_radius=5,
     responsibility_col=None,
 ):
+    st.write("df_involvement")
+    st.write(df_involvement)
     fig = plot_pass(
         p4ss, df_tracking[df_tracking[tracking_frame_col] == p4ss[pass_frame_col] ],
         pass_x_col, pass_y_col, pass_end_x_col, pass_end_y_col,

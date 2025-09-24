@@ -7,8 +7,6 @@ import numpy as np
 sys.path.append(os.path.join(__file__, "../../.."))
 
 import importlib
-import io
-import pandas as pd
 import streamlit as st
 
 import defensive_network.models.involvement
@@ -26,27 +24,27 @@ ResponsibilityResult = collections.namedtuple("ResponsibilityResult", ["raw_resp
 
 def get_responsibility_model(df_involvement, responsibility_context_cols=["role_category_1", "network_receiver_role_category", "defender_role_category"], involvement_col="raw_involvement", value_col="pass_xt"):
     """
-    >>> from defensive_network.tests.test_data import df_events, df_tracking
+    >>> from defensive_network.tests.data import df_events, df_tracking
     >>> df_involvement = defensive_network.models.involvement.get_involvement(df_events, df_tracking, tracking_frame_col="frame_id", event_frame_col="frame_id", model_radius=10, tracking_defender_meta_cols=["player_name", "player_position"])
     >>> get_responsibility_model(df_involvement, ["player_position", "unified_receiver_position", "defender_player_position"])
-                                                                        responsibility  n_passes
+                                                                        raw_responsibility  n_passes     value  valued_responsibility
     player_position unified_receiver_position defender_player_position
-    DF              MF                        MF                              0.500000         1
-                                              ST                              0.500000         2
-    MF              ST                        DF                              0.000000         3
-                                              MF                              0.573490         4
-                                              ST                              0.148903         5
-    ST              MF                        DF                              0.000000         1
-                                              MF                              0.416905         1
-                                              ST                              0.416905         1
-                    ST                        DF                              1.000000         1
-                                              MF                              0.000000         1
-                                              ST                              0.000000         1
+    DF              MF                        MF                                  0.500000         1  0.500000               0.250000
+                                              ST                                  0.500000         2  0.500000               0.250000
+    MF              ST                        DF                                  0.000000         3  0.166667               0.000000
+                                              MF                                  0.573490         4  0.050000               0.028674
+                                              ST                                  0.148903         5 -0.020000              -0.002978
+    ST              MF                        DF                                  0.000000         1 -0.100000              -0.000000
+                                              MF                                  0.416905         1 -0.100000              -0.041690
+                                              ST                                  0.416905         1 -0.100000              -0.041690
+                    ST                        DF                                  1.000000         1 -0.200000              -0.200000
+                                              MF                                  0.000000         1 -0.200000              -0.000000
+                                              ST                                  0.000000         1 -0.200000              -0.000000
     """
     dfg_responsibility_model = df_involvement.groupby(responsibility_context_cols).agg(
         raw_responsibility=(involvement_col, "mean"),
         n_passes=(involvement_col, "count"),
-        value=(value_col, "mean")
+        value=(value_col, "mean"),
     )
     dfg_responsibility_model["valued_responsibility"] = dfg_responsibility_model["raw_responsibility"] * dfg_responsibility_model["value"]
     return dfg_responsibility_model
@@ -55,7 +53,7 @@ def get_responsibility_model(df_involvement, responsibility_context_cols=["role_
 def get_responsibility(df_passes, dfg_responsibility_model, event_id_col="involvement_pass_id", value_col="pass_xt", context_cols=["role_category_1", "network_receiver_role_category", "defender_role_category"]):
     """
     >>> defensive_network.utility.dataframes.prepare_doctest()
-    >>> from defensive_network.tests.test_data import df_events, df_tracking
+    >>> from defensive_network.tests.data import df_events, df_tracking
     >>> df_involvement = defensive_network.models.involvement.get_involvement(df_events, df_tracking, tracking_frame_col="frame_id", event_frame_col="frame_id", model_radius=10, tracking_defender_meta_cols=["player_name", "player_position"])
     >>> dfg_responsibility = get_responsibility_model(df_involvement, ["player_position", "unified_receiver_position", "defender_player_position"])
     >>> df_involvement["responsibility"], df_involvement["sample_size_for_responsibility"] = get_responsibility(df_involvement, dfg_responsibility)
@@ -72,45 +70,9 @@ def get_responsibility(df_passes, dfg_responsibility_model, event_id_col="involv
     dfg_responsibility_model = dfg_responsibility_model.reset_index()
 
     df_passes = df_passes[[event_id_col, value_col] + context_cols]
-
     df_passes["_index"] = df_passes.index
     df_passes = df_passes.merge(dfg_responsibility_model, on=context_cols, how="left")
     df_passes = df_passes.set_index("_index")
-
-    # st.write("df_passes")
-    # st.write(df_passes)
-
-    # def foo(row):
-    #     try:
-    #         r = dfg_responsibility_model.loc[tuple(row)]
-    #         # st.write(f"r {tuple(row)})")
-    #         # st.write(r)
-    #         # st.stop()
-    #         return r
-    #     except KeyError as e:
-    #         return None
-    #
-    # try:
-    #     # st.write("dfg_responsibility_model.index.names")
-    #     # st.write(dfg_responsibility_model.index.names)
-    #     # st.write("df_passes[dfg_responsibility_model.index.names]")
-    #     # st.write(df_passes[dfg_responsibility_model.index.names])
-    #     responsibility = df_passes[dfg_responsibility_model.index.names].apply(lambda row: foo(row), axis=1)
-    #     st.write("A turn")
-    # except KeyError:
-    #     # use columns before "responsibility" as index
-    #     i_responsibility_col = dfg_responsibility_model.columns.get_loc("responsibility")
-    #     dfg_responsibility_model = dfg_responsibility_model.set_index(dfg_responsibility_model.columns[:i_responsibility_col].tolist())
-    #     st.write("B turn")
-    #     st.write("df_passes")
-    #     st.write(df_passes)
-    #     # st.write(df_passes[dfg_responsibility_model.index.names])
-    #     st.write("dfg_responsibility_model")
-    #     st.write(dfg_responsibility_model)
-    #     responsibility = df_passes[dfg_responsibility_model.index.names].apply(lambda row: foo(row), axis=1)
-    #     st.write("responsibility")
-    #     st.write(responsibility)
-    #
 
     df_passes["raw_relative_responsibility"] = df_passes.groupby(event_id_col)["raw_responsibility"].transform(lambda x: x / x.sum())
     df_passes["valued_responsibility"] = df_passes["raw_responsibility"] * df_passes[value_col].abs()
@@ -125,23 +87,6 @@ def main():
     import defensive_network.utility.general
 
     defensive_network.utility.general.start_streamlit_profiler()
-
-    # (base_path, selected_tracking_matches, xt_model, expected_receiver_model, formation_model,
-    # involvement_model_success_pos_value, involvement_model_success_neg_value, involvement_model_out,
-    # involvement_model_intercepted, model_radius, selected_player_col, selected_player_name_col,
-    # selected_receiver_col, selected_receiver_name_col, selected_expected_receiver_col,
-    # selected_expected_receiver_name_col, selected_tracking_player_col, selected_tracking_player_name_col,
-    # use_tracking_average_position, selected_value_col, plot_involvement_examples, n_examples_per_type,
-    # show_def_full_metrics, remove_passes_with_zero_involvement, defender_col, defender_name_col) = defensive_network.utility.scripts.select_defensive_network_options()
-    #
-    # for slugified_match_string in selected_tracking_matches:
-    #     df_tracking, df_events = defensive_network.parse.cdf.get_match_data(
-    #         base_path, slugified_match_string, xt_model=xt_model,
-    #         expected_receiver_model=expected_receiver_model, formation_model=formation_model
-    #     )
-    #
-    #     st.write("df_events", df_events.shape)
-    #     st.write(df_events.set_index("event_string"))
 
     st.write("df_events")
     st.write(df_events)
