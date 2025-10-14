@@ -233,6 +233,7 @@ def plot_tracking_frame(
 def plot_pitch():
     """
     >>> plot_pitch()
+    <Figure size 640x480 with 1 Axes>
     >>> plt.show()  # doctest: +SKIP
     """
     plt.figure()
@@ -515,7 +516,7 @@ def plot_passes_with_involvement(
     >>> df_tracking = pd.DataFrame({"full_frame": [0, 0, 0, 1, 1, 1, 0, 1, 2], "team_id": [1, 1, 1, 1, 1, 1, 2, 2, 2], "player_id": [2, 3, 4, 2, 3, 4, "BALL", "BALL", "BALL"], "x_tracking": [5, 10, 15, 5, 10, 15, 5, 10, 15], "y_tracking": [0, 0, 0, 0, 0, 0, 0, 0, 0], "player_name": ["A", "B", "C", "A", "B", "C", "BALL", "BALL", "BALL"]})
     >>> df_involvement = defensive_network.models.involvement.get_involvement(df_event, df_tracking)
     >>> plot_passes_with_involvement(df_involvement, df_tracking)
-    [<Figure size 640x480 with 1 Axes>]
+    [<Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>]
     >>> plt.show()  # doctest: +SKIP
     """
     if len(df_involvement) == 0:

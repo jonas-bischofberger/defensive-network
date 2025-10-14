@@ -1,6 +1,43 @@
 import pandas as pd
 import io
 
+
+def get_minimal_sync_example():
+    df_tracking_sync = pd.DataFrame({
+        "period_id": [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2],
+        "frame_id": [100, 101, 102, 103, 100, 101, 102, 103, 200, 201, 202, 203],
+        "timestamp": pd.to_datetime([
+                 "2025-01-01 00:00:00.000",
+                 "2025-01-01 00:00:00.040",
+                 "2025-01-01 00:00:00.080",
+                 "2025-01-01 00:00:00.120",
+                 "2025-01-01 00:00:00.000",
+                 "2025-01-01 00:00:00.040",
+                 "2025-01-01 00:00:00.080",
+                 "2025-01-01 00:00:00.120",
+                 "2025-01-01 00:00:10.000",
+                 "2025-01-01 00:00:10.040",
+                 "2025-01-01 00:00:10.080",
+                 "2025-01-01 00:00:10.120",
+        ]),
+        "x": [50.0, 51.0, 52.0, 53.0, 50.0, 51.0, 52.0, 53.0, 59.0, 60.0, 61.0, 62.0],
+        "y": [30.0, 30.5, 31.0, 31.5, 30.0, 30.5, 31.0, 31.5, 39.5, 40.0, 40.5, 41.0],
+        "player_id": ["A", "A", "A", "A", "ball", "ball", "ball", "ball", "A", "A", "A", "ball"],
+    })
+    df_events_sync = pd.DataFrame({
+        "period_id": [1, 1, 2],
+        "timestamp": [pd.Timestamp("2025-01-01 00:00:00.080"),
+                      pd.Timestamp("2025-01-01 00:00:00.081"),
+                      pd.Timestamp("2025-01-01 00:00:10.040")],
+        "player_id": ["A", "A", "A"],
+        "x": [52.0, 52.01, 60.0],
+        "y": [31.0, 31.0, 40.0],
+    })
+    return df_tracking_sync, df_events_sync
+
+
+### General test data
+
 test_data_str = """
 frame_id,frame_id_rec,x_event,y_event,player_id_1,player_position,player_id_2,receiver_position,team_id_1,team_id_2,pass_is_successful,pass_xt,pass_is_intercepted,x_target,y_target,expected_receiver,expected_receiver_position
        0,           3,      0,      0,          a,             MF,          b,               ST,        H,        H,              True,    0.2,              False,      10,       0,                 ,                        

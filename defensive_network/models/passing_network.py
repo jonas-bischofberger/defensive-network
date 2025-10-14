@@ -164,8 +164,8 @@ def get_defensive_networks(
     )
     off_network_only_positive = Network(df_nodes_only_positive, df_edges_only_positive)
 
-    st.write("df_passes_defender_sums[involvement_type_col]")
-    st.write(df_passes_defender_sums[involvement_type_col])
+    # st.write("df_passes_defender_sums[involvement_type_col]")
+    # st.write(df_passes_defender_sums[involvement_type_col])
     df_nodes_off_inv, df_edges_off_inv = get_passing_network(
         df_passes_defender_sums.reset_index(),
         x_col=x_col, y_col=y_col, from_col=player_col, to_col=receiver_col, from_name_col=player_name_col,

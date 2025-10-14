@@ -18,6 +18,9 @@ import matplotlib.pyplot as plt
 
 import defensive_network.utility.general
 import defensive_network.utility.pitch
+
+import defensive_network.utility.dataframes
+
 importlib.reload(defensive_network.utility.pitch)
 importlib.reload(defensive_network.utility.general)
 
@@ -153,7 +156,7 @@ def _get_average(
             )
             plt.plot([-3, 3], [0, 0], color="black", linestyle="--", linewidth=1, alpha=0.3)
             plt.plot([0, 0], [-3, 3], color="black", linestyle="--", linewidth=1, alpha=0.3)
-            plt.title(f"Average positions for {team} in ball-in-play phase {ball_in_play_phase_id} (team {team_nr + 1})")
+            plt.title(f"Average positions for {team_in_possession} in ball-in-play phase {ball_in_play_phase_id}")
 
     if plot:
         st.write(fig)
@@ -332,7 +335,44 @@ def plot_formation_segments(df_role_assignment):
         plt.close()
 
 
-def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_phase=False, do_formation_segment_plot=False):
+def detect_formation(
+    df_tracking, frame_col="full_frame", period_col="section", datetime_col="datetime_tracking", team_col="team_id",
+    ball_status_col="ball_status", ball_poss_team_col="ball_poss_team_id", show_average_positions=False,
+    plot_phase_by_phase=False, do_formation_segment_plot=False
+):
+    """
+    >>> defensive_network.utility.dataframes.prepare_doctest()
+    >>> df_tracking = pd.DataFrame({"full_frame": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], "x_norm": [10, 20, 30, 40, 50, -10, -20, -30, -40, -50, 0], "y_norm": [10, -10, 30, -30, 0, -10, -20, -30, -5, -25, 15], "player_id": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], "team_id": ["A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A"], "player_name": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11"], "ball_poss_team_id": ["A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A"], "is_gk": [False, False, False, False, False, False, False, False, False, False, True], "ball_status": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], "section": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], "datetime_tracking": pd.date_range("2023-01-01", periods=11, freq="S"), "team_name": ["Team A"] * 11})
+    >>> df_tracking
+        full_frame  x_norm  y_norm  player_id team_id player_name ball_poss_team_id  is_gk  ball_status  section   datetime_tracking team_name
+    0            1      10      10          1       A          P1                 A  False            1        1 2023-01-01 00:00:00    Team A
+    1            1      20     -10          2       A          P2                 A  False            1        1 2023-01-01 00:00:01    Team A
+    2            1      30      30          3       A          P3                 A  False            1        1 2023-01-01 00:00:02    Team A
+    3            1      40     -30          4       A          P4                 A  False            1        1 2023-01-01 00:00:03    Team A
+    4            1      50       0          5       A          P5                 A  False            1        1 2023-01-01 00:00:04    Team A
+    5            1     -10     -10          6       A          P6                 A  False            1        1 2023-01-01 00:00:05    Team A
+    6            1     -20     -20          7       A          P7                 A  False            1        1 2023-01-01 00:00:06    Team A
+    7            1     -30     -30          8       A          P8                 A  False            1        1 2023-01-01 00:00:07    Team A
+    8            1     -40      -5          9       A          P9                 A  False            1        1 2023-01-01 00:00:08    Team A
+    9            1     -50     -25         10       A         P10                 A  False            1        1 2023-01-01 00:00:09    Team A
+    10           1       0      15         11       A         P11                 A   True            1        1 2023-01-01 00:00:10    Team A
+    >>> result = detect_formation(df_tracking)
+    >>> df_tracking["formation"], df_tracking["position"], df_tracking["confidence"], df_tracking["n_frames"], df_tracking["ball_in_phase_id"], df_all_role_assignments = result  # ["formation", "position", "confidence", "n_frames", "ball_in_phase_id", "df_all_role_assignments"]
+    >>> df_tracking
+        full_frame  x_norm  y_norm  player_id team_id player_name ball_poss_team_id  is_gk  ball_status  section   datetime_tracking team_name  n_players  ball_in_play_phase_id formation position confidence n_frames  ball_in_phase_id
+    0            1      10      10          1       A          P1                 A  False            1        1 2023-01-01 00:00:00    Team A         11                    0.0   4-2-3-1       LB       None     None               0.0
+    1            1      20     -10          2       A          P2                 A  False            1        1 2023-01-01 00:00:01    Team A         11                    0.0   4-2-3-1      ZOM       None     None               0.0
+    2            1      30      30          3       A          P3                 A  False            1        1 2023-01-01 00:00:02    Team A         11                    0.0   4-2-3-1       LW       None     None               0.0
+    3            1      40     -30          4       A          P4                 A  False            1        1 2023-01-01 00:00:03    Team A         11                    0.0   4-2-3-1       RW       None     None               0.0
+    4            1      50       0          5       A          P5                 A  False            1        1 2023-01-01 00:00:04    Team A         11                    0.0   4-2-3-1       ST       None     None               0.0
+    5            1     -10     -10          6       A          P6                 A  False            1        1 2023-01-01 00:00:05    Team A         11                    0.0   4-2-3-1      LDM       None     None               0.0
+    6            1     -20     -20          7       A          P7                 A  False            1        1 2023-01-01 00:00:06    Team A         11                    0.0   4-2-3-1      RDM       None     None               0.0
+    7            1     -30     -30          8       A          P8                 A  False            1        1 2023-01-01 00:00:07    Team A         11                    0.0   4-2-3-1       RB       None     None               0.0
+    8            1     -40      -5          9       A          P9                 A  False            1        1 2023-01-01 00:00:08    Team A         11                    0.0   4-2-3-1    LCB-4       None     None               0.0
+    9            1     -50     -25         10       A         P10                 A  False            1        1 2023-01-01 00:00:09    Team A         11                    0.0   4-2-3-1    RCB-4       None     None               0.0
+    10           1       0      15         11       A         P11                 A   True            1        1 2023-01-01 00:00:10    Team A         11                    0.0   4-2-3-1       GK       None     None               0.0
+    """
+    original_cols = copy.deepcopy(df_tracking.columns.tolist())
     plot_phase_by_phase = True
     st.write(f"{plot_phase_by_phase=}")
 
@@ -341,7 +381,7 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
     assert "formation" not in dft_copy.columns
 
     # get number of players per frame
-    df_tracking["n_players"] = df_tracking.groupby(["team_id", "full_frame"])["player_id"].transform("nunique")
+    df_tracking["n_players"] = df_tracking.groupby(["team_id", frame_col])["player_id"].transform("nunique")
     # st.write('df_tracking[df_tracking["n_players"] < 11]')
     # st.write(df_tracking[df_tracking["n_players"] < 11])
     # check how many nans each col of df_tracking has
@@ -352,11 +392,11 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
 
 
     # 1. Get ball in play phases
-    df_tracking["ball_in_play_phase_id"] = add_in_play_phase_id(df_tracking)
-    dft_copy["ball_in_play_phase_id"] = add_in_play_phase_id(dft_copy)
+    df_tracking["ball_in_play_phase_id"] = add_in_play_phase_id(df_tracking, frame_col, ball_status_col, period_col)
+    dft_copy["ball_in_play_phase_id"] = add_in_play_phase_id(dft_copy, frame_col, ball_status_col, period_col)
 
     st.write("W")
-    st.write(df_tracking[["full_frame", "ball_in_play_phase_id", "ball_status"]].drop_duplicates())
+    st.write(df_tracking[[frame_col, "ball_in_play_phase_id", "ball_status"]].drop_duplicates())
 
     df_tracking = df_tracking[(df_tracking["player_id"] != "BALL") & (df_tracking["is_gk"] == False)]
 
@@ -374,7 +414,7 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
     df_tracking = df_tracking[df_tracking["ball_in_play_phase_id"].notna()]
     st.write("Q")
     st.write(df_tracking.head(10000))
-    st.write(df_tracking.sort_values("datetime_tracking").head(10000))
+    # st.write(df_tracking.sort_values("datetime_tracking").head(10000))
     st.write(df_tracking["ball_in_play_phase_id"].unique())
     st.write(df_tracking["ball_in_play_phase_id"].value_counts())
 
@@ -416,8 +456,8 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
         # if i != 9:
         #     continue
         # st.write("i", i)
-        time_start = df_tracking[df_tracking["ball_in_play_phase_id"] == ball_in_phase_id]["datetime_tracking"].min()
-        time_end = df_tracking[df_tracking["ball_in_play_phase_id"] == ball_in_phase_id]["datetime_tracking"].max()
+        time_start = df_tracking[df_tracking["ball_in_play_phase_id"] == ball_in_phase_id][datetime_col].min()
+        time_end = df_tracking[df_tracking["ball_in_play_phase_id"] == ball_in_phase_id][datetime_col].max()
 
         n_frames = df_team["n_frames"].iloc[0]
         df_player_pos = df_team.set_index("player_id")[["x_norm_formation_z", "y_norm_formation_z"]]
@@ -642,12 +682,12 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
     # st.write(dft_copy[["ball_in_play_phase_id", "team_id", "formation"]].drop_duplicates().sort_values(by=["ball_in_play_phase_id", "team_id"]))
 
     i_nofo = (dft_copy["player_id"] != "BALL") & (dft_copy["ball_status"] == 1) & (dft_copy["formation"].isna())
-    # st.write(dft_copy.loc[i_nofo, ["full_frame", "ball_in_play_phase_id", "team_id", "player_id", "formation"]])
+    # st.write(dft_copy.loc[i_nofo, [frame_col, "ball_in_play_phase_id", "team_id", "player_id", "formation"]])
     assert dft_copy.loc[i_nofo, "formation"].notna().all()
 
     position_mapping = df_average.set_index(["ball_in_play_phase_id", "team_id", "player_id"])["position"].to_dict()
     dft_copy["position"] = dft_copy.apply(lambda row: position_mapping.get((row["ball_in_play_phase_id"], row["team_id"], row["player_id"]), None), axis=1)
-    # st.write(dft_copy.loc[i_nofo, ["full_frame", "ball_in_play_phase_id", "team_id", "player_id", "formation", "position"]])
+    # st.write(dft_copy.loc[i_nofo, [frame_col, "ball_in_play_phase_id", "team_id", "player_id", "formation", "position"]])
     assert dft_copy.loc[i_nofo, "position"].notna().all()
     # st.write("position_mapping")
     # st.write(position_mapping)
@@ -828,7 +868,7 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
 
     i_nofo = (dft_copy["player_id"] != "BALL") & (dft_copy["ball_status"] == 1) & ((dft_copy["formation"].isna()) | (dft_copy["position"].isna()))
     # st.write("dft_copy.loc[i_nofo]")
-    # st.write(dft_copy.loc[i_nofo, ["full_frame", "ball_in_play_phase_id", "team_id", "player_id", "formation", "position"]])
+    # st.write(dft_copy.loc[i_nofo, [frame_col, "ball_in_play_phase_id", "team_id", "player_id", "formation", "position"]])
     if not dft_copy.loc[i_nofo, "formation"].notna().all():
         st.warning("Not all formations could be detected. Check the data and the role assignment.")
     assert dft_copy.loc[dft_copy["ball_status"] == 1, "ball_in_play_phase_id"].notna().all(), "Not all formations could be detected. Check the data and the role assignment."
@@ -837,6 +877,8 @@ def detect_formation(df_tracking, show_average_positions=False, plot_phase_by_ph
     # st.write(dft_copy[dft_copy["ball_in_play_phase_id"] == 4])
 
     # plot_formations(dft_copy)
+
+    df_tracking = df_tracking[original_cols]
 
     return res
 

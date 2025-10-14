@@ -34,6 +34,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 import defensive_network.utility.dataframes
 import thefuzz
+import adjustText
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -73,6 +74,14 @@ SUBDIV_MAP = {
     "Scotland": "gb-sct",
     "Wales": "gb-wls",
     "Northern Ireland": "gb-nir",
+}
+
+nice_labels = {
+    "valued_fault_per90": "Valued Fault per 90",
+    "raw_contribution_per_pass": "Raw Contribution per Pass",
+    "market_value": "Market value [€]",
+    "def_awareness": "Defensive Awareness Rating",
+    "n_interceptions_per90": "Interecptions per 90",
 }
 
 # Common naming fixes so pycountry resolves them
@@ -1229,8 +1238,6 @@ def main():
                     ("valued_responsibility_combined", "raw_involvement_combined"),
                     ("valued_fault_per90", "valued_fault_responsibility_per90"),
                 ]:
-                    break
-
                     with st.expander(f"Scatter {kpi1} vs. {kpi2}", False):
                         min_minutes = st.number_input(f"Minimum minutes played by player for scatter {kpi1} vs. {kpi2}.", min_value=0, value=DEFAULT_MINUTES, key=f"{competition}_min_minutes_scatter_{kpi1}_{kpi2}")
 
@@ -1240,11 +1247,6 @@ def main():
                                 & (df_agg_player_pos_team["coarse_position"] == pos)
                             ]
                             plt.figure(figsize=(10, 10))
-
-                            nice_labels = {
-                                "valued_fault_per90": "Valued Fault per 90",
-                                "raw_contribution_per_pass": "Raw Contribution per Pass",
-                            }
 
                             flip_x = True if ("fault" in kpi1 or "minus" in kpi1 or "lost" in kpi1) else False
                             flip_y = True if ("fault" in kpi2 or "minus" in kpi2 or "lost" in kpi2) else False
@@ -1273,26 +1275,51 @@ def main():
                                 zoom=0.6,  # tweak for on-plot size
                             )
 
+                            DY = 0.011
+
                             df_agg_player_pos_scatter["name"] = (df_agg_player_pos_scatter["first_name"].astype(str) + ". " + df_agg_player_pos_scatter["last_name"]).str.strip()
                             df_agg_player_pos_scatter["name"] = (df_agg_player_pos_scatter["name"].apply(lambda x: x if len(x.split(" ")) == 1 else x.split(" ")[0][0] + ". " + " ".join(x.split(" ")[1:]))).str.strip(".")
                             df_agg_player_pos_scatter["name"] = df_agg_player_pos_scatter["name"].apply(lambda x: {"M. Jae Kim": "Min-jae Kim", "Y. Kim": "Young-gwon Kim"}.get(x, x))
+                            texts = []
+                            top_names = ["C. Montes", "K. Miller", "N. Aké", "R. Varane", "I. Konaté", "P. Hincapie", "J. Stones", "M. Yoshida",
+                                         "T. Ream", "R. Saïss", "S. Vitoria", "C. Romero"]
+                            right_shift = {
+                                "J. Timber": 0.075, "J. Stones": 0.05, "L. Martinez": 0.04, "J. Rodon": 0.09, "P. Hincapie": 0.04,
+                                "R. Saïss": 0.07, "T. Ream": -0.025, "H. Souttar": 0, "M. Akanji": 0.0, "K. Koulibaly": 0.06,
+                                "M. Talbi": -0.02, "Y. Meriah": 0.0, "T. Alderweired": -0.075, "C. Romero": -0.0125, "B. Koukhi": 0.005
+                            }
+                            bottom_shift = {
+                                "M. Akanji": 0.0025,
+                                "T. Ream": 0.0025
+                            }
+                            df_agg_player_pos_scatter["annotate_bottom"] = True
+                            df_agg_player_pos_scatter.loc[df_agg_player_pos_scatter["name"].isin(top_names), "annotate_bottom"] = False
+                            df_agg_player_pos_scatter["right_shift"] = 0
+                            df_agg_player_pos_scatter.loc[df_agg_player_pos_scatter["name"].isin(right_shift.keys()), "right_shift"] = df_agg_player_pos_scatter["name"].map(right_shift)
+                            df_agg_player_pos_scatter["bottom_shift"] = 0
+                            df_agg_player_pos_scatter.loc[df_agg_player_pos_scatter["name"].isin(bottom_shift.keys()), "bottom_shift"] = df_agg_player_pos_scatter["name"].map(bottom_shift)
+
                             for i, row in df_agg_player_pos_scatter.iterrows():
-                                if row[kpi1] > df_agg_player_pos_scatter[kpi1].quantile(0.65) or row[kpi2] > df_agg_player_pos_scatter[kpi2].quantile(0.65) or row[kpi1] < df_agg_player_pos_scatter[kpi1].quantile(0.35) or row[kpi2] < df_agg_player_pos_scatter[kpi2].quantile(0.35) \
-                                    or row[kpi1] > df_agg_player_pos_scatter[kpi1].quantile(0.75) and row[kpi2] > df_agg_player_pos_scatter[kpi2].quantile(0.75) \
-                                    or row[kpi1] < df_agg_player_pos_scatter[kpi1].quantile(0.4) and row[kpi2] < df_agg_player_pos_scatter[kpi2].quantile(0.4):
-                                    plt.text(row[kpi1], row[kpi2]-0.015, row["name"], va="bottom", ha="center")
+                                dy = -DY if row["annotate_bottom"] else DY
+                                dx = row["right_shift"]
+                                dy -= row["bottom_shift"]
+
+                                # if row[kpi1] > df_agg_player_pos_scatter[kpi1].quantile(0.65) or row[kpi2] > df_agg_player_pos_scatter[kpi2].quantile(0.65) or row[kpi1] < df_agg_player_pos_scatter[kpi1].quantile(0.35) or row[kpi2] < df_agg_player_pos_scatter[kpi2].quantile(0.35) \
+                                #         or row[kpi1] > df_agg_player_pos_scatter[kpi1].quantile(0.75) and row[kpi2] > df_agg_player_pos_scatter[kpi2].quantile(0.75) \
+                                #         or row[kpi1] < df_agg_player_pos_scatter[kpi1].quantile(0.4) and row[kpi2] < df_agg_player_pos_scatter[kpi2].quantile(0.4):
+                                if True:
+                                    text = plt.text(row[kpi1]-dx, row[kpi2]+dy, row["name"], va="center", ha="center")
+                                    texts.append(text)
+                            # st.write(plt.gcf())
+                            # adjustText.adjust_text(texts)
                             st.write("df_agg_player_pos_scatter " + pos)
-                            st.write(df_agg_player_pos_scatter)
+                            # st.write(df_agg_player_pos_scatter)
                             st.write(plt.gcf())
 
                 for kpi in kpis:
                     with st.expander(f"Best players by {kpi}", False):
-                        st.write("df_agg_player_pos_team")
-                        st.write(df_agg_player_pos_team)
                         playerid2mainpos = df_agg_player_pos_team.groupby("player_id").apply(lambda x: x.loc[x["minutes_played"].idxmax()]["coarse_position"]).to_dict()
                         df_agg_player_pos_team["player_main_position"] = df_agg_player_pos_team["player_id"].map(playerid2mainpos)
-                        st.write("df_agg_player_pos_team")
-                        st.write(df_agg_player_pos_team)
                         for pos in df_agg_player_pos_team["coarse_position"].unique():
                             st.write(f"### Best players in {pos} ###")
                             min_minutes = 150 #st.number_input(f"Minimum minutes played by player for best player listing in {pos}.", min_value=0, value=90, key=f"{competition}_{pos}_min_minutes_best_players")
@@ -1439,6 +1466,16 @@ def main():
                     # st.write("df_agg_team")
                     # st.write(df_agg_team)
 
+                    # rank players by position group after market value
+                    for posgroup, df_posgroup in df_agg_player.groupby("coarse_position"):
+                        df_posgroup = df_posgroup.sort_values(by="market_value", ascending=False)
+                        df_posgroup["market_value_rank"] = range(1, len(df_posgroup) + 1)
+                        df_agg_player.loc[df_posgroup.index, "market_value_rank"] = df_posgroup["market_value_rank"]
+                        st.write(f"Top market values in {posgroup}")
+                        st.write(df_posgroup[["full_name", "market_value", "market_value_rank", "defending", "def_awareness"]])
+
+                    st.stop()
+
                     data = []
                     x_variables = kpis
                     assert "valued_fault_plus_fault_responsibility_per90" in x_variables
@@ -1460,13 +1497,19 @@ def main():
                                 plot = True
                                 if plot:
                                     fig = plt.figure()
-                                    sns.lmplot(data=df, x=x_variable, y=y_variable, hue="coarse_position", scatter=True)
+                                    sns.lmplot(data=df.rename(columns={"coarse_position": "Position group"}), x=x_variable, y=y_variable, hue="Position group", scatter=True)
                                     # set lower ylim to 0
                                     plt.ylim(bottom=0)
                                     # set upper limit to max plus 10% of max
                                     max_y = df[y_variable].max()
                                     plt.ylim(top=1.1 * max_y)
+
+                                    # xlabel -> nice name
+                                    plt.xlabel(nice_labels.get(x_variable, x_variable))
+                                    plt.ylabel(nice_labels.get(y_variable, y_variable))
+
                                     col.write(plt.gcf())
+
                                     # st.stop()
 
                                     # make also a logarithmic plot
@@ -2120,6 +2163,7 @@ def main():
 
     _do_summary = True
     if _do_summary:
+        dfs = []
         #             "": 380,
         #             "Bundesliga": 132,
         for competitions in [
@@ -2136,7 +2180,6 @@ def main():
             # st.write("df_summary2")
             # st.write(df_summary2)
             # df_summary = pd.concat([df_summary1, df_summary2])
-
 
             df_summary = df_summary_original.copy()
 
@@ -2229,36 +2272,95 @@ def main():
                 colors = df_full["color"].tolist()
 
                 # Plot Validity Score vs Robustness, label by KPI
-                plt.figure(figsize=(12, 10))
+                f_scale = 0.7
+                plt.figure(figsize=(12*f_scale, 10*f_scale))
+
+                import matplotlib.font_manager
+
+                import defensive_network.utility.fonts
+                defensive_network.utility.fonts.add_fonts()
+                # st.write("Available fonts:")
+                # for font in sorted(set(f.name for f in matplotlib.font_manager.fontManager.ttflist)):
+                #     st.write(" -", font)
+
+                plt.rcParams = plt.rcParamsDefault.copy()  # reset to default first
+
+                # get available fonts
+                available_fonts = set(f.name for f in matplotlib.font_manager.fontManager.ttflist)
+                # st.write("Available fonts:", available_fonts)
+
+                font = "Roboto Slab"
+
+                assert font in available_fonts, f"Font '{font}' not found. Please install it."
+                font_prop = matplotlib.font_manager.FontProperties(family=font)
+
+                plt.rcParams.update({
+                    "font.family": font,  # install STIX Two Text on your OS
+                    # "mathtext.fontset": "stix",  # matches the text face nicely
+                    "font.size": 10,  # tweak to your journal’s spec
+                    "axes.titlesize": 11,
+                    "axes.labelsize": 10,
+                    "pdf.fonttype": 42,  # embed TrueType for selectable text
+                    "ps.fonttype": 42,
+                    "svg.fonttype": "none",
+                })
+                for ticklabel in plt.gca().get_xticklabels() + plt.gca().get_yticklabels():
+                    ticklabel.set_fontproperties(font_prop)
 
                 x = "Robustness Score"
                 y = "Validity Score"
 
                 plt.scatter(df_full[x], df_full[y], c=colors, alpha=0.7)
 
-                df_full["nice_kpi"] = df_full["kpi"].str.replace("_", " ").str.title().str.replace("N ", "").str.replace("Per90", "per 90").str.replace("Per Pass", "per pass")
+                df_full["nice_kpi"] = df_full["kpi"].str.replace("_combined", "_fused").str.replace("_", " ").str.title().str.replace("N ", "").str.replace("Per90", "per 90").str.replace("Per Pass", "per pass").str.replace("Involvement Fused", "Fused Involvement").str.replace("Responsibility Fused", "Fused Responsibility")
                 df_full["label_on_top"] = False
 
-                # Annotate points with KPI names, offset labels slightly to reduce overlap
-                DY = 6
-                for i, row in df_full.iterrows():
-                    dy_signed = DY if row["label_on_top"] else -DY
-                    plt.annotate(
-                        row["nice_kpi"], (row[x], row[y]), textcoords="offset points", ha="center",
-                        xytext=(0, dy_signed),
-                        fontsize=7, path_effects=[matplotlib.patheffects.withStroke(linewidth=1, foreground="white")],
-                        va='bottom' if row["label_on_top"] else 'top', color=row["color"]
-                    )
+                st.write("df_full")
+                st.write(df_full)
 
-                plt.xlabel(x)
-                plt.ylabel(y)
+                # Annotate points with KPI names, offset labels slightly to reduce overlap
+                DY = 4.5
+                texts = []
+                for i, row in df_full.dropna(subset=[x, y]).iterrows():
+                    dy_signed = DY if row["label_on_top"] else -DY
+                    text = plt.text(
+                        row[x], row[y], row["nice_kpi"], fontsize=7, path_effects=[matplotlib.patheffects.withStroke(linewidth=1, foreground="white")], color=row["color"], ha='center', va='center'
+                    )
+                    # text = plt.annotate(
+                    #     row["nice_kpi"], (row[x], row[y]), textcoords="offset points", ha="center",
+                    #     xytext=(0, dy_signed),
+                    #     fontsize=7, path_effects=[matplotlib.patheffects.withStroke(linewidth=1, foreground="white")],
+                    #     va='bottom' if row["label_on_top"] else 'top', color=row["color"]
+                    # )
+                    texts.append(text)
+
+                adjustText.adjust_text(texts, expand=(0.7, 0.5))
+
+                plt.xlabel(x, fontproperties=font_prop)
+                plt.ylabel(y, fontproperties=font_prop)
                 plt.grid(True, linestyle="--", alpha=0.6)
                 plt.axhline(y=0, color='grey', linestyle='-')
                 plt.axvline(x=0, color='grey', linestyle='-')
-                if len(competitions) == 1:
-                    plt.xlim(-3.2, 3.2)
-                    plt.ylim(-3.2, 3.2)
-                plt.savefig("C:/Users/j.bischofberger/Downloads/xy.png")
+                # plt.gca().set_facecolor("#F9FAFB")
+
+                # add legend explaining the colors
+                from matplotlib.lines import Line2D
+                legend_elements = [
+                    Line2D([0], [0], marker='o', color='w', label='Fault', markerfacecolor="#C5162A", markersize=8),
+                    Line2D([0], [0], marker='o', color='w', label='Contribution', markerfacecolor="#009E73", markersize=8),
+                    Line2D([0], [0], marker='o', color='w', label='Combined', markerfacecolor="#0072B2", markersize=8),
+                    Line2D([0], [0], marker='o', color='w', label='Traditional', markerfacecolor="#E69F00", markersize=8),
+                ]
+                plt.legend(handles=legend_elements, loc='best', fontsize=8, frameon=True, framealpha=0.5, prop=font_prop)
+
+                # if len(competitions) == 1:
+                #     plt.xlim(-3.2, 3.2)
+                #     plt.ylim(-3.2, 3.2)
+
+                competition_str = "_".join(competitions)
+                st.write(f"{competition_str=}")
+
+                plt.savefig(f"C:/Users/j.bischofberger/Downloads/xy_{competition_str}.png", dpi=300, bbox_inches='tight')
 
                 st.write(plt.gcf())
                 # plt.show()
@@ -2318,8 +2420,6 @@ def main():
             #                                              (~df_pivot_final["seasonal_autocorrelation_only_CBs (Person)"].isna()).astype(int)
             df_pivot_final["Robustness Score"] = df_pivot_final["robustness_enumerator"] / df_pivot_final["robustness_denominator"].replace(0, np.nan)
 
-            st.write(df_pivot_final)
-
             # df_pivot_final["z_bootstrapped_season_level_icc (corrected by position)"] +
 
             # df_pivot_final["Validity Score"] = (df_pivot_final["pearson_correlation_only_cbs_def_awareness"] * df_pivot_final["expected_direction"] +
@@ -2329,7 +2429,20 @@ def main():
             #                                                            df_pivot_final["bootstrapped_season_level_icc (corrected by position)"] +
             #                                                            df_pivot_final["seasonal_autocorrelation (Partial)"] +
             #                                                            df_pivot_final["seasonal_autocorrelation_only_CBs (Person)"])
+
+            st.write("df_pivot_final")
+            st.write(df_pivot_final)
+            df_pivot_final["competitions"] = ", ".join(competitions)
+            df_pivot_final["n_competitions"] = len(competitions)
+
+            dfs.append(df_pivot_final.copy())
+
             metrics_scatter(df_pivot_final)
+
+        df_all = pd.concat(dfs, axis=0)
+        st.write("df_all")
+        st.write(df_all)
+        df_all.to_csv("C:/Users/j.bischofberger/Downloads/df_all.csv", index=False)
 
 # =[@[abs_pearson_correlation_only_cbs_def_awareness]]+[@[abs_pearson_correlation_only_cbs_defending]]+2*[@[abs_pearson_correlation_only_cbs_market_value]]
 
