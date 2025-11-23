@@ -2789,12 +2789,13 @@ def process_involvements(df_meta, folder_tracking, folder_events, target_folder,
         df_events = df_events[df_events["event_type"] == "pass"]
 
         # cast team col to string
-        df_events["team_id_1"] = df_events["team_id_1"].astype(str).str.replace(".0", "")
-        df_events["team_id_2"] = df_events["team_id_2"].astype(str).str.replace(".0", "")
-        df_tracking["team_id"] = df_tracking["team_id"].astype(str).str.replace(".0", "")
-        df_tracking["player_id"] = df_tracking["player_id"].astype(str).str.replace(".0", "")
-        df_events["player_id_1"] = df_events["player_id_1"].astype(str).str.replace(".0", "")
-        df_events["player_id_2"] = df_events["player_id_2"].astype(str).str.replace(".0", "")
+        df_events["team_id_1"] = df_events["team_id_1"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_events["team_id_2"] = df_events["team_id_2"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_tracking["team_id"] = df_tracking["team_id"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_tracking["player_id"] = df_tracking["player_id"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_events["player_id_1"] = df_events["player_id_1"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_events["player_id_2"] = df_events["player_id_2"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_events["expected_receiver"] = df_events["expected_receiver"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
 
         # st.write("df_events")
         # st.write(df_events[[col for col in df_events.columns if "frame" in col]])
@@ -2834,9 +2835,6 @@ def process_involvements(df_meta, folder_tracking, folder_events, target_folder,
         # st.write("df_involvement")
         # st.write(df_involvement)<
         # print tracking teams
-        st.write(df_tracking["team_id"].unique())
-        st.write(df_involvement["team_id_1"].unique())
-        st.write(df_involvement["team_id_2"].unique())
 
         # shuffle involvement and tracking
         df_involvement = df_involvement.sample(frac=1, random_state=42).reset_index(drop=True)

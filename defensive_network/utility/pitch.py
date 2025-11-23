@@ -370,6 +370,7 @@ def plot_pass(
         if not pd.isna(expected_receiver) and df_frame is not None:
             df_tracking_expected_receiver = df_frame[df_frame[tracking_player_col] == expected_receiver]
             if not len(df_tracking_expected_receiver) > 0:
+                # raise ValueError(f"Expected receiver {expected_receiver} not found in tracking data for frame {p4ss[pass_frame_col]}")
                 warnings.warn("TODO")
             else:
                 x = df_tracking_expected_receiver[tracking_x_col].iloc[0]
