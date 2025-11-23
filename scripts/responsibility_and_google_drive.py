@@ -811,11 +811,13 @@ def main():
     folder_drive_events = "events"
     fpath_drive_team_matchsums = "team_matchsums.csv"
     fpath_drive_players_matchsums = "df_matchsums_player.csv"
-    folder_drive_involvement = "involvement"
+    radius = 10
+    folder_drive_involvement = f"involvement/{radius}"
 
     # filetype_to_files = get_dfb_csv_files_in_folder(folder, [fpath_target_meta, fpath_target_lineup])
-    filetype_to_files = get_dfb_csv_files_in_folder(folder, [])
-    st.write(f"Found files in {folder}:", filetype_to_files)
+    if _process_meta or _process_lineups or _process_tracking or _process_events:
+        filetype_to_files = get_dfb_csv_files_in_folder(folder, [])
+        st.write(f"Found files in {folder}:", filetype_to_files)
 
     if _process_meta:
         process_meta(filetype_to_files["meta"], fpath_target_meta)
@@ -859,7 +861,7 @@ def main():
         only_process_wc_final = st.toggle("Only process World Cup final", value=False)
         if only_process_wc_final:
             df_meta = df_meta[df_meta["match_string"] == "FIFA Men's World Cup 2022: 8.ST Argentina - France"]
-        process_involvements(df_meta, folder_drive_tracking, folder_drive_events, folder_drive_involvement, overwrite_if_exists)
+        process_involvements(df_meta, folder_drive_tracking, folder_drive_events, folder_drive_involvement, radius, overwrite_if_exists)
 
     if _calculate_responsibility_model:
         df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=True)
@@ -2757,7 +2759,7 @@ def _create_matchsums(df_event, df_tracking, series_meta, df_lineup, df_involvem
     return dfg_team, dfg_players
 
 
-def process_involvements(df_meta, folder_tracking, folder_events, target_folder, overwrite_if_exists=False):
+def process_involvements(df_meta, folder_tracking, folder_events, target_folder, radius, overwrite_if_exists=False):
     present_match_ids = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder(folder_tracking)]
     df_meta = df_meta[df_meta["slugified_match_string"].isin(present_match_ids)]
 
@@ -2785,6 +2787,15 @@ def process_involvements(df_meta, folder_tracking, folder_events, target_folder,
 
         df_events = defensive_network.parse.drive.download_csv_from_drive(fpath_events)
         df_events = df_events[df_events["event_type"] == "pass"]
+
+        # cast team col to string
+        df_events["team_id_1"] = df_events["team_id_1"].astype(str).str.replace(".0", "")
+        df_events["team_id_2"] = df_events["team_id_2"].astype(str).str.replace(".0", "")
+        df_tracking["team_id"] = df_tracking["team_id"].astype(str).str.replace(".0", "")
+        df_tracking["player_id"] = df_tracking["player_id"].astype(str).str.replace(".0", "")
+        df_events["player_id_1"] = df_events["player_id_1"].astype(str).str.replace(".0", "")
+        df_events["player_id_2"] = df_events["player_id_2"].astype(str).str.replace(".0", "")
+
         # st.write("df_events")
         # st.write(df_events[[col for col in df_events.columns if "frame" in col]])
         # st.write(df_events)
@@ -2794,22 +2805,7 @@ def process_involvements(df_meta, folder_tracking, folder_events, target_folder,
         # st.write('df_tracking[df_tracking["role_category"].isna()]')
         # st.write(df_tracking[df_tracking["role_category"].isna()])
 
-        df_involvement = defensive_network.models.involvement.get_involvement(df_events, df_tracking, tracking_defender_meta_cols=["role_category"])
-
-        # # TODO remove
-        # df_involvement = df_involvement[df_involvement["involvement_pass_id"] == 0]
-        # df_tracking = df_tracking[df_tracking["frame"] == 0]
-
-        # st.write("df_involvement")
-        # st.write(df_involvement[["defender_id", "defender_role_category", "role_category_1", "role_category_2", "expected_receiver_role_category"]])
-        # st.write(df_involvement[df_involvement["involvement_pass_id"] == 0].shape)
-        # st.write(df_involvement[df_involvement["involvement_pass_id"] == 0])
-        # #
-        # st.write("df_tracking")
-        # st.write(df_tracking[df_tracking["frame"] == 0].shape)
-        # st.write(df_tracking[df_tracking["frame"] == 0])
-        #
-        # st.stop()
+        df_involvement = defensive_network.models.involvement.get_involvement(df_events, df_tracking, tracking_defender_meta_cols=["role_category"], model_radius=radius)
 
         df_involvement["network_receiver_role_category"] = df_involvement["expected_receiver_role_category"].where(df_involvement["expected_receiver_role_category"].notna(), df_involvement["role_category_2"])
         df_involvement["defender_role_category"] = df_involvement["defender_role_category"]#.fillna("unknown")
@@ -2834,18 +2830,27 @@ def process_involvements(df_meta, folder_tracking, folder_events, target_folder,
         # st.write("df_involvement")
         # st.write(df_involvement)
 
-        target_fpath = os.path.join(target_folder, f"{slugified_match_string}.csv")
         importlib.reload(defensive_network.utility.pitch)
         # st.write("df_involvement")
-        # st.write(df_involvement)
+        # st.write(df_involvement)<
+        # print tracking teams
+        st.write(df_tracking["team_id"].unique())
+        st.write(df_involvement["team_id_1"].unique())
+        st.write(df_involvement["team_id_2"].unique())
+
+        # shuffle involvement and tracking
+        df_involvement = df_involvement.sample(frac=1, random_state=42).reset_index(drop=True)
+        df_tracking = df_tracking.sample(frac=1, random_state=42).reset_index(drop=True)
+
         defensive_network.utility.pitch.plot_passes_with_involvement(
-            df_involvement, df_tracking, n_passes=500,
+            df_involvement, df_tracking, n_passes=50,
             # responsibility_col="raw_intrinsic_relative_responsibility",
             responsibility_col=None,
         )
         assert len(df_involvement) > 100
-        defensive_network.parse.drive.upload_csv_to_drive(df_involvement, target_fpath)
-        # st.stop()
+        st.stop()
+        # defensive_network.parse.drive.upload_csv_to_drive(df_involvement, os.path.join(target_folder, f"{slugified_match_string}.csv"))
+        defensive_network.parse.drive.upload_parquet_to_drive(df_involvement, os.path.join(target_folder, f"{slugified_match_string}.parquet"))
 
         # for coordinates in ["original", "sync"]:
         #     with st.expander(f"Plot passes with involvement ({coordinates})"):

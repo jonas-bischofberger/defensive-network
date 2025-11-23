@@ -11,7 +11,7 @@ import accessible_space.interface
 
 import sys
 import os
-
+import streamlit as st
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
 import defensive_network.utility.pitch
@@ -113,6 +113,10 @@ def _get_involvement_by_model(
     """
     df_passes = df_passes.copy()
 
+    # cast all team cols to string
+    df_passes[event_team_col] = df_passes[event_team_col].astype(str).str.replace(".0", "", regex=False)
+    df_tracking[tracking_team_col] = df_tracking[tracking_team_col].astype(str).str.replace(".0", "", regex=False)
+
     defensive_network.utility.dataframes.check_presence_of_required_columns(df_tracking, "df_tracking", ["full_frame", "team_id", "player_id", "x_tracking", "y_tracking"], [tracking_frame_col, tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col])
 
     if tracking_defender_meta_cols is not None:
@@ -158,7 +162,7 @@ def _get_involvement_by_model(
 
     df_tracking_passes = df_tracking_passes[df_tracking_passes[tracking_team_col].notna()]
     df_tracking_passes = df_tracking_passes[df_tracking_passes[event_team_col].notna()]
-    teams = df_tracking_passes[tracking_team_col].unique().tolist()
+    teams = df_tracking_passes[tracking_team_col].dropna().unique().tolist()
 
     importlib.reload(accessible_space.interface)
     PLAYER_POS, _, players, player_teams, controlling_teams, frame_to_index, _ = accessible_space.interface.transform_into_arrays(
@@ -167,16 +171,31 @@ def _get_involvement_by_model(
         ball_player_id=ball_tracking_player_id, ignore_ball_position=True,  # TODO add back in after publishing accessible_space
         vx_col=None, vy_col=None,
     )
+    # if len(teams) == 2:
+    #     defending_teams = np.array([teams[0] if controlling_team == teams[1] else teams[1] for controlling_team in controlling_teams])
+    #     st.write("defending_teams 2")
+    #     st.write(teams)
+    #     st.write(defending_teams)
+    # elif len(teams) == 1:
+    #     defending_team = teams[0]
+    #     assert all([defending_team != controlling_team for controlling_team in controlling_teams])
+    #     defending_teams = np.array([defending_team for _ in controlling_teams])
+    #     st.write("defending_teams 1")
+    #     st.write(teams)
+    #     st.write(defending_teams)
+    # else:
+    #     teams = [team for team in teams if not pd.isna(team)]
+    #     defending_teams = np.array([teams[0] if controlling_team == teams[1] else teams[1] for controlling_team in controlling_teams])
+    #     st.write("defending_teams X")
+    #     st.write(teams)
+    #     st.write(defending_teams)
 
-    if len(teams) == 2:
-        defending_teams = np.array([teams[0] if controlling_team == teams[1] else teams[1] for controlling_team in controlling_teams])
-    elif len(teams) == 1:
-        defending_team = teams[0]
-        assert all([defending_team != controlling_team for controlling_team in controlling_teams])
-        defending_teams = np.array([defending_team for _ in controlling_teams])
-    else:
-        teams = [team for team in teams if not pd.isna(team)]
-        defending_teams = np.array([teams[0] if controlling_team == teams[1] else teams[1] for controlling_team in controlling_teams])
+    defending_teams = np.where(
+        controlling_teams == df_passes[event_team_col].values,
+        df_passes[event_team_col].map(lambda t: teams[0] if t == teams[1] else teams[1]).values,
+        df_passes[event_team_col].values
+    )
+    assert (defending_teams != controlling_teams).all()
 
     i_valid_positions_available = df_passes[unique_frame_col].isin(frame_to_index.keys())
     X_PASSER = df_passes.loc[i_valid_positions_available, event_x_col].values
@@ -212,11 +231,6 @@ def _get_involvement_by_model(
     P = INVOLVEMENT.shape[1]
     df_involvement["defender_id"] = list(players) * F  # P x F
     df_involvement["defender_name"] = df_involvement["defender_id"].apply(lambda x: player2name.get(x, x))
-    # import streamlit as st
-    # st.write("df_involvement")
-    # st.write(df_involvement)
-    # assert df_involvement["defender_name"].notna().any()
-    # st.stop()
     df_involvement["defender_x"] = PLAYER_POS[:, :, 0].flatten()
     df_involvement["defender_y"] = PLAYER_POS[:, :, 1].flatten()
 
@@ -372,7 +386,6 @@ def get_involvement(
         model=involvement_model_success_pos_value, model_radius=model_radius,
         tracking_defender_meta_cols=tracking_defender_meta_cols,
     )
-
     # 2. Successful passes, xT < 0
     i_success_and_neg_value = df_passes[event_success_col] & (df_passes[event_value_col] < 0)
     df_passes.loc[i_success_and_neg_value, "involvement_type"] = "success_and_neg_value"
@@ -418,10 +431,7 @@ def get_involvement(
     df_involvement = pd.concat([df_involvement_success, df_involvement_success_neg, df_involvement_out, df_involvement_intercepted], ignore_index=True)
     df_involvement["model_radius"] = model_radius
 
-    import streamlit as st
     df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "involvement_pass_id", 0)
-    # st.write("df_involvement x")
-    # st.write(df_involvement)
 
     return df_involvement
 
