@@ -457,6 +457,17 @@ def list_files_in_drive_folder(folder_path: str, root_folder_id: str = ROOT_FOLD
     return _list_files_in_drive_folder(folder_path, root_folder_id)
 
 
+def download_all_parquets_from_drive(drive_folder, st_cache=False):
+    import defensive_network.utility.general
+    files = list_files_in_drive_folder(drive_folder, st_cache=st_cache)
+    dfs = []
+    for file_nr, file in enumerate(defensive_network.utility.general.progress_bar(files, desc="Reading and concatting multiple parquet files")):
+        df = defensive_network.parse.drive.download_parquet_from_drive(os.path.join(drive_folder, file["name"]), st_cache=st_cache)
+        dfs.append(df)
+    df = pd.concat(dfs)
+    return df
+
+
 def download_parquet_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDER_ID, st_cache=False):
     def _download_parquet_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDER_ID):
         """
