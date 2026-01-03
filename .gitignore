@@ -13,3 +13,8 @@ dist/
 *.parquet
 *.egg-info
 *.ini
+*.txt
+__pycache__/
+fonts/
+how-to-amend
+secrets/
