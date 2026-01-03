@@ -792,6 +792,7 @@ def main():
     _do_create_matchsums = st.toggle("Create matchsums", value=False)
     _do_videos = st.toggle("Create videos", value=False)
     _do_analysis = st.toggle("Do analysis", value=True)
+    _do_summary = st.toggle("Analyse summary metrics", False, key=f"summary_table")
 
     folder = st.text_input("Folder", "Y:/m_raw/2324/")
     # if not os.path.exists(folder):
@@ -802,6 +803,8 @@ def main():
     # folder_events = st.text_input("Folder for preprocessed events", os.path.join(folder, "events"))
     # folder_tracking = st.text_input("Folder for preprocessed tracking", os.path.join(folder, "tracking"))
 
+    radius = st.selectbox("Involvement radius (meters)", [10], index=0)
+
     folder_tracking = "tracking/"
     folder_events = "events/"
     folder_pp_tracking = os.path.join(folder, "preprocessed", folder_tracking)
@@ -809,9 +812,8 @@ def main():
     folder_drive_tracking = "tracking"
     folder_full_tracking = os.path.join(folder, "finalized", folder_tracking)
     folder_drive_events = "events"
-    fpath_drive_team_matchsums = "team_matchsums.csv"
-    fpath_drive_players_matchsums = "df_matchsums_player.csv"
-    radius = 10
+    fpath_drive_team_matchsums = f"concat_team_matchsums/{radius}.csv"
+    fpath_drive_players_matchsums = f"concat_player_matchsums/{radius}.csv"
     folder_drive_involvement = f"involvement/{radius}"
 
     # filetype_to_files = get_dfb_csv_files_in_folder(folder, [fpath_target_meta, fpath_target_lineup])
@@ -877,7 +879,7 @@ def main():
             def _get_involvement(involvement_files):
                 dfs = []
                 for file in defensive_network.utility.general.progress_bar(involvement_files, total=len(involvement_files), desc="Involvement concat"):
-                    df = defensive_network.parse.drive.download_csv_from_drive(os.path.join(folder_drive_involvement, file["name"]))
+                    df = defensive_network.parse.drive.download_parquet_from_drive(os.path.join(folder_drive_involvement, file["name"]))
                     df["match_id"] = df["match_id"].astype(str)
                     df["competition_name"] = df["match_id"].map(match_id_2_competition_name)
                     # st.write("df")
@@ -922,17 +924,17 @@ def main():
 
         for competition_name in selected_competition_names:
             st.write(f"Calculating responsibility model for {competition_name}...")
-            calc_involvement_model(folder_drive_involvement, f"responsibility_model_{competition_name}.csv", competition_name)
+            calc_involvement_model(folder_drive_involvement, f"responsibility_model/{competition_name}_{radius}.csv", competition_name)
 
         if st.toggle("Calculate responsibility model for all competitions", value=False):
-            calc_involvement_model(folder_drive_involvement, competition_name=None)
+            calc_involvement_model(folder_drive_involvement, f"responsibility_model/all_{radius}.csv", competition_name=None)
 
     if _do_create_matchsums:
         try:
             df_meta = defensive_network.parse.drive.download_csv_from_drive("meta.csv", st_cache=True)
             df_lineups = defensive_network.parse.drive.download_csv_from_drive("lineups.csv", st_cache=True)
             # df_meta = df_meta[df_meta["match_id"] == "2d4fe74894566dc4b826bd608deaa53c"]
-            create_matchsums(folder_full_tracking, folder_drive_events, df_meta, df_lineups, fpath_drive_team_matchsums, fpath_drive_players_matchsums, overwrite_if_exists=overwrite_if_exists)
+            create_matchsums(folder_full_tracking, folder_drive_events, df_meta, df_lineups, fpath_drive_team_matchsums, fpath_drive_players_matchsums, folder_drive_involvement, overwrite_if_exists=overwrite_if_exists)
         except Exception as e:
             st.write(e)
             gc.collect()
@@ -961,8 +963,8 @@ def main():
         _do_fifa_correlations = st.toggle("FIFA correlations", True, key=f"fifa_correlations")
 
         with st.spinner("Loading matchsums..."):
-            # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
-            df_player_matchsums = pd.read_csv("C:/Users/j.bischofberger/OneDrive - VfB Stuttgart 1893 AG/Desktop/code/defensive-network/df_matchsums_player.csv")  # TODO fix
+            df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
+            # df_player_matchsums = pd.read_csv("C:/Users/j.bischofberger/OneDrive - VfB Stuttgart 1893 AG/Desktop/code/defensive-network/df_matchsums_player.csv")  # TODO fix
 
         df_player_matchsums = df_player_matchsums[df_player_matchsums["role_category"] != "GK"]
         # df_player_matchsums["is_rückrunde"] = df_player_matchsums["kickoff_time"].apply(lambda x: pd.to_datetime(x, errors="coerce").year == 2024)
@@ -983,9 +985,9 @@ def main():
         for competition in selected_competitions:
             st.write(f"## {competition}")
             with st.spinner("Loading matchsums..."):
-                # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
+                df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive(fpath_drive_players_matchsums, st_cache=True)
                 # df_player_matchsums = pd.read_csv("C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/df_matchsums_player.csv")  # TODO fix
-                df_player_matchsums = pd.read_csv("C:/Users/j.bischofberger/OneDrive - VfB Stuttgart 1893 AG/Desktop/code/defensive-network/df_matchsums_player.csv")  # TODO fix
+                # df_player_matchsums = pd.read_csv("C:/Users/j.bischofberger/OneDrive - VfB Stuttgart 1893 AG/Desktop/code/defensive-network/df_matchsums_player.csv")  # TODO fix
 
             df_player_matchsums = df_player_matchsums[df_player_matchsums["role_category"] != "GK"]
             df_player_matchsums["is_rückrunde"] = pd.to_datetime(df_player_matchsums["kickoff_time"].astype(str), errors="coerce").dt.tz_localize(None).dt.year == 2024
@@ -1038,7 +1040,7 @@ def main():
             # st.write("tracking_slugs")
             # st.write(tracking_slugs)
             df_meta["has_tracking"] = df_meta["slugified_match_string"].isin(tracking_slugs)
-            involvement_slugs = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder("involvement", st_cache=True)]
+            involvement_slugs = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder(f"involvement/{radius}", st_cache=True)]
             df_meta["has_involvement"] = df_meta["slugified_match_string"].isin(involvement_slugs)
             matchsum_slugs = df_player_matchsums["slugified_match_string"].tolist()
             df_meta["has_matchsums"] = df_meta["slugified_match_string"].isin(matchsum_slugs)
@@ -1342,16 +1344,16 @@ def main():
             ######### duplicate from remote??
             if _do_fifa_correlations:
                 with st.expander("FIFA", True):
-                    # df_fifa_players = defensive_network.parse.drive.download_csv_from_drive("fifa_ratings.csv", st_cache=True)
-                    df_fifa_players = pd.read_csv("C:/Users/j.bischofberger/Downloads/fifa_ratings.csv")
+                    df_fifa_players = defensive_network.parse.drive.download_csv_from_drive("fifa_ratings.csv", st_cache=True)
+                    # df_fifa_players = pd.read_csv("C:/Users/j.bischofberger/Downloads/fifa_ratings.csv")
                     # files = defensive_network.parse.drive.list_files_in_drive_folder(".", st_cache=True)
                     # st.write("files")
                     # st.write(files)
                     # df_soccerdonna = defensive_network.parse.drive.download_csv_from_drive("market_values.csv", st_cache=True)
-                    # df_soccerdonna = defensive_network.parse.drive.download_excel_from_drive("market_values.xlsx", st_cache=True)
+                    df_soccerdonna = defensive_network.parse.drive.download_excel_from_drive("market_values.xlsx", st_cache=True)
                     # df_soccerdonna = pd.read_excel("C:/Users/j.bischofberger/Downloads/Neuer Ordner (7)/market_values.xlsx")  # TODO WHY
                     # df_soccerdonna = pd.read_excel("C:/Users/Jonas/Downloads/market_values.xlsx")  # TODO WHY
-                    df_soccerdonna = pd.read_excel("C:/Users/j.bischofberger/Downloads/Neuer Ordner (7)/market_values.xlsx")  # TODO WHY
+                    # df_soccerdonna = pd.read_excel("C:/Users/j.bischofberger/Downloads/Neuer Ordner (7)/market_values.xlsx")  # TODO WHY
                     # df_player_matchsums = defensive_network.parse.drive.download_csv_from_drive("players_matchsums.csv")
                     # df_agg_player = aggregate_matchsums(df_player_matchsums, group_cols=["player_id", "position"])
                     # df_agg_player["coarse_position"] = df_agg_player["position"].map(position_mapping)
@@ -1476,7 +1478,7 @@ def main():
                         st.write(f"Top market values in {posgroup}")
                         st.write(df_posgroup[["full_name", "market_value", "market_value_rank", "defending", "def_awareness"]])
 
-                    st.stop()
+                    # st.stop()
 
                     data = []
                     x_variables = kpis
@@ -2158,12 +2160,12 @@ def main():
         df_summary.to_excel("C:/Users/j.bischofberger/Downloads/df_summary_total.xlsx")
         st.write("Final summary")
         st.write(df_summary)
-        st.write("All present types:", df_summary["type"].unique())
-        with st.spinner("Saving summary to Drive..."):
-            defensive_network.parse.drive.append_to_parquet_on_drive(df_summary, f"summary2.csv", key_cols=["type", "competition_name", "kpi", "other_variable"], format="csv")
-        st.write(f"Saved summary to Drive!")
+        if len(df_summary) > 0:
+            st.write("All present types:", df_summary["type"].unique())
+            with st.spinner("Saving summary to Drive..."):
+                defensive_network.parse.drive.append_to_parquet_on_drive(df_summary, f"summary2.csv", key_cols=["type", "competition_name", "kpi", "other_variable"], format="csv")
+            st.write(f"Saved summary to Drive!")
 
-    _do_summary = True
     if _do_summary:
         dfs = []
         #             "": 380,
@@ -2175,16 +2177,16 @@ def main():
             ["FIFA Men's World Cup", "3. Liga", "Bundesliga"],
         ]:
             st.write("###" + ", ".join(competitions))
-            # df_summary = defensive_network.parse.drive.download_csv_from_drive(f"summary2.csv", st_cache=True)
+            df_summary = defensive_network.parse.drive.download_csv_from_drive(f"summary2.csv", st_cache=True)
             # df_summary = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_summary.csv")
-            df_summary_original = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_summary_2025_09_05_14_53.csv")
+            # df_summary_original = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_summary_2025_09_05_14_53.csv")
             # df_summary2 = pd.read_csv(f"C:/Users/j.bischofberger/Downloads/df_bootstrap_15.csv")
             # st.write("df_summary2")
             # st.write(df_summary2)
             # df_summary = pd.concat([df_summary1, df_summary2])
 
-            df_summary = df_summary_original.copy()
-
+            # df_summary = df_summary_original.copy()
+            df_summary_original = df_summary.copy()
             df_summary = df_summary[df_summary["competition_name"].isin(competitions)]
 
             def get_df_pivot(df_summary):
@@ -2432,8 +2434,8 @@ def main():
             #                                                            df_pivot_final["seasonal_autocorrelation (Partial)"] +
             #                                                            df_pivot_final["seasonal_autocorrelation_only_CBs (Person)"])
 
-            st.write("df_pivot_final")
-            st.write(df_pivot_final)
+            # st.write("df_pivot_final")
+            # st.write(df_pivot_final)
             df_pivot_final["competitions"] = ", ".join(competitions)
             df_pivot_final["n_competitions"] = len(competitions)
 
@@ -2789,12 +2791,13 @@ def process_involvements(df_meta, folder_tracking, folder_events, target_folder,
         df_events = df_events[df_events["event_type"] == "pass"]
 
         # cast team col to string
-        df_events["team_id_1"] = df_events["team_id_1"].astype(str).str.replace(".0", "")
-        df_events["team_id_2"] = df_events["team_id_2"].astype(str).str.replace(".0", "")
-        df_tracking["team_id"] = df_tracking["team_id"].astype(str).str.replace(".0", "")
-        df_tracking["player_id"] = df_tracking["player_id"].astype(str).str.replace(".0", "")
-        df_events["player_id_1"] = df_events["player_id_1"].astype(str).str.replace(".0", "")
-        df_events["player_id_2"] = df_events["player_id_2"].astype(str).str.replace(".0", "")
+        df_events["team_id_1"] = df_events["team_id_1"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_events["team_id_2"] = df_events["team_id_2"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_tracking["team_id"] = df_tracking["team_id"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_tracking["player_id"] = df_tracking["player_id"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_events["player_id_1"] = df_events["player_id_1"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_events["player_id_2"] = df_events["player_id_2"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
+        df_events["expected_receiver"] = df_events["expected_receiver"].astype(str).str.replace(".0", "").replace({"None": None, "nan": None, "NaN": None})
 
         # st.write("df_events")
         # st.write(df_events[[col for col in df_events.columns if "frame" in col]])
@@ -2834,9 +2837,6 @@ def process_involvements(df_meta, folder_tracking, folder_events, target_folder,
         # st.write("df_involvement")
         # st.write(df_involvement)<
         # print tracking teams
-        st.write(df_tracking["team_id"].unique())
-        st.write(df_involvement["team_id_1"].unique())
-        st.write(df_involvement["team_id_2"].unique())
 
         # shuffle involvement and tracking
         df_involvement = df_involvement.sample(frac=1, random_state=42).reset_index(drop=True)
@@ -2887,8 +2887,8 @@ def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target
             st.write("1")
             try:
                 st.write("1")
-                # df_matchsums_player = defensive_network.parse.drive.download_csv_from_drive(target_fpath_players, st_cache=True)
-                df_matchsums_player = pd.read_csv("C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/df_matchsums_player.csv")
+                df_matchsums_player = defensive_network.parse.drive.download_csv_from_drive(target_fpath_players, st_cache=True)
+                # df_matchsums_player = pd.read_csv("C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/df_matchsums_player.csv")
                 st.write("1")
                 # df_matchsums_player.to_excel("df_matchsums_player.xlsx", index=True)
                 st.write("1")
@@ -2923,14 +2923,14 @@ def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target
             st.write(f"Creating matchsums for {match_string}")
             fpath_tracking = os.path.join(folder_tracking, f"{slugified_match_string}.parquet")
             fpath_events = os.path.join(folder_events, f"{slugified_match_string}.csv")
-            fpath_involvement = os.path.join(folder_involvement, f"{slugified_match_string}.csv")
+            fpath_involvement = os.path.join(folder_involvement, f"{slugified_match_string}.parquet")
 
             # df_tracking = pd.read_parquet(fpath_tracking)
             # df_events = pd.read_csv(fpath_events)
             try:
                 # df_tracking = defensive_network.parse.drive.download_parquet_from_drive(fpath_tracking)
                 with st.spinner("Loading data..."):
-                    df_involvement = defensive_network.parse.drive.download_csv_from_drive(fpath_involvement, st_cache=True)  # TODO no cache
+                    df_involvement = defensive_network.parse.drive.download_parquet_from_drive(fpath_involvement, st_cache=True)  # TODO no cache
 
                     # @st.cache_resource
                     def _get_parquet(fpath):
