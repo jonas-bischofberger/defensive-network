@@ -35,3 +35,7 @@ shapely
 requests
 beautifulsoup4
 accessible_space
+patsy
+memory-profiler
+pingouin
+adjustText

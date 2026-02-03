@@ -200,6 +200,9 @@ def plot_tracking_frame(
         x = df_frame_team[tracking_x_col].tolist()
         y = df_frame_team[tracking_y_col].tolist()
         color = "red" if not is_defending_team else "blue"
+        # st.write("plot_tracking_frame x", x)
+        # st.write("plot_tracking_frame y", y)
+        # st.write("plot_tracking_frame c", color)
         plt.scatter(x, y, c=color)
 
         if tracking_vx_col is not None and tracking_vy_col is not None:
@@ -233,6 +236,7 @@ def plot_tracking_frame(
 def plot_pitch():
     """
     >>> plot_pitch()
+    <Figure size 640x480 with 1 Axes>
     >>> plt.show()  # doctest: +SKIP
     """
     plt.figure()
@@ -278,7 +282,7 @@ def plot_passes(df_passes, df_tracking, n_cols=2):  # TODO add params
     columns = st.columns(n_cols)
     for i, (_, p4ss) in enumerate(df_passes.iterrows()):
         df_frame = df_tracking[df_tracking["frame_id"] == p4ss["frame_id"]]
-        st.write(p4ss["player_id_1"], "->", p4ss["player_id_2"])
+        # st.write(p4ss["player_id_1"], "->", p4ss["player_id_2"])
         fig = defensive_network.utility.pitch.plot_pass(p4ss, df_frame)
         columns[i%n_cols].write(fig)
 
@@ -300,6 +304,8 @@ def plot_pass(
     <Figure size 640x480 with 1 Axes>
     >>> plt.show()  # doctest: +SKIP
     """
+    assert p4ss[pass_team_col] in df_frame[tracking_team_col].unique(), f"Pass team {p4ss[pass_team_col]} not in tracking data {df_frame[tracking_team_col].unique()}"
+
     if df_frame is not None and "frame" in df_frame.columns:
         frame = df_frame["frame"].iloc[0]
         make_pass_transparent = not (p4ss["frame"] <= float(frame) <= p4ss["frame_rec"])
@@ -319,6 +325,16 @@ def plot_pass(
     factor=1
 
     plot_pitch()
+
+    # df_frame[tracking_team_col] = df_frame[tracking_team_col].astype(str)
+    # df_frame[tracking_player_col] = df_frame[tracking_player_col].astype(str)
+    # p4ss[pass_team_col] = str(p4ss[pass_team_col])
+    # p4ss[pass_player_name_col] = str(p4ss[pass_player_name_col])
+
+    # try:
+    #     df_frame[tracking_team_col] = df_frame[tracking_team_col].astype(float, errors="raise")
+    # except ValueError as e:
+    #     pass
 
     assert p4ss[pass_team_col] in df_frame[tracking_team_col].unique(), f"Pass team {p4ss[pass_team_col]} not in tracking data {df_frame[tracking_team_col].unique()}"
     if plot_tracking_data and df_frame is not None:
@@ -351,11 +367,10 @@ def plot_pass(
 
     if plot_expected_receiver and "expected_receiver" in p4ss:
         expected_receiver = p4ss["expected_receiver"]
-        # st.write("df_frame", df_frame.shape)
-        # st.write(df_frame)
         if not pd.isna(expected_receiver) and df_frame is not None:
             df_tracking_expected_receiver = df_frame[df_frame[tracking_player_col] == expected_receiver]
             if not len(df_tracking_expected_receiver) > 0:
+                # raise ValueError(f"Expected receiver {expected_receiver} not found in tracking data for frame {p4ss[pass_frame_col]}")
                 warnings.warn("TODO")
             else:
                 x = df_tracking_expected_receiver[tracking_x_col].iloc[0]
@@ -381,14 +396,11 @@ def plot_pass(
                       fc=arrow_color, ec=arrow_color, alpha=alpha, length_includes_head=True, linewidth=0.5,
                       label=additional_frame_col, edgecolor=None,
                       )
-            st.write(f"{additional_frame_cols=}, {float(p4ss[additional_frame_col])} <= {frame} <= {p4ss["frame_rec"]}, {alpha=}")
             additional_frames_str += f"{additional_frame_col}:{p4ss[additional_frame_col]},"
 
     if additional_x_coordinates is not None:
         for cnr, ((additional_x_col, scatter_color), additional_y_col) in enumerate(list(zip(additional_x_coordinates.items(), additional_y_coordinates.keys()))):
             ds = -cnr * 35
-            st.write(p4ss)
-            st.write(p4ss[additional_x_col], p4ss[additional_y_col], additional_x_col, additional_y_col)
             plt.scatter(x=p4ss[additional_x_col], y=p4ss[additional_y_col], c=scatter_color, marker="x", s=200*factor + ds, label=additional_x_col)
         plt.legend()
 
@@ -406,7 +418,7 @@ def plot_pass_involvement(
     responsibility_col=None,
 ):
     fig = plot_pass(
-        p4ss, df_tracking[df_tracking[tracking_frame_col] == p4ss[pass_frame_col] ],
+        p4ss, df_tracking[df_tracking[tracking_frame_col] == p4ss[pass_frame_col]],
         pass_x_col, pass_y_col, pass_end_x_col, pass_end_y_col,
         pass_frame_col, "frame_rec", pass_team_col, pass_player_name_col,
         tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col, tracking_frame_col, tracking_player_name_col,
@@ -495,7 +507,7 @@ def plot_passes_with_involvement(
     >>> df_tracking = pd.DataFrame({"full_frame": [0, 0, 0, 1, 1, 1, 0, 1, 2], "team_id": [1, 1, 1, 1, 1, 1, 2, 2, 2], "player_id": [2, 3, 4, 2, 3, 4, "BALL", "BALL", "BALL"], "x_tracking": [5, 10, 15, 5, 10, 15, 5, 10, 15], "y_tracking": [0, 0, 0, 0, 0, 0, 0, 0, 0], "player_name": ["A", "B", "C", "A", "B", "C", "BALL", "BALL", "BALL"]})
     >>> df_involvement = defensive_network.models.involvement.get_involvement(df_event, df_tracking)
     >>> plot_passes_with_involvement(df_involvement, df_tracking)
-    [<Figure size 640x480 with 1 Axes>]
+    [<Figure size 640x480 with 1 Axes>, <Figure size 640x480 with 1 Axes>]
     >>> plt.show()  # doctest: +SKIP
     """
     if len(df_involvement) == 0:
@@ -505,6 +517,8 @@ def plot_passes_with_involvement(
     figs = []
     columns = st.columns(n_cols)
     for pass_nr, (pass_id, df_outplayed_pass) in enumerate(df_involvement.groupby(event_id_col)):
+        # if pass_nr not in [8]:
+        #     continue
         if pass_nr >= n_passes:
             break
         try:

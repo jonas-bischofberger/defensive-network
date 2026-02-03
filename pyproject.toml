@@ -1,6 +1,6 @@
 [project]
 name = "defensive_network"
-version = "0.0.1"
+version = "0.0.8"
 authors = [
   {name="Jonas Bischofberger", email="jonas.bischofberger@univie.ac.at"},
   {name="Runqing Ma", email="runqing.ma@univie.ac.at"},
@@ -31,6 +31,19 @@ dependencies = [
     "tqdm",
     "webdriver-manager",
     "wfork-streamlit-profiler",
+    "patsy",
+    "statsmodels",
+    "opencv-python",
+    "requests",
+    "beautifulsoup4",
+    "pandera[pandas]",
+    "shapely",
+    "google-api-python-client",
+    "google-auth-httplib2",
+    "google-auth-oauthlib",
+    "memory-profiler",
+    "pingouin",
+#    "ETSY @ git+https://github.com/ML-KULeuven/ETSY.git",
 ]
 #classifiers = [
 #    "Programming Language :: Python",
@@ -45,7 +58,7 @@ dependencies = [
 #]
 
 [tool.setuptools.packages.find]
-where = ["defensive_network"]
+where = ["."]
 
 [project.optional-dependencies]
 #full = [
@@ -69,14 +82,12 @@ dev = [
     "tox",
 ]
 
-
 [project.urls]
 Repository = "https://github.com/jonas-bischofberger/defensive-network"
 
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
-
 
 [tool.pytest.ini_options]
 addopts = "--doctest-modules --cov=defensive_network --doctest-continue-on-failure -rsx"

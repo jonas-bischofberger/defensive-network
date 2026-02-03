@@ -11,7 +11,7 @@ import accessible_space.interface
 
 import sys
 import os
-
+import streamlit as st
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
 import defensive_network.utility.pitch
@@ -103,15 +103,19 @@ def _get_involvement_by_model(
     7           2        0          3          P3          10           8
     8           2        0          4          P4          15           9
     >>> _get_involvement_by_model(df_passes, df_tracking, model="circle_circle_rectangle", model_radius=7.5, tracking_player_name_col="player_name")#.drop(columns=["team_id_1", "player_id_2", "full_frame_rec", "x_event", "y_event", "x_target", "y_target"])
-       defender_id  raw_involvement  raw_contribution  raw_fault  involvement  contribution     fault  event_id  team_id_1  full_frame  x_event  y_event defender_name  defender_x  defender_y        involvement_model  x_target  y_target  is_successful  player_id_2  full_frame_rec  pass_xt  model_radius
-    0            3         0.733333          0.733333   0.000000     0.073333      0.073333  0.000000         0          1           0        0        0            P3          10           2  circle_circle_rectangle        10         0          False            2               1     -0.1           7.5
-    1            4         0.222540          0.222540   0.000000     0.022254      0.022254  0.000000         0          1           0        0        0            P4          15           3  circle_circle_rectangle        10         0          False            2               1     -0.1           7.5
-    2            3         0.333333          0.000000   0.333333     0.033333      0.000000  0.033333         1          1           1        0        0            P3          10           5  circle_circle_rectangle        20         0           True            3               2      0.1           7.5
-    3            4         0.200000          0.000000   0.200000     0.020000      0.000000  0.020000         1          1           1        0        0            P4          15           6  circle_circle_rectangle        20         0           True            3               2      0.1           7.5
-    4            3         0.000000          0.000000   0.000000     0.000000      0.000000  0.000000         2          1           2        0        0            P3          10           8  circle_circle_rectangle        30         0          False            4               3     -0.1           7.5
-    5            4         0.000000          0.000000   0.000000     0.000000      0.000000  0.000000         2          1           2        0        0            P4          15           9  circle_circle_rectangle        30         0          False            4               3     -0.1           7.5
+       defender_id  raw_involvement  raw_contribution  raw_fault  valued_involvement  valued_contribution  valued_fault  event_id  team_id_1  full_frame  x_event  y_event defender_name  defender_x  defender_y        involvement_model  x_target  y_target  is_successful  player_id_2  full_frame_rec  pass_xt  model_radius
+    0            3         0.733333          0.733333   0.000000            0.073333             0.073333      0.000000         0          1           0        0        0            P3          10           2  circle_circle_rectangle        10         0          False            2               1     -0.1           7.5
+    1            4         0.222540          0.222540   0.000000            0.022254             0.022254      0.000000         0          1           0        0        0            P4          15           3  circle_circle_rectangle        10         0          False            2               1     -0.1           7.5
+    2            3         0.333333          0.000000   0.333333            0.033333             0.000000      0.033333         1          1           1        0        0            P3          10           5  circle_circle_rectangle        20         0           True            3               2      0.1           7.5
+    3            4         0.200000          0.000000   0.200000            0.020000             0.000000      0.020000         1          1           1        0        0            P4          15           6  circle_circle_rectangle        20         0           True            3               2      0.1           7.5
+    4            3         0.000000          0.000000   0.000000            0.000000             0.000000      0.000000         2          1           2        0        0            P3          10           8  circle_circle_rectangle        30         0          False            4               3     -0.1           7.5
+    5            4         0.000000          0.000000   0.000000            0.000000             0.000000      0.000000         2          1           2        0        0            P4          15           9  circle_circle_rectangle        30         0          False            4               3     -0.1           7.5
     """
     df_passes = df_passes.copy()
+
+    # cast all team cols to string
+    df_passes[event_team_col] = df_passes[event_team_col].astype(str).str.replace(".0", "", regex=False)
+    df_tracking[tracking_team_col] = df_tracking[tracking_team_col].astype(str).str.replace(".0", "", regex=False)
 
     defensive_network.utility.dataframes.check_presence_of_required_columns(df_tracking, "df_tracking", ["full_frame", "team_id", "player_id", "x_tracking", "y_tracking"], [tracking_frame_col, tracking_team_col, tracking_player_col, tracking_x_col, tracking_y_col])
 
@@ -158,7 +162,7 @@ def _get_involvement_by_model(
 
     df_tracking_passes = df_tracking_passes[df_tracking_passes[tracking_team_col].notna()]
     df_tracking_passes = df_tracking_passes[df_tracking_passes[event_team_col].notna()]
-    teams = df_tracking_passes[tracking_team_col].unique().tolist()
+    teams = df_tracking_passes[tracking_team_col].dropna().unique().tolist()
 
     importlib.reload(accessible_space.interface)
     PLAYER_POS, _, players, player_teams, controlling_teams, frame_to_index, _ = accessible_space.interface.transform_into_arrays(
@@ -167,16 +171,31 @@ def _get_involvement_by_model(
         ball_player_id=ball_tracking_player_id, ignore_ball_position=True,  # TODO add back in after publishing accessible_space
         vx_col=None, vy_col=None,
     )
+    # if len(teams) == 2:
+    #     defending_teams = np.array([teams[0] if controlling_team == teams[1] else teams[1] for controlling_team in controlling_teams])
+    #     st.write("defending_teams 2")
+    #     st.write(teams)
+    #     st.write(defending_teams)
+    # elif len(teams) == 1:
+    #     defending_team = teams[0]
+    #     assert all([defending_team != controlling_team for controlling_team in controlling_teams])
+    #     defending_teams = np.array([defending_team for _ in controlling_teams])
+    #     st.write("defending_teams 1")
+    #     st.write(teams)
+    #     st.write(defending_teams)
+    # else:
+    #     teams = [team for team in teams if not pd.isna(team)]
+    #     defending_teams = np.array([teams[0] if controlling_team == teams[1] else teams[1] for controlling_team in controlling_teams])
+    #     st.write("defending_teams X")
+    #     st.write(teams)
+    #     st.write(defending_teams)
 
-    if len(teams) == 2:
-        defending_teams = np.array([teams[0] if controlling_team == teams[1] else teams[1] for controlling_team in controlling_teams])
-    elif len(teams) == 1:
-        defending_team = teams[0]
-        assert all([defending_team != controlling_team for controlling_team in controlling_teams])
-        defending_teams = np.array([defending_team for _ in controlling_teams])
-    else:
-        teams = [team for team in teams if not pd.isna(team)]
-        defending_teams = np.array([teams[0] if controlling_team == teams[1] else teams[1] for controlling_team in controlling_teams])
+    defending_teams = np.where(
+        controlling_teams == df_passes[event_team_col].values,
+        df_passes[event_team_col].map(lambda t: teams[0] if t == teams[1] else teams[1]).values,
+        df_passes[event_team_col].values
+    )
+    assert (defending_teams != controlling_teams).all()
 
     i_valid_positions_available = df_passes[unique_frame_col].isin(frame_to_index.keys())
     X_PASSER = df_passes.loc[i_valid_positions_available, event_x_col].values
@@ -212,11 +231,6 @@ def _get_involvement_by_model(
     P = INVOLVEMENT.shape[1]
     df_involvement["defender_id"] = list(players) * F  # P x F
     df_involvement["defender_name"] = df_involvement["defender_id"].apply(lambda x: player2name.get(x, x))
-    # import streamlit as st
-    # st.write("df_involvement")
-    # st.write(df_involvement)
-    # assert df_involvement["defender_name"].notna().any()
-    # st.stop()
     df_involvement["defender_x"] = PLAYER_POS[:, :, 0].flatten()
     df_involvement["defender_y"] = PLAYER_POS[:, :, 1].flatten()
 
@@ -309,8 +323,8 @@ def get_involvement(
     event_team_col="team_id_1", event_raw_x_col="x_event", event_raw_y_col="y_event", event_raw_target_x_col="x_target",
     event_raw_target_y_col="y_target", event_receiver_col="player_id_2", event_value_col="pass_xt",
     tracking_frame_col="full_frame", tracking_x_col="x_tracking", tracking_y_col="y_tracking",
-    tracking_team_col="team_id", tracking_player_col="player_id", ball_tracking_player_id="BALL", tracking_player_name_col="player_name",
-    involvement_model_success_pos_value="circle_circle_rectangle",
+    tracking_team_col="team_id", tracking_player_col="player_id", ball_tracking_player_id="BALL",
+    tracking_player_name_col="player_name", involvement_model_success_pos_value="circle_circle_rectangle",
     involvement_model_success_neg_value="circle_passer", involvement_model_out="circle_passer",
     involvement_model_intercepted="intercepter", model_radius=5, tracking_defender_meta_cols=None,
 ):
@@ -337,13 +351,13 @@ def get_involvement(
     8           2        2      BALL          15           0        BALL
     >>> df_involvement = get_involvement(df_event, df_tracking)
     >>> df_involvement
-       involvement_pass_id  defender_id  raw_involvement  raw_contribution  raw_fault  involvement  contribution  fault  event_id  team_id_1  full_frame  x_event  y_event  x_target  y_target  pass_is_successful  player_id_2  full_frame_rec  player_id_1 defender_name  defender_x  defender_y        involvement_model event_string  pass_xt  pass_is_intercepted player_name_1       involvement_type  model_radius
-    0                    0          2.0              1.0               0.0        1.0          0.1           0.0    0.1         0          2           0        0        0        10         0                True            2               1            1             A         5.0         0.0  circle_circle_rectangle         pass      0.1                False             A  success_and_pos_value             5
-    1                    0          3.0              1.0               0.0        1.0          0.1           0.0    0.1         0          2           0        0        0        10         0                True            2               1            1             B        10.0         0.0  circle_circle_rectangle         pass      0.1                False             A  success_and_pos_value             5
-    2                    0          4.0              0.0               0.0        0.0          0.0           0.0    0.0         0          2           0        0        0        10         0                True            2               1            1             C        15.0         0.0  circle_circle_rectangle         pass      0.1                False             A  success_and_pos_value             5
-    3                    1          2.0              0.0               0.0        0.0          0.0           0.0    0.0         1          2           1        0        0        20         0               False            3               2            2             A         5.0         0.0            circle_passer         pass     -0.1                False             B                    out             5
-    4                    1          3.0              0.0               0.0        0.0          0.0           0.0    0.0         1          2           1        0        0        20         0               False            3               2            2             B        10.0         0.0            circle_passer         pass     -0.1                False             B                    out             5
-    5                    1          4.0              0.0               0.0        0.0          0.0           0.0    0.0         1          2           1        0        0        20         0               False            3               2            2             C        15.0         0.0            circle_passer         pass     -0.1                False             B                    out             5
+       involvement_pass_id  defender_id  raw_involvement  raw_contribution  raw_fault  valued_involvement  valued_contribution  valued_fault  event_id  team_id_1  full_frame  x_event  y_event  x_target  y_target  pass_is_successful  player_id_2  full_frame_rec  player_id_1 defender_name  defender_x  defender_y        involvement_model event_string  pass_xt  pass_is_intercepted player_name_1       involvement_type  model_radius
+    0                    0          2.0              1.0               0.0        1.0                 0.1                  0.0           0.1         0          2           0        0        0        10         0                True            2               1            1             A         5.0         0.0  circle_circle_rectangle         pass      0.1                False             A  success_and_pos_value             5
+    1                    0          3.0              1.0               0.0        1.0                 0.1                  0.0           0.1         0          2           0        0        0        10         0                True            2               1            1             B        10.0         0.0  circle_circle_rectangle         pass      0.1                False             A  success_and_pos_value             5
+    2                    0          4.0              0.0               0.0        0.0                 0.0                  0.0           0.0         0          2           0        0        0        10         0                True            2               1            1             C        15.0         0.0  circle_circle_rectangle         pass      0.1                False             A  success_and_pos_value             5
+    3                    1          2.0              0.0               0.0        0.0                 0.0                  0.0           0.0         1          2           1        0        0        20         0               False            3               2            2             A         5.0         0.0            circle_passer         pass     -0.1                False             B                    out             5
+    4                    1          3.0              0.0               0.0        0.0                 0.0                  0.0           0.0         1          2           1        0        0        20         0               False            3               2            2             B        10.0         0.0            circle_passer         pass     -0.1                False             B                    out             5
+    5                    1          4.0              0.0               0.0        0.0                 0.0                  0.0           0.0         1          2           1        0        0        20         0               False            3               2            2             C        15.0         0.0            circle_passer         pass     -0.1                False             B                    out             5
     """
     df_passes["involvement_pass_id"] = range(len(df_passes))  # give unique id to passes
 
@@ -360,7 +374,8 @@ def get_involvement(
     i_success_and_pos_value = df_passes[event_success_col] & (df_passes[event_value_col] >= 0)
     df_passes.loc[i_success_and_pos_value, "involvement_type"] = "success_and_pos_value"
 
-    df_tracking["role_category"] = df_tracking["role"]
+    if "role" in df_tracking.columns:  # TODO fix outside
+        df_tracking["role_category"] = df_tracking["role"]
     df_involvement_success = _get_involvement_by_model(
         df_passes.loc[i_success_and_pos_value], df_tracking,
         tracking_frame_col, tracking_team_col,
@@ -371,7 +386,6 @@ def get_involvement(
         model=involvement_model_success_pos_value, model_radius=model_radius,
         tracking_defender_meta_cols=tracking_defender_meta_cols,
     )
-
     # 2. Successful passes, xT < 0
     i_success_and_neg_value = df_passes[event_success_col] & (df_passes[event_value_col] < 0)
     df_passes.loc[i_success_and_neg_value, "involvement_type"] = "success_and_neg_value"
@@ -417,10 +431,7 @@ def get_involvement(
     df_involvement = pd.concat([df_involvement_success, df_involvement_success_neg, df_involvement_out, df_involvement_intercepted], ignore_index=True)
     df_involvement["model_radius"] = model_radius
 
-    import streamlit as st
     df_involvement = defensive_network.utility.dataframes.move_column(df_involvement, "involvement_pass_id", 0)
-    # st.write("df_involvement x")
-    # st.write(df_involvement)
 
     return df_involvement
 

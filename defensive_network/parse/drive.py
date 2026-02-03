@@ -457,6 +457,17 @@ def list_files_in_drive_folder(folder_path: str, root_folder_id: str = ROOT_FOLD
     return _list_files_in_drive_folder(folder_path, root_folder_id)
 
 
+def download_all_parquets_from_drive(drive_folder, st_cache=False):
+    import defensive_network.utility.general
+    files = list_files_in_drive_folder(drive_folder, st_cache=st_cache)
+    dfs = []
+    for file_nr, file in enumerate(defensive_network.utility.general.progress_bar(files, desc="Reading and concatting multiple parquet files")):
+        df = defensive_network.parse.drive.download_parquet_from_drive(os.path.join(drive_folder, file["name"]), st_cache=st_cache)
+        dfs.append(df)
+    df = pd.concat(dfs)
+    return df
+
+
 def download_parquet_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDER_ID, st_cache=False):
     def _download_parquet_from_drive(relative_path: str, root_folder_id: str = ROOT_FOLDER_ID):
         """
@@ -639,7 +650,102 @@ def append_to_parquet_on_drive(df_to_append, fpath: str, key_cols, overwrite_key
     with st.spinner("Uploading combined Parquet file to Drive..."):
         file_id = upload_file_to_drive(local_temp_path, fpath, root_folder_id)
 
-    os.remove(local_temp_path)
+    try:
+        os.remove(local_temp_path)
+    except PermissionError:
+        st.warning(f"PermissionError: File {local_temp_path} is still in use. Please close it and try again later.")
+
+    return file_id
+
+
+def convert_to_parquet_and_append_to_parquet_on_drive(df_to_append, fpath: str, key_cols, overwrite_key_cols=True, root_folder_id=ROOT_FOLDER_ID, format="parquet"):
+    """
+    Append to a Parquet file stored on Google Drive. Deduplicates based on key_cols.
+
+    Args:
+        df_to_append (pd.DataFrame): DataFrame to append.
+        fpath (str): Path on Google Drive (relative to root folder), e.g. 'subdir/data.parquet'.
+        key_cols (list): List of columns that define unique keys.
+        overwrite_key_cols (bool): If True, overwrite matching keys. If False, keep first.
+        root_folder_id (str): Google Drive folder ID where the path starts.
+    """
+    assert format in ["parquet", "csv"], "Unsupported format. Only 'parquet' and 'csv' are supported."
+    from googleapiclient.discovery import build
+    import pandas as pd
+    import os
+
+    # --- Auth & Setup
+    creds = _authenticate()
+    service = build('drive', 'v3', credentials=creds)
+    parent_path, fname = os.path.split(fpath)
+
+    delete_folder_by_path(fpath)
+
+    # --- Resolve folder ID
+    # st.write("parent_path", parent_path, "root_folder_id", root_folder_id, "service", service)
+    # st.write("meta", _get_folder_id_by_path("meta.csv", root_folder_id, service))
+    # st.write("lineups", _get_folder_id_by_path("lineups.csv", root_folder_id, service))
+    # st.write(".", _get_folder_id_by_path(".", root_folder_id, service))
+    # st.write("", _get_folder_id_by_path("", root_folder_id, service))
+    # st.write("tracking/", _get_folder_id_by_path("tracking/", root_folder_id, service))
+    # st.write("tracking: --------- ", _get_folder_id_by_path("tracking", root_folder_id, service))
+    # st.stop()
+    folder_id = _get_folder_id_by_path(parent_path, root_folder_id, service)
+    # return None
+    assert folder_id is not None, f"Folder path '{parent_path}' not found on Drive."
+
+    # --- Deduplication assertions
+    def assert_no_duplicate_keys(df, keys):
+        if df.duplicated(keys).any():
+            st.write(df.loc[df.duplicated(keys, keep=False)])
+            raise ValueError("Duplicate keys found")
+
+    def assert_no_duplicate_columns(df):
+        if df.columns.duplicated().any():
+            raise ValueError("Duplicate columns found")
+
+    # --- Download existing file
+    try:
+        with st.spinner("Downloading existing file..."):
+            df_existing = download_csv_from_drive(fpath, root_folder_id)
+            df_existing = df_existing.drop_duplicates(key_cols)  # drop complete duplicate rows - fixes strange error
+            assert_no_duplicate_keys(df_existing, key_cols)
+            assert_no_duplicate_columns(df_existing)
+
+    except FileNotFoundError:
+        df_existing = pd.DataFrame(columns=df_to_append.columns)
+
+    fpath = fpath + ".parquet"
+
+    assert_no_duplicate_keys(df_to_append, key_cols)
+    assert_no_duplicate_columns(df_to_append)
+    assert_no_duplicate_keys(df_existing, key_cols)
+    assert_no_duplicate_columns(df_existing)
+
+    # --- Append and deduplicate
+    with st.spinner("Combining existing with new file..."):
+        df_combined = pd.concat([df_existing, df_to_append], axis=0)
+        df_combined = df_combined[~df_combined.duplicated(key_cols, keep="last" if overwrite_key_cols else "first")]
+
+    assert_no_duplicate_keys(df_combined, key_cols)
+    assert_no_duplicate_columns(df_combined)
+
+    # --- Save locally
+    local_temp_path = f"_temp_append.{format}"
+    with st.spinner("Saving combined file locally..."):
+        if format == "parquet":
+            df_combined.to_parquet(local_temp_path, index=False)
+        else:
+            df_combined.to_csv(local_temp_path, index=False)
+
+    # --- Upload back to Drive
+    with st.spinner("Uploading combined Parquet file to Drive..."):
+        file_id = upload_file_to_drive(local_temp_path, fpath, root_folder_id)
+
+    try:
+        os.remove(local_temp_path)
+    except PermissionError:
+        st.warning(f"PermissionError: File {local_temp_path} is still in use. Please close it and try again later.")
 
     return file_id
 

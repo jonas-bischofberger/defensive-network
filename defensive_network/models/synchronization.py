@@ -1,104 +1,83 @@
-import importlib
-
-import pandas as pd
-import numpy as np
-import etsy.sync
-import etsy.scoring
-import streamlit as st
-
 import collections
 
-# from defensive_network.parse.dfb.cdf import augment_match_data
+import etsy.sync
 
-importlib.reload(etsy.sync)
-importlib.reload(etsy.scoring)
-
-# from defensive_network.tests.data import df_events, df_tracking
+import defensive_network.tests.data
+import defensive_network.utility.dataframes
 
 SynchronizationResult = collections.namedtuple("SynchronizationResult", ["matched_frames", "scores"])
 
 
-def synchronize(df_events, df_tracking, fps_tracking=25):
-    df_events = df_events[
-        (df_events["event_type"] != "referee") &
-        (df_events["player_id_1"].notna())
-    ].reset_index()
+def synchronize(
+    df_tracking, df_events, fps_tracking, event_period_col="period_id", tracking_period_col="period_id",
+    tracking_frame_col="frame_id", event_timestamp_col="timestamp", event_passer_col="player_id", event_x_col="x",
+    event_y_col="y", ball_player_id="ball", tracking_timestamp_col="timestamp", tracking_x_col="x", tracking_y_col="y",
+    tracking_player_col="player_id",
+):
+    """
+    Wrapper around ETSY https://github.com/ML-KULeuven/ETSY
 
-    df_events["period_id"] = df_events["section"].map({"first_half": 1, "second_half": 2})
-    df_events["frame_id"] = df_events["frame"]
-    df_events["timestamp"] = pd.to_datetime(df_events["datetime_event"]).dt.tz_localize(None)
-    df_events["player_id"] = df_events["player_id_1"]#.fillna("dummy")
+    >>> defensive_network.utility.dataframes.prepare_doctest()
+    >>> df_tracking, df_events = defensive_network.tests.data.get_minimal_sync_example()
+    >>> df_tracking
+        period_id  frame_id               timestamp     x     y player_id
+    0           1       100 2025-01-01 00:00:00.000  50.0  30.0         A
+    1           1       101 2025-01-01 00:00:00.040  51.0  30.5         A
+    2           1       102 2025-01-01 00:00:00.080  52.0  31.0         A
+    3           1       103 2025-01-01 00:00:00.120  53.0  31.5         A
+    4           1       100 2025-01-01 00:00:00.000  50.0  30.0      ball
+    5           1       101 2025-01-01 00:00:00.040  51.0  30.5      ball
+    6           1       102 2025-01-01 00:00:00.080  52.0  31.0      ball
+    7           1       103 2025-01-01 00:00:00.120  53.0  31.5      ball
+    8           2       200 2025-01-01 00:00:10.000  59.0  39.5         A
+    9           2       201 2025-01-01 00:00:10.040  60.0  40.0         A
+    10          2       202 2025-01-01 00:00:10.080  61.0  40.5         A
+    11          2       203 2025-01-01 00:00:10.120  62.0  41.0      ball
+    >>> df_events
+       period_id               timestamp player_id      x     y
+    0          1 2025-01-01 00:00:00.080         A  52.00  31.0
+    1          1 2025-01-01 00:00:00.081         A  52.01  31.0
+    2          2 2025-01-01 00:00:10.040         A  60.00  40.0
+    >>> df_events["etsy_frame"], df_events["etsy_score"] = synchronize(df_tracking, df_events, fps_tracking=25)
+    >>> df_events
+       period_id               timestamp player_id      x     y  etsy_frame  etsy_score
+    0          1 2025-01-01 00:00:00.080         A  52.00  31.0       100.0         NaN
+    1          1 2025-01-01 00:00:00.081         A  52.01  31.0       102.0   99.994671
+    2          2 2025-01-01 00:00:10.040         A  60.00  40.0       200.0         NaN
+    """
+    if not {1, 2}.issubset(set(df_events[event_period_col].unique())):
+        raise ValueError(f"Etsy requires period names 1 and 2 to be present in events. Found: {df_events[event_period_col].unique()}")
+    if not {1, 2}.issubset(set(df_tracking[tracking_period_col].unique())):
+        raise ValueError(f"Etsy requires period names 1 and 2 to be present in tracking data. Found: {df_tracking[tracking_period_col].unique()}")
+
+    df_events = df_events[[event_period_col, event_timestamp_col, event_passer_col, event_x_col, event_y_col]].rename(columns={
+        event_period_col: "period_id", event_timestamp_col: "timestamp", event_passer_col: "player_id",
+        event_x_col: "start_x", event_y_col: "start_y"
+    }).copy()
+    df_tracking = df_tracking[[tracking_period_col, tracking_frame_col, tracking_timestamp_col, tracking_x_col, tracking_y_col, tracking_player_col]].rename(columns={
+        tracking_period_col: "period_id", tracking_frame_col: "frame", tracking_timestamp_col: "timestamp",
+        tracking_x_col: "x", tracking_y_col: "y", tracking_player_col: "player_id"
+    }).copy()
     df_events["type_name"] = "pass"
-    df_events["start_x"] = np.clip(df_events["x_event"].astype(float) + 52.5, 0, 105)
-    df_events["start_y"] = np.clip(df_events["y_event"].astype(float) + 34.0, 0, 68)
     df_events["bodypart_id"] = 0
 
-    df_tracking["period_id"] = df_tracking["section"].map({"first_half": 1, "second_half": 2})
-    df_tracking["timestamp"] = pd.to_datetime(df_tracking["datetime_tracking"]).dt.tz_localize(None)
-    df_tracking["frame"] = df_tracking["frame"]
-    df_tracking["ball"] = df_tracking["player_id"] == "BALL"
-    assert df_tracking["ball"].any()
-    assert df_tracking.groupby("section")["ball"].any().all(), "Both halves must have ball tracking data"
-
-    df_tracking["x"] = np.clip(df_tracking["x_tracking"].astype(float) + 52.5, 0, 105)
-    df_tracking["y"] = np.clip(df_tracking["y_tracking"].astype(float) + 34.0, 0, 68)
-    df_tracking["z"] = 0.0
+    df_tracking["ball"] = df_tracking["player_id"] == ball_player_id
     df_tracking["acceleration"] = 0.0
+    df_tracking["z"] = 0.0
 
-    # df_events = df_events[(df_events["frame"] < 5000) | (df_events["section"] == "second_half")].reset_index(drop=True)
-    # df_tracking = df_tracking[(df_tracking["frame"] < 5000) | (df_tracking["section"] == "second_half")].reset_index(drop=True)
-    df_events = df_events.reset_index(drop=True)
-    df_tracking = df_tracking.reset_index(drop=True)
+    i_valid_events = df_events[["player_id", "start_x", "start_y"]].notna().all(axis=1)
+    i_valid_tracking = df_tracking[["x", "y"]].notna().all(axis=1)
+    df_events["index"] = df_events.index  # preserve index
+    df_tracking["index"] = df_tracking.index
+    df_events = df_events.loc[i_valid_events].reset_index(drop=True)
+    df_tracking = df_tracking.loc[i_valid_tracking].reset_index(drop=True)
 
-    # Initialize event-tracking synchronizer with given event data (df_events),
-
-    # tracking data (df_tracking), and recording frequency of the tracking data (fps_tracking)
     ETSY = etsy.sync.EventTrackingSynchronizer(df_events, df_tracking, fps=fps_tracking)
-
-    # Run the synchronization
     ETSY.synchronize()
 
-    # Inspect the matched frames and scores
-    df_events["matched_frame"] = ETSY.matched_frames
-    df_events["scores"] = ETSY.scores
+    df_events["etsy_frame"] = ETSY.matched_frames
+    df_events["etsy_score"] = ETSY.scores
 
     df_events = df_events.set_index("index")
 
-    return SynchronizationResult(matched_frames=df_events["matched_frame"], scores=df_events["scores"])
-
-
-@st.cache_resource
-def _get_csv(fpath):
-    return pd.read_csv(fpath)
-
-@st.cache_resource
-def _get_local_parquet(fpath):
-    return pd.read_parquet(fpath)
-
-
-if __name__ == '__main__':
-
-    slug = "bundesliga-2023-2024-20-st-bayer-leverkusen-bayern-munchen"
-    df_event = _get_csv(f"Y:/w_raw/preprocessed/events/{slug}.csv").reset_index(drop=True)
-    # df_events = df_events[df_events["slugified_match_string"] == slug].reset_index(drop=True)
-    # df_events = _get_csv(f"events/{slug}.csv").reset_index(drop=True)
-    # df_tracking = _get_parquet("tracking/bundesliga-2023-2024-22-st-bayer-leverkusen-werder-bremen.parquet").reset_index(drop=True)
-    df_tracking = _get_local_parquet(f"Y:/w_raw/preprocessed/tracking/{slug}.parquet").reset_index(drop=True)
-
-    df_event["x_event"] = df_event["x_tracking_player_1"].fillna(df_event["x_event_player_1"])
-    df_event["y_event"] = df_event["y_tracking_player_1"].fillna(df_event["y_event_player_1"])
-    df_event = df_event[df_event["x_event"].notna() & df_event["y_event"].notna()].reset_index(drop=True)
-    df_event["section"] = df_event["section"].ffill()
-
-    st.write(df_event["section"])
-    st.write(df_tracking["section"])
-
-    res = synchronize(df_event, df_tracking)
-    st.write("res")
-    st.write(res.matched_frames)
-    st.write(res.scores)
-    df_event["matched_frame"] = res.matched_frames
-    df_tracking["matched_frame"] = res.matched_frames
-
-    st.write("df_events with matched frames")
-    st.write(df_event)
+    return SynchronizationResult(matched_frames=df_events["etsy_frame"], scores=df_events["etsy_score"])
