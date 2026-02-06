@@ -40,7 +40,7 @@ def _distance_point_to_segment(px, py, x1, y1, x2, y2):
     # Compute the length squared of AB
     AB_length_squared = ABx ** 2 + ABy ** 2
 
-    # Handle the degenerate case where A and B are the same point
+    # Handle the degenerate case where A and B are the same pointrm -rf .venv/
     i_degenerate = (AB_length_squared == 0) & (px == px)
     # if AB_length_squared == 0:
     #     return math.sqrt(APx ** 2 + APy ** 2)
