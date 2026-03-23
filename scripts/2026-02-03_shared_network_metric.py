@@ -15,7 +15,7 @@ OUT_CSV = "shared_defensive_team_metrics_all_matches.csv"
 
 
 def compute_shared_metrics_for_match(df: pd.DataFrame, match_id: str):
-    df = df[df["valued_involvement"] != 0].copy()  # metric
+    df = df[df["valued_involvement"] != 0].copy()  # filter out non-involvements
     if df.empty:
         return []
 
@@ -90,8 +90,8 @@ for f in files:
 
 # save
 result_df = pd.DataFrame(all_rows)
-result_df.to_csv(OUT_CSV, index=False)
-print(f"Saved: {OUT_CSV}  | rows={len(result_df)}")
+# result_df.to_csv(OUT_CSV, index=False)
+# print(f"Saved: {OUT_CSV}  | rows={len(result_df)}")
 print(result_df.head())
 
 
@@ -121,7 +121,7 @@ test
 #     df = defensive_network.parse.drive.download_parquet_from_drive(full_path)
 #     # save as csv, name as the same as the file name
 #     file_name = file_name.replace(".parquet", ".csv")
-#     df.to_csv("2.csv", index=False)
+#     df.to_csv(file_name, index=False)
 #
 #     # st.write(df)
 #     break
