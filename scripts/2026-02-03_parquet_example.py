@@ -15,5 +15,7 @@ for file_name in file_names:
         continue
     st.write(full_path)
 
-    df = defensive_network.parse.drive.download_parquet_from_drive(full_path, st_cache=True)
+    df = defensive_network.parse.drive.download_parquet_from_drive(full_path)
     st.write(df)
+    break
+
