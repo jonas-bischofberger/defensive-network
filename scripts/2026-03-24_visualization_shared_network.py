@@ -631,7 +631,11 @@ def plot_defensive_network(
 st.sidebar.header("Filters")
 
 match_ids = sorted(edge_df["match_id"].dropna().unique())
-selected_match = st.sidebar.selectbox("Match ID", match_ids)
+
+match_id_2_string = {  # from meta.csv
+    3812: "3812: Netherlands vs Ghana (example)",
+}
+selected_match = st.sidebar.selectbox("Match ID", match_ids, format_func=lambda x: match_id_2_string.get(x, str(x)))
 
 team_options = sorted(
     edge_df.loc[edge_df["match_id"] == selected_match, "defending_team"].dropna().unique()
