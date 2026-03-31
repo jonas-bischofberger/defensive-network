@@ -3,8 +3,7 @@ data/
 *.png
 *.mp4
 *.dat
-*.xlsx
-*.csv
+.cache/
 venv/
 env/
 data_reduced/
