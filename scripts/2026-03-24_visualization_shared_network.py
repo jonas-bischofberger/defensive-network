@@ -484,7 +484,7 @@ st.title("Shared Defensive Network Viewer")
 
 
 # =========================
-# 1. 读取数据
+# 1. data
 # =========================
 @st.cache_data
 def load_data():
@@ -496,7 +496,7 @@ edge_df, player_df = load_data()
 
 
 # =========================
-# 2. 缩放函数
+# 2. the thickness of the weight
 # =========================
 def scale_series(series, min_width=1.5, max_width=8.0):
     s = series.astype(float)
@@ -506,7 +506,7 @@ def scale_series(series, min_width=1.5, max_width=8.0):
 
 
 # =========================
-# 3. 读取球员位置
+# 3. player location
 # =========================
 def get_player_positions(player_df, match_id, defending_team, players, metric):
     df = player_df[
@@ -518,10 +518,10 @@ def get_player_positions(player_df, match_id, defending_team, players, metric):
     x_col = f"{metric}_avg_x"
     y_col = f"{metric}_avg_y"
 
-    df["x"] = df[x_col].fillna(df["raw_involvement_avg_x"])
+    df["x"] = df[x_col].fillna(df["raw_involvement_avg_x"])   #if the player miss the metric, use raw_involvement_avg as fallback
     df["y"] = df[y_col].fillna(df["raw_involvement_avg_y"])
 
-    # 中心坐标 -> statsbomb坐标
+    # transfer to statsbomb pitch coordinates (0,0) at top left, (120,80) at bottom right
     df["plot_x"] = df["x"] + 60
     df["plot_y"] = df["y"] + 40
 
@@ -532,7 +532,7 @@ def get_player_positions(player_df, match_id, defending_team, players, metric):
 
 
 # =========================
-# 4. 作图函数
+# 4. plotting function
 # =========================
 def plot_defensive_network(
     edge_df,
@@ -544,7 +544,7 @@ def plot_defensive_network(
     position_metric,
     min_edge_count=1,
     cmap_name="magma_r",
-    node_size=1400,
+    node_size=200,
 ):
     df_plot = edge_df[
         (edge_df["match_id"] == match_id) &

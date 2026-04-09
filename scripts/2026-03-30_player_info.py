@@ -4,54 +4,25 @@ import defensive_network
 import defensive_network.parse.drive
 
 
-# =========================
-# step 1
-# =========================
+# 1
 FOLDER = "involvement/10/"
 MATCH_FILTER = "fifa-men-s-world-cup-2022"
 OUTPUT_FILE = "player_average_defensive_positions_all_matches.csv"
 
-METRICS = [
-    "raw_involvement",
-    "raw_contribution",
-    "raw_fault",
-    "valued_involvement",
-    "valued_contribution",
-    "valued_fault",
-]
+METRICS = ["raw_involvement", "raw_contribution", "raw_fault", "valued_involvement", "valued_contribution",
+           "valued_fault"]
 
 
-# =========================
 # 2. standardize coordinates for first and second half
-# =========================
 def align_coordinates(df):
     df = df.copy()
-
-    df["x"] = np.where(
-        df["section"] == 2,
-        -df["defender_x"],
-        df["defender_x"]
-    )
-
-    df["y"] = np.where(
-        df["section"] == 2,
-        -df["defender_y"],
-        df["defender_y"]
-    )
-
+    df["x"] = np.where(df["section"] == 2, -df["defender_x"], df["defender_x"])
+    df["y"] = df["defender_y"]
     return df
 
 
-# =========================
 # 3.  home / away
-# =========================
 def add_home_away_column(df):
-    """
-    根据原始事件里的球队信息，给 defending_team 补 home_away。
-    假设原始表里有：
-    - gameEvents.teamId
-    - gameEvents.homeTeam   (True/False)
-    """
     df = df.copy()
 
     team_lookup = (
@@ -85,9 +56,7 @@ def add_home_away_column(df):
     return df
 
 
-# =========================
 # 4. player summary
-# =========================
 def build_player_summary_for_match(df_match):
     required_cols = [
         "match_id",
@@ -105,7 +74,6 @@ def build_player_summary_for_match(df_match):
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
 
-    # 只保留关键字段完整的行
     df = df_match.dropna(subset=[
         "match_id",
         "defending_team",
