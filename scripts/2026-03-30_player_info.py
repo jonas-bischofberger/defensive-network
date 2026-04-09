@@ -4,10 +4,10 @@ import defensive_network
 import defensive_network.parse.drive
 
 
-# 1
+# 1. settings
 FOLDER = "involvement/10/"
 MATCH_FILTER = "fifa-men-s-world-cup-2022"
-OUTPUT_FILE = "player_average_defensive_positions_all_matches.csv"
+OUTPUT_FILE = "2026-04-09_player_average_defensive_positions_all_matches2.csv"
 
 METRICS = ["raw_involvement", "raw_contribution", "raw_fault", "valued_involvement", "valued_contribution",
            "valued_fault"]
@@ -26,16 +26,16 @@ def add_home_away_column(df):
     df = df.copy()
 
     team_lookup = (
-        df[["gameEvents.teamId", "gameEvents.homeTeam"]]
+        df[["gameEvents.teamId", "gameEvents.homeTeam", "gameEvents.teamName"]]
         .dropna(subset=["gameEvents.teamId"])
         .drop_duplicates()
         .rename(columns={
             "gameEvents.teamId": "team_id",
-            "gameEvents.homeTeam": "is_home"
+            "gameEvents.homeTeam": "is_home",
+            "gameEvents.teamName": "team_name"
         })
     )
 
-    # 如果同一个 team_id 出现多次，保留第一条
     team_lookup = team_lookup.drop_duplicates(subset=["team_id"])
 
     team_lookup["home_away"] = np.where(
@@ -45,7 +45,7 @@ def add_home_away_column(df):
     )
 
     df = df.merge(
-        team_lookup[["team_id", "home_away"]],
+        team_lookup[["team_id", "home_away", "team_name"]],
         left_on="defending_team",
         right_on="team_id",
         how="left"
@@ -68,6 +68,7 @@ def build_player_summary_for_match(df_match):
         "section",
         "gameEvents.teamId",
         "gameEvents.homeTeam",
+        "gameEvents.teamName",
     ] + METRICS
 
     missing_cols = [col for col in required_cols if col not in df_match.columns]
@@ -84,21 +85,20 @@ def build_player_summary_for_match(df_match):
         "section"
     ]).copy()
 
-    # 统一上下半场方向
-    df = align_coordinates(df)
+    df = align_coordinates(df)  # first or second half
 
-    # 加 home_away
-    df = add_home_away_column(df)
+    df = add_home_away_column(df)  # home/away
 
     group_cols = [
         "match_id",
         "defending_team",
+        "team_name",
         "home_away",
         "defender_id",
         "defender_name",
     ]
 
-    # 每个球员一行
+    # each player one line (one line per match), with their average defensive position and counts for each metric
     result = (
         df[group_cols]
         .drop_duplicates()
@@ -106,7 +106,7 @@ def build_player_summary_for_match(df_match):
         .reset_index(drop=True)
     )
 
-    # 整体平均位置（不区分 metric，所有防守事件都算）
+    # overall
     overall = (
         df.groupby(group_cols)
         .agg(
@@ -119,7 +119,7 @@ def build_player_summary_for_match(df_match):
 
     result = result.merge(overall, on=group_cols, how="left")
 
-    # 各种 metric 单独算：非零即参与
+    # metrics individually
     for metric in METRICS:
         sub = df[df[metric] != 0].copy()
 
@@ -140,9 +140,7 @@ def build_player_summary_for_match(df_match):
     return result
 
 
-# =========================
-# 5. 遍历所有线上比赛文件
-# =========================
+# 5. all matches
 def main():
     files = defensive_network.parse.drive.list_files_in_drive_folder(FOLDER)
 
@@ -160,32 +158,15 @@ def main():
         full_path = FOLDER + file_name
         print(f"Processing: {file_name}")
 
-        try:
-            df_match = defensive_network.parse.drive.download_parquet_from_drive(full_path)
-
-            if df_match.empty:
-                print(f"Skipped empty file: {file_name}")
-                continue
-
-            player_summary = build_player_summary_for_match(df_match)
-
-            if not player_summary.empty:
-                all_player_summaries.append(player_summary)
-
-        except Exception as e:
-            print(f"Failed on {file_name}: {e}")
-
-    if not all_player_summaries:
-        print("No valid match summaries were created.")
-        return
+        df_match = defensive_network.parse.drive.download_parquet_from_drive(full_path)
+        player_summary = build_player_summary_for_match(df_match)
+        all_player_summaries.append(player_summary)
 
     final_df = pd.concat(all_player_summaries, ignore_index=True)
+    final_df = final_df.sort_values(
+        ["match_id", "defending_team", "defender_id"]
+    ).reset_index(drop=True)
 
-    # 排序
-    sort_cols = ["match_id", "defending_team", "defender_id"]
-    final_df = final_df.sort_values(sort_cols).reset_index(drop=True)
-
-    # 导出
     final_df.to_csv(OUTPUT_FILE, index=False)
 
     print(f"\nDone. Saved to: {OUTPUT_FILE}")
