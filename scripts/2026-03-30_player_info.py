@@ -17,7 +17,8 @@ METRICS = ["raw_involvement", "raw_contribution", "raw_fault", "valued_involveme
 def align_coordinates(df):
     df = df.copy()
     df["x"] = np.where(df["section"] == 2, -df["defender_x"], df["defender_x"])
-    df["y"] = df["defender_y"]
+    df["y"] = np.where(df["section"] == 1, -df["defender_y"], df["defender_y"])
+    # y is a bit strange, if you do same as "x" axis, the defensive position will be flipped
     return df
 
 
