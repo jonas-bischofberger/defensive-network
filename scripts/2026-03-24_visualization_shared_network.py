@@ -13,7 +13,7 @@ st.title("Shared Defensive Network Viewer")
 # 1. data
 @st.cache_data
 def load_data():
-    edge_df = pd.read_csv("scripts/2026-04-03-shared_defensive_edge_list_without_blocked_respon1.csv")
+    edge_df = pd.read_csv("scripts/2026-04-14_defensive_network_edge(product).csv")
     player_df = pd.read_csv("scripts/2026-04-09_player_average_defensive_positions_all_matches.csv")
     meta_df = pd.read_csv("scripts/meta.csv")
     return edge_df, player_df, meta_df
@@ -35,7 +35,8 @@ def get_player_positions(player_df, match_id, defending_team, players, metric):
         (player_df["defender_name"].isin(players))
     ].copy()
 
-    if metric == "raw_responsibility":
+    if metric == ["raw_responsibility", "raw_fault_r", "raw_contribution_r", "valued_responsibility",
+                  "valued_contribution_r", "valued_fault_r"]:
         x_col = "raw_involvement_avg_x"
         y_col = "raw_involvement_avg_y"
     else:
