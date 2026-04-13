@@ -402,7 +402,7 @@ merge with role value table(responsibility), check if the merged responsibility 
 #
 # # ========= files =========
 # match_file = "fifa-men-s-world-cup-2022-2-st-poland-saudi-arabia.csv"
-# role_value_file = "FIFA Mens World Cup_10 test.csv"
+# role_value_file = "FIFA Mens World Cup_10.csv"
 # output_file = "poland_saudi_arabia_merged_respon_check.csv"
 #
 # # ========= keys / cols =========
@@ -412,12 +412,7 @@ merge with role value table(responsibility), check if the merged responsibility 
 #     "defender_role_category",
 # ]
 #
-# role_value_cols = [
-#     "n_passes",
-#     "raw_responsibility",
-#     "value",
-#     "valued_responsibility",
-# ]
+# role_value_cols = ["raw_responsibility"]
 #
 # # ========= read =========
 # df_match = pd.read_csv(match_file)
