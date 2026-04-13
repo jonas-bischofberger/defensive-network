@@ -13,7 +13,7 @@ st.title("Shared Defensive Network Viewer")
 # 1. data
 @st.cache_data
 def load_data():
-    edge_df = pd.read_csv("scripts/2026-04-14_defensive_network_edge(product).csv")
+    edge_df = pd.read_csv("scripts/2026-04-14_defensive_network_edge(sum).csv")
     player_df = pd.read_csv("scripts/2026-04-09_player_average_defensive_positions_all_matches.csv")
     meta_df = pd.read_csv("scripts/meta.csv")
     return edge_df, player_df, meta_df
