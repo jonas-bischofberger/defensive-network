@@ -11,7 +11,12 @@ st.title("Shared Defensive Network")
 
 
 # 1. data
-edge_df = pd.read_csv("scripts/2026-04-14_defensive_network_edge(product).csv")
+edge_dfs = {
+    "average": pd.read_csv("scripts/2026-04-13_defensive_network_edge(average).csv"),
+    "min": pd.read_csv("scripts/2026-04-13_defensive_network_edge(min).csv"),
+    "product": pd.read_csv("scripts/2026-04-13_defensive_network_edge(product).csv"),
+    "sum": pd.read_csv("scripts/2026-04-13_defensive_network_edge(sum).csv")}
+
 player_df = pd.read_csv("scripts/2026-04-09_player_average_defensive_positions_all_matches.csv")
 meta_df = pd.read_csv("scripts/meta_worldcup.csv")
 # 2. player location
@@ -24,8 +29,8 @@ def get_player_positions(player_df, match_id, defending_team, players, metric):
         (player_df["defender_name"].isin(players))
     ].copy()
 
-    if metric in ["raw_responsibility", "raw_fault_r", "raw_contribution_r",
-                  "valued_responsibility", "valued_contribution_r", "valued_fault_r"]:
+    if metric in ["raw_responsibility", "raw_fault_r", "raw_contribution_r","valued_responsibility",
+                  "valued_contribution_r", "valued_fault_r", "respon-inv"]:
 
         df["x"] = df["raw_involvement_avg_x"].fillna(df["overall_avg_x"])
         df["y"] = df["raw_involvement_avg_y"].fillna(df["overall_avg_y"])
@@ -115,6 +120,9 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
 # 5. Sidebar
 st.sidebar.header("Filters")
 
+edge_method = st.sidebar.selectbox("Edge weight method", ["average", "min", "product", "sum"], index=2)
+edge_df = edge_dfs[edge_method]
+
 match_ids = sorted(edge_df["match_id"].dropna().unique())
 match_id_2_title = dict(zip(meta_df["match_id"], meta_df["home_team_name"] + " vs " + meta_df["guest_team_name"]))
 
@@ -128,7 +136,7 @@ selected_team = \
 
 metric_options = ["raw_involvement", "raw_contribution", "raw_fault", "valued_involvement", "valued_contribution",
                   "valued_fault", "raw_responsibility", "raw_fault_r", "raw_contribution_r",
-                  "valued_responsibility", "valued_contribution_r", "valued_fault_r"]
+                  "valued_responsibility", "valued_contribution_r", "valued_fault_r", "respon-inv"]
 
 selected_metric = st.sidebar.selectbox("Metric", metric_options, index=0)
 
