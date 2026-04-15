@@ -17,11 +17,11 @@ edge_dfs = {
     "product": pd.read_csv("scripts/2026-04-13_defensive_network_edge(product).csv"),
     "sum": pd.read_csv("scripts/2026-04-13_defensive_network_edge(sum).csv")}
 
-player_df = pd.read_csv("scripts/2026-04-09_player_average_defensive_positions_all_matches.csv")
+player_df = pd.read_csv("scripts/2026-04-15_player_info_with_self_inv.csv")
 meta_df = pd.read_csv("scripts/meta_worldcup.csv")
+
+
 # 2. player location
-
-
 def get_player_positions(player_df, match_id, defending_team, players, metric):
     df = player_df[
         (player_df["match_id"] == match_id) &
@@ -43,8 +43,8 @@ def get_player_positions(player_df, match_id, defending_team, players, metric):
 
     df["plot_x"] = df["x"] + 60
     df["plot_y"] = df["y"] + 40
-
-    # 读取 self_inv 值
+    #
+    #  self_inv
     self_inv_col = f"{metric}_self_inv"
     positions = {}
     for _, row in df.iterrows():
@@ -53,11 +53,9 @@ def get_player_positions(player_df, match_id, defending_team, players, metric):
 
     return positions
 
-# 4. plotting function
-
 
 def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric, min_edge_count=1, cmap_name="magma_r",
-                           node_size=200):
+                           node_size=50):
 
     edge_count_col = f"{metric}_edge_count"
     df_plot = edge_df[(edge_df["match_id"] == match_id) & (edge_df["defending_team"] == defending_team) &
@@ -82,8 +80,8 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
     sm.set_array([])
 
     for (_, row), lw in zip(df_plot.iterrows(), width_values):
-        x1, y1 = player_pos[row["player_1"]]
-        x2, y2 = player_pos[row["player_2"]]
+        x1, y1 = player_pos[row["player_1"]][:2]
+        x2, y2 = player_pos[row["player_2"]][:2]
 
         ax.plot(
             [x1, x2], [y1, y2],
@@ -96,9 +94,18 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
     xs = [player_pos[p][0] for p in players]
     ys = [player_pos[p][1] for p in players]
 
+    # node size
+    self_inv_vals = np.array([player_pos[p][2] if not np.isnan(player_pos[p][2]) else 0.0 for p in players])
+    min_size, max_size = 50, 400
+    if self_inv_vals.max() > self_inv_vals.min():
+        node_sizes = min_size + (self_inv_vals - self_inv_vals.min()) / (self_inv_vals.max() - self_inv_vals.min()) * (
+                    max_size - min_size)
+    else:
+        node_sizes = np.full(len(players), node_size)
+
     pitch.scatter(
         xs, ys,
-        s=node_size,
+        s=node_sizes,  # ← 改成动态大小
         color="#dbe9f6",
         edgecolors="black",
         linewidth=1.2,
@@ -107,7 +114,7 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
     )
 
     for p in players:
-        x, y = player_pos[p]
+        x, y = player_pos[p][:2]
         ax.text(x, y, p, ha="center", va="center", fontsize=9, zorder=3)
 
     cbar = plt.colorbar(sm, ax=ax, shrink=0.75)
