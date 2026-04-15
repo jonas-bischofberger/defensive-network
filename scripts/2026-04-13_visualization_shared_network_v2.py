@@ -44,8 +44,14 @@ def get_player_positions(player_df, match_id, defending_team, players, metric):
     df["plot_x"] = df["x"] + 60
     df["plot_y"] = df["y"] + 40
 
-    return {row["defender_name"]: (row["plot_x"], row["plot_y"])
-            for _, row in df.iterrows()}
+    # 读取 self_inv 值
+    self_inv_col = f"{metric}_self_inv"
+    positions = {}
+    for _, row in df.iterrows():
+        self_inv = row[self_inv_col] if self_inv_col in df.columns else 0.0
+        positions[row["defender_name"]] = (row["plot_x"], row["plot_y"], self_inv)
+
+    return positions
 
 # 4. plotting function
 
