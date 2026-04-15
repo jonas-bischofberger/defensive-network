@@ -55,7 +55,7 @@ def get_player_positions(player_df, match_id, defending_team, players, metric):
 
 
 def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric, min_edge_count=1, cmap_name="magma_r",
-                           node_size=50):
+                           node_size_option="self_inv", node_size=50):
 
     edge_count_col = f"{metric}_edge_count"
     df_plot = edge_df[(edge_df["match_id"] == match_id) & (edge_df["defending_team"] == defending_team) &
@@ -67,7 +67,8 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
     pitch = Pitch(pitch_type="statsbomb", pitch_color="#f7f7f7", line_color="#999999")
     fig, ax = pitch.draw(figsize=(12, 8))
 
-    s = df_plot[metric].astype(float)
+    edge_count_col = f"{metric}_edge_count"
+    s = df_plot[edge_count_col].astype(float)
     width_values = 1.5 + (s - s.min()) / (s.max() - s.min()) * (8.0 - 1.5)
 
     color_values = df_plot[metric].astype(float)
@@ -95,23 +96,34 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
     ys = [player_pos[p][1] for p in players]
 
     # node size
-    self_inv_vals = np.array([player_pos[p][2] if not np.isnan(player_pos[p][2]) else 0.0 for p in players])
-    min_size, max_size = 50, 400
+    if node_size_option == "self_inv":
+        self_inv_vals = np.array([0.0 if pd.isna(player_pos[p][2]) else player_pos[p][2] for p in players])
+    else:
+        self_inv_vals = np.array([
+            0.0 if pd.isna(
+                player_df.loc[
+                    (player_df["match_id"] == match_id) &
+                    (player_df["defending_team"] == defending_team) &
+                    (player_df["defender_name"] == p),
+                    f"{metric}_n"
+                ].values[0]
+            )
+            else player_df.loc[
+                (player_df["match_id"] == match_id) &
+                (player_df["defending_team"] == defending_team) &
+                (player_df["defender_name"] == p),
+                f"{metric}_n"
+            ].values[0]
+            for p in players
+        ])
+    min_size, max_size = 100, 400
     if self_inv_vals.max() > self_inv_vals.min():
         node_sizes = min_size + (self_inv_vals - self_inv_vals.min()) / (self_inv_vals.max() - self_inv_vals.min()) * (
                     max_size - min_size)
     else:
         node_sizes = np.full(len(players), node_size)
 
-    pitch.scatter(
-        xs, ys,
-        s=node_sizes,  # ← 改成动态大小
-        color="#dbe9f6",
-        edgecolors="black",
-        linewidth=1.2,
-        ax=ax,
-        zorder=2
-    )
+    pitch.scatter(xs, ys, s=node_sizes, color="#dbe9f6", edgecolors="black", linewidth=1.2, ax=ax, zorder=2)
 
     for p in players:
         x, y = player_pos[p][:2]
@@ -124,8 +136,7 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
         f"Shared Defensive Network\n"
         f"Match {match_id} | Team {defending_team}\n"
         f"Position = {metric} | Width = {metric} | Color = {metric}",
-        fontsize=14
-    )
+        fontsize=14)
 
     return fig
 
@@ -135,6 +146,8 @@ st.sidebar.header("Filters")
 
 edge_method = st.sidebar.selectbox("Edge weight method", ["average", "min", "product", "sum"], index=2)
 edge_df = edge_dfs[edge_method]
+
+node_size_option = st.sidebar.selectbox("Node size", ["self_inv", "inv_number"], index=0)
 
 match_ids = sorted(edge_df["match_id"].dropna().unique())
 match_id_2_title = dict(zip(meta_df["match_id"], meta_df["home_team_name"] + " vs " + meta_df["guest_team_name"]))
@@ -165,7 +178,7 @@ cmap_name = st.sidebar.selectbox("Color map", ["magma_r", "viridis", "plasma", "
 # 6. Main display
 fig = plot_defensive_network(edge_df=edge_df, player_df=player_df, match_id=selected_match,
                              defending_team=selected_team, metric=selected_metric, min_edge_count=min_edge_count,
-                             cmap_name=cmap_name)
+                             cmap_name=cmap_name, node_size_option=node_size_option)
 
 if fig is not None:
     st.pyplot(fig, use_container_width=True)
