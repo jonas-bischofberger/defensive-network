@@ -17,7 +17,7 @@ edge_dfs = {
     "product": pd.read_csv("scripts/2026-04-13_defensive_network_edge(product).csv"),
     "sum": pd.read_csv("scripts/2026-04-13_defensive_network_edge(sum).csv")}
 
-player_df = pd.read_csv("scripts/2026-04-15_player_info_with_self_inv.csv")
+player_df = pd.read_csv("scripts/2026-04-16_player_info_with_starter.csv")
 meta_df = pd.read_csv("scripts/meta_worldcup.csv")
 
 
@@ -49,7 +49,8 @@ def get_player_positions(player_df, match_id, defending_team, players, metric):
     positions = {}
     for _, row in df.iterrows():
         self_inv = row[self_inv_col] if self_inv_col in df.columns else 0.0
-        positions[row["defender_name"]] = (row["plot_x"], row["plot_y"], self_inv)
+        starter = row["starter"] if "starter" in df.columns else 0
+        positions[row["defender_name"]] = (row["plot_x"], row["plot_y"], self_inv, starter)
 
     return positions
 
@@ -123,7 +124,18 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
     else:
         node_sizes = np.full(len(players), node_size)
 
-    pitch.scatter(xs, ys, s=node_sizes, color="#dbe9f6", edgecolors="black", linewidth=1.2, ax=ax, zorder=2)
+    # 替换原来的 pitch.scatter 部分
+    starter_flags = [player_pos[p][3] for p in players]
+    node_colors = ["#feffce" if s == 1 else "#bebada" for s in starter_flags]
+
+    pitch.scatter(xs, ys, s=node_sizes, color=node_colors, edgecolors="black", linewidth=1.2, ax=ax, zorder=2)
+
+    # # 加图例
+    # from matplotlib.patches import Patch
+    # ax.legend(handles=[
+    #     Patch(color="#d4edda", label="Starter"),
+    #     Patch(color="#dbe9f6", label="Substitute")
+    # ], loc="upper right", fontsize=9)
 
     for p in players:
         x, y = player_pos[p][:2]
