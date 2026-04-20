@@ -309,7 +309,7 @@ def augment_match_data(
     # Playing direction
     df_tracking["playing_direction"] = accessible_space.infer_playing_direction(
         df_tracking, team_col="team_id", period_col="section", team_in_possession_col="ball_poss_team_id",
-        x_col="x_tracking", ball_team="BALL",
+        x_col="x_tracking", ball_team="BALL", frame_col="frame",
     )
     assert len(df_tracking["playing_direction"].dropna().unique()) == 2
     df_tracking["x_norm"] = df_tracking["x_tracking"] * df_tracking["playing_direction"]

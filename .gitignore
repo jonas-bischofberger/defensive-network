@@ -1,6 +1,5 @@
 .idea/
 data/
-*.png
 *.mp4
 *.dat
 .cache/

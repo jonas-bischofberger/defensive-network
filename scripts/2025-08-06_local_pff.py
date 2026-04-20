@@ -162,7 +162,7 @@ def _process_tracking_file2(tracking_file, long_format=True, use_smoothed_coordi
 
 def _process_meta_files(meta_files):
     metas = []
-    for meta_file in utility.general.progress_bar(meta_files, desc="Processing meta files", total=len(meta_files)):
+    for meta_file in defensive_network.utility.general.progress_bar(meta_files, desc="Processing meta files", total=len(meta_files)):
         with open(meta_file, "r") as f:
             meta_data = json.loads(f.read())
         meta_data = pd.json_normalize(meta_data)
@@ -173,7 +173,7 @@ def _process_meta_files(meta_files):
 
 def _process_lineup_files(lineup_files):
     lineups = []
-    for lineup_file in utility.general.progress_bar(lineup_files, desc="Processing lineup files", total=len(lineup_files)):
+    for lineup_file in defensive_network.utility.general.progress_bar(lineup_files, desc="Processing lineup files", total=len(lineup_files)):
         match_id = os.path.basename(lineup_file).split(".")[0]
         with open(lineup_file, "r") as f:
             lineup_data = json.loads(f.read())
@@ -185,7 +185,7 @@ def _process_lineup_files(lineup_files):
 
 
 def main():
-    event_file = "C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/pff/Event Data/3812.json"
+    event_file = "C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/pff/Event Data/3833.json"
     tracking_file = "C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/pff/Tracking Data/3812.jsonl.bz2"
     meta_dir = "C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/pff/Metadata/"
     lineup_dir = "C:/Users/Jonas/Desktop/Neuer Ordner/neu/phd-2324/defensive-network/pff/Rosters/"

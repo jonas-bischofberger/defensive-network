@@ -77,10 +77,47 @@ def fuzzy_spatial_merge(df_event, df_tracking, max_distance=0.5):
 
 
 # @st.cache_resource
-def process_pfffc(event_file):
+def process_pfffc(event_file, slugified_match_string):
     file = event_file
 
+#    @st.cache_data
     def _get_data(file):
+        with open(file, 'r') as f:
+            event_data = json.load(f)
+        df_event = pd.json_normalize(event_data)  # remove later
+        # st.write("df_event")
+        # st.write(df_event)
+        # st.write(file)
+        df_event_existing = defensive_network.parse.drive.download_csv_from_drive(f"events/{slugified_match_string}.csv")
+        # st.write("df_eve/nt_existing")
+        # st.write(df_event_existing)
+
+        i_shot = df_event["possessionEvents.possessionEventType"] == "SH"
+        # st.write("df_event.loc[i_shot]")
+        # st.write(df_event.loc[i_shot])
+        game_event_ids = df_event.loc[i_shot]["gameEventId"].unique()
+        i_events = df_event_existing["gameEventId"].isin(game_event_ids)
+        # st.write("df_event_existing.loc[i_events]")
+        # st.write(df_event_existing.loc[df_event_existing["gameEventId"].isin(game_event_ids)])
+        # st.write(df_event_existing)
+
+        # 1. Filter the new data for shots and set 'gameEventId' as the index
+        df_shots_source = df_event[i_shot].set_index("gameEventId")
+
+        # 2. Set 'gameEventId' as the index for the existing data so they align
+        df_event_existing.set_index("gameEventId", inplace=True)
+
+        # 3. Use update with overwrite=False to fill ONLY the NaNs
+        df_event_existing.update(df_shots_source, overwrite=False)
+
+        # 4. Reset the index to bring 'gameEventId' back as a column
+        df_event_existing.reset_index(inplace=True)
+
+        # st.write("Updated Existing DF (NaNs filled):")
+        # st.write(df_event_existing)
+        df_event_existing = df_event_existing.drop_duplicates("gameEventId")
+        defensive_network.parse.drive.upload_csv_to_drive(df_event_existing, f"events/{slugified_match_string}.csv")
+        return
 
         # file = os.path.join(event_path, file)
 
@@ -95,6 +132,9 @@ def process_pfffc(event_file):
 
         df_meta = pd.json_normalize(meta_data)
         meta = df_meta.iloc[0]
+        st.write(df_meta)
+        st.write(meta)
+        st.stop()
 
         df_roster = pd.json_normalize(roster_data)
         player2team = {str(int(player["player.id"])): player["team.id"] for player in
@@ -193,7 +233,11 @@ def process_pfffc(event_file):
         st.write(df_event)
         return df_event, df_tracking, meta, df_roster, player2team, event_id_to_frame
 
-    df_event, df_tracking, meta, df_roster, player2team, event_id_to_frame = _get_data(file)
+    # df_event, df_tracking, meta, df_roster, player2team, event_id_to_frame = _get_data(file)
+    return _get_data(file)
+
+    st.write("df_event res")
+    st.write(df_event)
 
     # assert set(df_tracking["player_id"]) == set(df_tracking_reduced["playerId"])
 
@@ -222,10 +266,36 @@ def process_pfffc(event_file):
         "THIRDKICKOFF": "kick_off",
         "FOURTHKICKOFF": "kick_off",
     }.get(x, None))
+
+    # 2. Fill Pass/Shot from possessionEventType where not already filled
+    # This ensures "SH" (Shot) is recognized BEFORE we check for tackles
+    i_nan = df_event["event_subtype"].isna()
+    df_event.loc[i_nan, "event_subtype"] = df_event.loc[i_nan, "possessionEvents.possessionEventType"].apply(
+        lambda x: {
+            "PA": "pass",
+            "SH": "shot",
+        }.get(x, None))
+
+    # 3. Handle Tackles (SAFEGUARDED)
+    # We only mark it as a tackle if it has challenge data AND it is NOT already a shot
+    i_challenge = (
+            df_event["possessionEvents.challengeWinnerPlayerId"].notna() &
+            df_event["possessionEvents.homeDuelPlayerId"].notna() &
+            df_event["possessionEvents.awayDuelPlayerId"].notna()
+    )
     i_challenge = df_event["possessionEvents.challengeWinnerPlayerId"].notna() & df_event["possessionEvents.homeDuelPlayerId"].notna() & df_event["possessionEvents.awayDuelPlayerId"].notna()
-    df_event.loc[i_challenge, "event_subtype"] = "tackle"
-    df_event.loc[i_challenge, "player_id_1"] = df_event.loc[i_challenge, "possessionEvents.challengeWinnerPlayerId"]
-    df_event.loc[i_challenge, "player_id_2"] = df_event.loc[i_challenge].apply(lambda x: x["possessionEvents.homeDuelPlayerId"] if x["possessionEvents.challengeWinnerPlayerId"] == x["possessionEvents.awayDuelPlayerId"] else x["possessionEvents.awayDuelPlayerId"], axis=1)
+
+    # Identify which events are already known as shots
+    i_is_shot = df_event["event_subtype"] == "shot"
+
+    # Only apply 'tackle' logic if the event is NOT a shot
+    i_tackle_override = i_challenge & (~i_is_shot)
+
+    df_event.loc[i_tackle_override, "event_subtype"] = "tackle"
+    df_event.loc[i_tackle_override, "player_id_1"] = df_event.loc[i_tackle_override, "possessionEvents.challengeWinnerPlayerId"]
+    df_event.loc[i_tackle_override, "player_id_2"] = df_event.loc[i_tackle_override].apply(lambda x: x["possessionEvents.homeDuelPlayerId"] if x["possessionEvents.challengeWinnerPlayerId"] == x["possessionEvents.awayDuelPlayerId"] else x["possessionEvents.awayDuelPlayerId"], axis=1)
+    # df_event.loc[i_challenge, "player_id_1"] = df_event.loc[i_challenge, "possessionEvents.challengeWinnerPlayerId"]
+    # df_event.loc[i_challenge, "player_id_2"] = df_event.loc[i_challenge].apply(lambda x: x["possessionEvents.homeDuelPlayerId"] if x["possessionEvents.challengeWinnerPlayerId"] == x["possessionEvents.awayDuelPlayerId"] else x["possessionEvents.awayDuelPlayerId"], axis=1)
     assert "tackle" in df_event["event_subtype"].unique(), "Tackle events must be present in the data"
 
     i_nan = df_event["event_subtype"].isna()
@@ -398,10 +468,10 @@ def process_pfffc(event_file):
     assert df_event["player_id_2"].isna().any()
     df_tracking = df_tracking.drop_duplicates(keep="first", subset=["frame", "player_id"])
 
-    st.write("sections")
-    st.write(df_tracking["section"].unique())
-    st.write(df_event["section"].unique())
+    st.write(df_tracking.head())
 
+    st.write(df_tracking.head())
+    importlib.reload(defensive_network.parse.dfb.cdf)
     df_tracking, df_event = defensive_network.parse.dfb.cdf.augment_match_data(
         meta, df_event, df_tracking, df_roster, edit_section=False
     )
@@ -495,12 +565,21 @@ def main():
         event_file = os.path.join(event_path, event_file)
 
         slugified_match_string = _get_slug(event_file)
+
+        # if not "saudi" in slugified_match_string.lower() or "poland" not in slugified_match_string.lower():
+        #     continue
+
+        st.write("slugified_match_string")
+        st.write(slugified_match_string)
+
         # if not overwrite_if_exists and slugified_match_string in existing_slugs:
         #     st.info(f"Skipping {slugified_match_string} as it already exists in the drive.")
             # continue
 
         try:
-            df_event, df_tracking, meta, df_roster, df_involvement = process_pfffc(event_file)
+            # df_event, df_tracking, meta, df_roster, df_involvement = process_pfffc(event_file, slugified_match_string)
+            process_pfffc(event_file, slugified_match_string)
+            continue
         except (AssertionError, KeyError) as e:
             st.write(e)
             raise e
@@ -584,6 +663,9 @@ def main():
         defensive_network.parse.drive.upload_csv_to_drive(df_involvement, f"involvement/{slugified_match_string}.csv")
 
         df_tracking.to_parquet(f"Y:/w_raw/finalized/tracking/{slugified_match_string}.parquet", index=False)
+
+        st.write("df_event to upload")
+        st.write(df_event)
 
         defensive_network.parse.drive.upload_csv_to_drive(df_event, f"events/{slugified_match_string}.csv")
 
