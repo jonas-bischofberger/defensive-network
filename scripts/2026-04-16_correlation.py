@@ -11,15 +11,20 @@ edge_dfs = {
     "product": pd.read_csv("scripts/2026-04-13_defensive_network_edge(product).csv"),
     "sum": pd.read_csv("scripts/2026-04-13_defensive_network_edge(sum).csv"),
 }
+#
+# weight_cols = [
+#     'raw_involvement_edge_count', 'raw_involvement', 'raw_fault_edge_count', 'raw_fault', 'raw_contribution_edge_count',
+#     'raw_contribution', 'valued_involvement_edge_count', 'valued_involvement', 'valued_contribution_edge_count',
+#     'valued_contribution', 'valued_fault_edge_count', 'valued_fault', 'raw_responsibility_edge_count',
+#     'raw_responsibility', 'raw_fault_r_edge_count', 'raw_fault_r', 'raw_contribution_r_edge_count',
+#     'raw_contribution_r', 'valued_responsibility_edge_count', 'valued_responsibility',
+#     'valued_contribution_r_edge_count', 'valued_contribution_r', 'valued_fault_r_edge_count', 'valued_fault_r',
+#     'respon-inv_edge_count', 'respon-inv']
 
-weight_cols = [
-    'raw_involvement_edge_count', 'raw_involvement', 'raw_fault_edge_count', 'raw_fault', 'raw_contribution_edge_count',
-    'raw_contribution', 'valued_involvement_edge_count', 'valued_involvement', 'valued_contribution_edge_count',
-    'valued_contribution', 'valued_fault_edge_count', 'valued_fault', 'raw_responsibility_edge_count',
-    'raw_responsibility', 'raw_fault_r_edge_count', 'raw_fault_r', 'raw_contribution_r_edge_count',
-    'raw_contribution_r', 'valued_responsibility_edge_count', 'valued_responsibility',
-    'valued_contribution_r_edge_count', 'valued_contribution_r', 'valued_fault_r_edge_count', 'valued_fault_r',
-    'respon-inv_edge_count', 'respon-inv']
+
+weight_cols = ['raw_involvement', 'raw_fault', 'raw_contribution', 'valued_involvement', 'valued_contribution',
+                'valued_fault', 'raw_responsibility', 'raw_fault_r', 'raw_contribution_r',  'valued_responsibility',
+               'valued_contribution_r', 'valued_fault_r']
 
 target_cols = ['goals_against_real', 'shots_against', "total_xt_against", "total_xt_only_positive_against",
                "total_xt_only_negative_against", "total_xt_only_successful_against", "passes", "passes_against",
