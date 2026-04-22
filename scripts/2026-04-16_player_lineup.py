@@ -4,7 +4,8 @@ import defensive_network.parse.drive
 
 FOLDER = "involvement/10/"
 MATCH_FILTER = "fifa-men-s-world-cup-2022"
-player_info_df = pd.read_csv("2026-04-15_player_info_with_self_inv.csv")
+# MATCH_FILTER = "fifa-men-s-world-cup-2022-2-st-england-united-states"
+player_info_df = pd.read_csv("2026-04-22test.csv")
 player_info_df["starter"] = 0  # 默认都是0
 
 files = defensive_network.parse.drive.list_files_in_drive_folder(FOLDER)
@@ -36,6 +37,7 @@ for f in files:
         lambda x: 1 if x in starter_ids else 0
     )
 
-player_info_df.to_csv("2026-04-16_player_info_with_starter.csv", index=False)
+# player_info_df.to_csv("2026-04-16_player_info_with_starter.csv", index=False)
+player_info_df.to_csv("starter.csv", index=False)
 print("Saved")
 

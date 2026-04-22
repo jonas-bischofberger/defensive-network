@@ -6,8 +6,9 @@ import defensive_network.parse.drive
 
 # 1. settings
 FOLDER = "involvement/10/"
-MATCH_FILTER = "fifa-men-s-world-cup-2022"
-OUTPUT_FILE = "2026-04-09_player_average_defensive_positions_all_matches2.csv"
+# MATCH_FILTER = "fifa-men-s-world-cup-2022"
+MATCH_FILTER = "fifa-men-s-world-cup-2022-2-st-england-united-states"
+OUTPUT_FILE = "2026-04-22_test222.csv"
 
 METRICS = ["raw_involvement", "raw_contribution", "raw_fault", "valued_involvement", "valued_contribution",
            "valued_fault"]
@@ -38,6 +39,9 @@ def add_home_away_column(df):
     )
 
     team_lookup = team_lookup.drop_duplicates(subset=["team_id"])
+
+    df["defending_team"] = pd.to_numeric(df["defending_team"], errors="coerce")
+    team_lookup["team_id"] = pd.to_numeric(team_lookup["team_id"], errors="coerce")
 
     team_lookup["home_away"] = np.where(
         team_lookup["is_home"] == True,

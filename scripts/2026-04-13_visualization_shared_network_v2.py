@@ -11,13 +11,19 @@ st.title("Shared Defensive Network")
 
 
 # 1. data
+# edge_dfs = {
+#     "average": pd.read_csv("scripts/2026-04-13_defensive_network_edge(average).csv"),
+#     "min": pd.read_csv("scripts/2026-04-13_defensive_network_edge(min).csv"),
+#     "product": pd.read_csv("scripts/2026-04-13_defensive_network_edge(product).csv"),
+#     "sum": pd.read_csv("scripts/2026-04-13_defensive_network_edge(sum).csv")}
 edge_dfs = {
-    "average": pd.read_csv("scripts/2026-04-13_defensive_network_edge(average).csv"),
-    "min": pd.read_csv("scripts/2026-04-13_defensive_network_edge(min).csv"),
-    "product": pd.read_csv("scripts/2026-04-13_defensive_network_edge(product).csv"),
-    "sum": pd.read_csv("scripts/2026-04-13_defensive_network_edge(sum).csv")}
+    "average": pd.read_csv("scripts/2026-04-22_test.csv"),
+    "min": pd.read_csv("scripts/2026-04-22_test.csv"),
+    "product": pd.read_csv("scripts/2026-04-22_test.csv"),
+    "sum": pd.read_csv("scripts/2026-04-22_test.csv")}
 
-player_df = pd.read_csv("scripts/2026-04-16_player_info_with_starter.csv")
+
+player_df = pd.read_csv("scripts/starter.csv")
 meta_df = pd.read_csv("scripts/meta_worldcup.csv")
 
 
