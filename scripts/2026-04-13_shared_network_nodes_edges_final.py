@@ -8,8 +8,8 @@ import defensive_network.parse.drive
 
 # 1. parameters
 FOLDER = "involvement/10/"
-# MATCH_FILTER = "fifa-men-s-world-cup-2022"
-MATCH_FILTER = "fifa-men-s-world-cup-2022-2-st-england-united-states"
+MATCH_FILTER = "fifa-men-s-world-cup-2022"
+# MATCH_FILTER = "fifa-men-s-world-cup-2022-2-st-england-united-states"
 # MATCH_FILTER = "fifa-men-s-world-cup-2022-2-st-poland-saudi-arabia"
 ROLE_VALUE_FILE = "FIFA Mens World Cup_10.csv"
 OUTPUT_FILE = "2026-04-22_test.csv"
@@ -123,74 +123,74 @@ for f in files:
                         current = player_info_df.loc[mask, f"{metric}_self_inv"].fillna(0)
                         player_info_df.loc[mask, f"{metric}_self_inv"] = current + self_inv
 
-# 8.  player_info_df
-player_info_df.to_csv("2026-04-22test.csv", index=False)
-print("Saved")
+# # 8.  player_info_df
+# player_info_df.to_csv("2026-04-22test.csv", index=False)
+# print("Saved")
 
-#                 else:
-#                     player_metric = df_pass.set_index("defender_name")[metric].to_dict()
-#
-#                     for a, b in combinations(defenders, 2):
-#                         key = (match_id, match_name, defending_team, a, b)
-#
-#                         if key not in edge_dict:
-#                             edge_dict[key] = {
-#                                 "match_id": match_id,
-#                                 "match_name": match_name,
-#                                 "defending_team": defending_team,
-#                                 "player_1": a,
-#                                 "player_2": b,
-#                                 f"{metric}_edge_count": 0,
-#                                 metric: 0.0,
-#                             }
-#
-#                         edge_dict[key][f"{metric}_edge_count"] += 1
-#                         val_a = player_metric.get(a, 0.0)
-#                         val_b = player_metric.get(b, 0.0)
-#                         # edge_dict[key][metric] += val_a * val_b  # product
-#                         # edge_dict[key][metric] += min(val_a, val_b)  # min
-#                         edge_dict[key][metric] += (val_a + val_b) / 2.0  # average of sum
-#                         # edge_dict[key][metric] += val_a + val_b  # sum
-#             rows.extend(edge_dict.values())
-#
-#         metric_edge_df = pd.DataFrame(rows)
-#
-#         if not metric_edge_df.empty:
-#             metric_edge_tables.append(metric_edge_df)
-#
-#     # 6. merge all metrics for the current match
-#
-#     if metric_edge_tables:
-#         all_edges = pd.concat(
-#             [df[edge_keys] for df in metric_edge_tables],
-#             ignore_index=True
-#         ).drop_duplicates()
-#
-#         all_edges = all_edges.sort_values(edge_keys).reset_index(drop=True)
-#
-#         edge_table = all_edges.copy()
-#
-#         for metric_df in metric_edge_tables:
-#             extra_cols = [c for c in metric_df.columns if c not in edge_keys]
-#
-#             edge_table = edge_table.merge(
-#                 metric_df[edge_keys + extra_cols],
-#                 on=edge_keys,
-#                 how="left"
-#             )
-#
-#         all_match_edge_tables.append(edge_table)
-#
-#
-# # 7. merge all matches
-# if all_match_edge_tables:
-#     final_df = pd.concat(all_match_edge_tables, ignore_index=True)
-#     final_df.to_csv(OUTPUT_FILE, index=False)
-#     print("Saved:", OUTPUT_FILE)
-#     print("Final shape:", final_df.shape)
-#     print(final_df.head())
-# else:
-#     print("No valid data generated.")
+                else:
+                    player_metric = df_pass.set_index("defender_name")[metric].to_dict()
+
+                    for a, b in combinations(defenders, 2):
+                        key = (match_id, match_name, defending_team, a, b)
+
+                        if key not in edge_dict:
+                            edge_dict[key] = {
+                                "match_id": match_id,
+                                "match_name": match_name,
+                                "defending_team": defending_team,
+                                "player_1": a,
+                                "player_2": b,
+                                f"{metric}_edge_count": 0,
+                                metric: 0.0,
+                            }
+
+                        edge_dict[key][f"{metric}_edge_count"] += 1
+                        val_a = player_metric.get(a, 0.0)
+                        val_b = player_metric.get(b, 0.0)
+                        # edge_dict[key][metric] += val_a * val_b  # product
+                        # edge_dict[key][metric] += min(val_a, val_b)  # min
+                        edge_dict[key][metric] += (val_a + val_b) / 2.0  # average of sum
+                        # edge_dict[key][metric] += val_a + val_b  # sum
+            rows.extend(edge_dict.values())
+
+        metric_edge_df = pd.DataFrame(rows)
+
+        if not metric_edge_df.empty:
+            metric_edge_tables.append(metric_edge_df)
+
+    # 6. merge all metrics for the current match
+
+    if metric_edge_tables:
+        all_edges = pd.concat(
+            [df[edge_keys] for df in metric_edge_tables],
+            ignore_index=True
+        ).drop_duplicates()
+
+        all_edges = all_edges.sort_values(edge_keys).reset_index(drop=True)
+
+        edge_table = all_edges.copy()
+
+        for metric_df in metric_edge_tables:
+            extra_cols = [c for c in metric_df.columns if c not in edge_keys]
+
+            edge_table = edge_table.merge(
+                metric_df[edge_keys + extra_cols],
+                on=edge_keys,
+                how="left"
+            )
+
+        all_match_edge_tables.append(edge_table)
+
+
+# 7. merge all matches
+if all_match_edge_tables:
+    final_df = pd.concat(all_match_edge_tables, ignore_index=True)
+    final_df.to_csv(OUTPUT_FILE, index=False)
+    print("Saved:", OUTPUT_FILE)
+    print("Final shape:", final_df.shape)
+    print(final_df.head())
+else:
+    print("No valid data generated.")
 #
 # #
 #
