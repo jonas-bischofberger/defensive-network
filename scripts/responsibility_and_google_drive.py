@@ -2563,7 +2563,56 @@ def _create_matchsums(df_event, df_tracking, series_meta, df_lineup, df_involvem
     teams = df_event["team_id_1"].dropna().unique()
     assert len(teams) == 2
     df_event["team_id_1"] = pd.Categorical(df_event["team_id_1"], teams)
-    df_goals = df_event[(df_event["event_type"] == "shot") & (df_event["event_outcome"] == "successful")]
+    #
+    # # teams in this match
+    # teams = df_event["team_id_1"].dropna().unique().tolist()
+    #
+    # # kickoff events
+    # kickoffs = df_event[df_event["gameEvents.setpieceType"].eq("K")].copy()
+    #
+    # # remove period-start kickoffs (start of match/halves; add ET starts if you need them)
+    # period_starts = {0, 2700, 5400, 6300, 7200}  # 0:00, 45:00, 90:00, 105:00, 120:00 in seconds
+    # goal_restarts = kickoffs[~kickoffs["gameEvents.startGameClock"].isin(period_starts)].copy()
+    #
+    # # scoring team is the opponent of the kickoff team
+    # def opponent(team):
+    #     return next(t for t in teams if t != team)
+    #
+    # goal_restarts["team_id_1"] = goal_restarts["team_id_1"].apply(opponent)
+    #
+    # # goals by team
+    # goals_by_team = goal_restarts["team_id_1"].value_counts()
+    # st.write("goals_by_team")
+    # st.write(goals_by_team)
+    #
+    # dfg_result = goals_by_team
+    #
+    # df_goals = df_event[(df_event["event_type"] == "shot") & (df_event["event_outcome"] == "successful")]
+
+    ###
+    df_event = df_event.drop_duplicates("gameEventId")
+
+
+
+
+
+    df_goals = df_event[(df_event["possessionEvents.shotOutcomeType"] == "G") & (df_event["possessionEvents.nonEvent"] == False)]
+    st.write("df_goals")
+    st.write(df_goals)
+
+    own_event_ids = [6631903, 6616040, 6619403]
+    teams = df_event["team_id_1"].unique().dropna().tolist()
+    df_goals.loc[df_goals["gameEventId"].isin(own_event_ids), "team_id_1"] = df_goals.loc[df_goals["gameEventId"].isin(own_event_ids), "team_id_1"].apply(lambda x: teams[1] if int(float(x)) == int(float(teams[0])) else teams[0])
+    st.write(df_goals.loc[df_goals["gameEventId"].isin(own_event_ids), :])
+    st.write(teams)
+    st.write(df_goals.loc[df_goals["gameEventId"].isin(own_event_ids), "team_id_1"])
+
+    # df_goals = df_event[(df_event["possessionEvents.shotOutcomeType"] == "G")]
+
+    # dfg_result = df_event.groupby("team_id_1", observed=False).agg(goals=("event_id", "count"))
+    # dfg_result["goals"] = goals_by_team
+
+    # df_goals = df_event[(df_event["event_type"] == "shot") & (df_event["event_outcome"] == "successful")]
     dfg_result = df_goals.groupby("team_id_1", observed=False).agg(goals=("event_id", "count"))
     dfg_result["goals_against"] = dfg_result["goals"].iloc[::-1].values
 
@@ -2581,8 +2630,14 @@ def _create_matchsums(df_event, df_tracking, series_meta, df_lineup, df_involvem
     dfgs.append(dfg_result)
 
     # xG
-    dfg_xg = df_event.groupby("team_id_1", observed=False).agg(xg=("xg", "sum"))
+    dfg_xg = df_event.groupby("team_id_1", observed=False).agg(xg=("xg", "sum"), shots=("possessionEvents.shotType", "count"))
+    st.write("df_event")
+    st.write(df_event)
     dfg_xg["xg_against"] = dfg_xg["xg"].iloc[::-1].values
+    dfg_xg["shots_against"] = dfg_xg["shots"].iloc[::-1].values
+    st.write("dfg_xg")
+    st.write(dfg_xg)
+    # st.stop()
     dfgs.append(dfg_xg)
 
     # Pass xT
@@ -2819,6 +2874,9 @@ def _create_matchsums(df_event, df_tracking, series_meta, df_lineup, df_involvem
 
     # for dfg_players
 
+    st.write("dfg_team")
+    st.write(dfg_team)
+
     return dfg_team, dfg_players
 
 
@@ -2939,7 +2997,11 @@ def process_involvements(df_meta, folder_tracking, folder_events, target_folder,
 
 def create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target_folder_team, target_folder_players, folder_involvement, overwrite_if_exists=False):
     # @st.cache_resource
+    # df_meta = df_meta[df_meta["slugified_match_string"].str.contains("orld")]
+    df_meta = df_meta[df_meta["slugified_match_string"].str.contains("costa-rica-germany")]
+
     def __create_matchsums(folder_tracking, folder_events, df_meta, df_lineups, target_folder_team, target_folder_players, folder_involvement, overwrite_if_exists):
+
         existing_match_ids = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder(folder_events)]
         existing_match_ids_involvement = [file["name"].split(".")[0] for file in defensive_network.parse.drive.list_files_in_drive_folder(folder_involvement)]
         existing_match_ids = set(existing_match_ids).intersection(existing_match_ids_involvement)

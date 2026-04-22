@@ -703,8 +703,10 @@ if __name__ == '__main__':
         "y_target": [0] * 5,
         "from": ["A"] * 3 + ["A", "B"],
         "to": ["B"] * 3 + ["B", "C"],
-        "pass_xt": list(np.arange(5) / 28)
+        "pass_xt": list(np.arange(5) / 28),
+        "pass_is_successful": [True] * 5,
     })
+    st.write(df)
     networks = get_defensive_networks(df, player_col="from", player_name_col="from", x_col="x", y_col="y", receiver_col="to", receiver_name_col="to", total_minutes=3, defender_name_col="defender_name", x_to_col="x_target", y_to_col="y_target")
 
     plot_defensive_networks(networks)
