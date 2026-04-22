@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import defensive_network.parse.dfb.cdf
 import defensive_network.models.involvement
 import defensive_network.models.expected_receiver
+import defensive_network.models.velocity
 import defensive_network.models.formation_v2
 import defensive_network.parse.drive
 import defensive_network.utility.pitch
@@ -28,6 +29,10 @@ import defensive_network.models.responsibility
 importlib.reload(defensive_network.models.expected_receiver)
 importlib.reload(defensive_network.models.formation_v2)
 importlib.reload(defensive_network.parse.dfb.cdf)
+importlib.reload(defensive_network.models.velocity)
+
+import accessible_space.interface
+importlib.reload(accessible_space.interface)
 
 def fuzzy_spatial_merge(df_event, df_tracking, max_distance=0.5):
     """
@@ -174,8 +179,7 @@ def process_pfffc(event_file):
             df, frame_col="frame_id", coordinate_cols=coordinate_cols, players=players, player_to_team=player2team
         ).drop(columns=[col for col in df.columns if col.endswith("_d") or col.endswith("_s")])
         df_tracking = df_tracking[df_tracking["x"].notna() & df_tracking["y"].notna()]
-        st.write("period c")
-        st.write(df_tracking["period_id"].unique())
+
         # fr = 4226
         # st.write('df_tracking[df_tracking["frame_id"] == fr]', df_tracking[df_tracking["frame_id"] == fr].shape)
         # st.write(df_tracking[df_tracking["frame_id"] == fr])

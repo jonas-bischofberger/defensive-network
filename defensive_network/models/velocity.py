@@ -1,3 +1,5 @@
+import warnings
+
 import pandas as pd
 import numpy as np
 
@@ -68,6 +70,17 @@ def add_velocity(
     4 1970-01-01 00:00:01          1           2           0  1.0  0.0  1.0
     5 1970-01-01 00:00:02          1           4           0  2.0  0.0  2.0
     """
+    if new_vx_col in df_tracking.columns:
+        warnings.warn(f"{new_vx_col} already exists in df_tracking - dropping it to avoid conflicts")
+        df_tracking = df_tracking.drop(columns=[new_vx_col])
+    if new_vy_col in df_tracking.columns:
+        warnings.warn(f"{new_vy_col} already exists in df_tracking - dropping it to avoid conflicts")
+        df_tracking = df_tracking.drop(columns=[new_vy_col])
+    if new_v_col is not None:
+        if new_v_col in df_tracking.columns:
+            warnings.warn(f"{new_v_col} already exists in df_tracking - dropping it to avoid conflicts")
+            df_tracking = df_tracking.drop(columns=[new_v_col])
+
     # Work on a copy to avoid surprising in-place changes
     df_tracking = df_tracking.copy()
 
@@ -93,6 +106,9 @@ def add_velocity(
         if len(uniq) > 1:
             uniq.iloc[0, uniq.columns.get_loc(new_vx_col)] = uniq.iloc[1][new_vx_col]
             uniq.iloc[0, uniq.columns.get_loc(new_vy_col)] = uniq.iloc[1][new_vy_col]
+        else:
+            uniq[new_vx_col] = 0.0
+            uniq[new_vy_col] = 0.0
 
         # Map velocities back to all rows (duplicates in time get the same vx/vy)
         df_p = df_p.merge(
@@ -101,7 +117,7 @@ def add_velocity(
             how="left",
             validate="many_to_one",
         )
-
+        assert new_vx_col in df_p.columns and new_vy_col in df_p.columns, f"Expected velocity columns not found after merge for player {player}"
         groups.append(df_p)
 
     df = pd.concat(groups)

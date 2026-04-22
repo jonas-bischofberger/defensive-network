@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import multiprocessing
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 import seaborn as sns
 
 import importlib
