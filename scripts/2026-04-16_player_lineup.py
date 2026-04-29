@@ -5,12 +5,13 @@ import defensive_network.parse.drive
 FOLDER = "involvement/10/"
 MATCH_FILTER = "fifa-men-s-world-cup-2022"
 # MATCH_FILTER = "fifa-men-s-world-cup-2022-2-st-england-united-states"
-player_info_df = pd.read_csv("2026-04-22test.csv")
+player_info_df = pd.read_csv("2026-04-29-player_level_metrics_self_inv.csv")
 player_info_df["starter"] = 0  # 默认都是0
 
 files = defensive_network.parse.drive.list_files_in_drive_folder(FOLDER)
 
 for f in files:
+
     file_name = f["name"]
     print(f"Processing: {file_name}")
     if MATCH_FILTER and MATCH_FILTER not in file_name:
@@ -19,7 +20,7 @@ for f in files:
         continue
 
     df_match = defensive_network.parse.drive.download_parquet_from_drive(FOLDER + file_name)
-    match_id = df_match["match_id"].iloc[0]
+    match_id = int(df_match["match_id"].iloc[0])
 
     # 提取首发 player_id
     starter_ids = set()
@@ -38,6 +39,6 @@ for f in files:
     )
 
 # player_info_df.to_csv("2026-04-16_player_info_with_starter.csv", index=False)
-player_info_df.to_csv("starter.csv", index=False)
+player_info_df.to_csv("2026-04-29-player_level_metrics_full.csv", index=False)
 print("Saved")
 

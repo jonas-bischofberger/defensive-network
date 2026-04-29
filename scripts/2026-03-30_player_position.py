@@ -6,9 +6,9 @@ import defensive_network.parse.drive
 
 # 1. settings
 FOLDER = "involvement/10/"
-# MATCH_FILTER = "fifa-men-s-world-cup-2022"
-MATCH_FILTER = "fifa-men-s-world-cup-2022-2-st-england-united-states"
-OUTPUT_FILE = "2026-04-22_test222.csv"
+MATCH_FILTER = "fifa-men-s-world-cup-2022"
+# MATCH_FILTER = "fifa-men-s-world-cup-2022-1-st-senegal-netherlands"
+OUTPUT_FILE = "2026-04-24_player_positionstest.csv"
 
 METRICS = ["raw_involvement", "raw_contribution", "raw_fault", "valued_involvement", "valued_contribution",
            "valued_fault"]
@@ -139,8 +139,10 @@ def build_player_summary_for_match(df_match):
             )
             .reset_index()
         )
-
         result = result.merge(agg, on=group_cols, how="left")
+
+    result["match_team_id"] = result["match_id"].astype(str) + "_" + result["defending_team"].astype(str)
+
 
     return result
 
