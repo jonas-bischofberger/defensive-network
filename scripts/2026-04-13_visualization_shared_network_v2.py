@@ -11,16 +11,16 @@ st.title("Shared Defensive Network")
 
 
 # 1. data
-# edge_dfs = {
-#     "average": pd.read_csv("scripts/2026-04-28_defensive_network_edge(average).csv"),
-#     "min": pd.read_csv("scripts/2026-04-28_defensive_network_edge(min).csv"),
-#     "product": pd.read_csv("scripts/2026-04-28_defensive_network_edge(product).csv"),
-#     "sum": pd.read_csv("scripts/2026-04-28_defensive_network_edge(sum).csv")}
 edge_dfs = {
-    "average": pd.read_csv("scripts/2026-04-13_defensive_network_edge(average).csv"),
-    "min": pd.read_csv("scripts/2026-04-13_defensive_network_edge(min).csv"),
-    "product": pd.read_csv("scripts/2026-04-13_defensive_network_edge(product).csv"),
-    "sum": pd.read_csv("scripts/2026-04-13_defensive_network_edge(sum).csv")}
+    "average": pd.read_csv("scripts/2026-04-28_defensive_network_edge(average).csv"),
+    "min": pd.read_csv("scripts/2026-04-28_defensive_network_edge(min).csv"),
+    "product": pd.read_csv("scripts/2026-04-28_defensive_network_edge(product).csv"),
+    "sum": pd.read_csv("scripts/2026-04-28_defensive_network_edge(sum).csv")}
+# edge_dfs = {
+#     "average": pd.read_csv("scripts/2026-04-13_defensive_network_edge(average).csv"),
+#     "min": pd.read_csv("scripts/2026-04-13_defensive_network_edge(min).csv"),
+#     "product": pd.read_csv("scripts/2026-04-13_defensive_network_edge(product).csv"),
+#     "sum": pd.read_csv("scripts/2026-04-13_defensive_network_edge(sum).csv")}
 # edge_dfs = {
 #     "average": pd.read_csv("scripts/2026-04-22_test.csv"),
 #     "min": pd.read_csv("scripts/2026-04-22_test.csv"),
@@ -28,7 +28,7 @@ edge_dfs = {
 #     "sum": pd.read_csv("scripts/2026-04-22_test.csv")}
 
 
-player_df = pd.read_csv("scripts/2026-04-29-player_level_metrics_full.csv")
+player_df = pd.read_csv("scripts/2026-04-29-player_level_metrics.csv")
 meta_df = pd.read_csv("scripts/meta_worldcup.csv")
 
 
@@ -67,7 +67,7 @@ def get_player_positions(player_df, match_id, defending_team, players, metric):
 
 
 def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric, min_edge_count=1, cmap_name="magma_r",
-                           node_size_option="self_inv", node_size=50):
+                           node_size_option="self_inv", node_size=100):
 
     edge_count_col = f"{metric}_edge_count"
     df_plot = edge_df[(edge_df["match_id"] == match_id) & (edge_df["defending_team"] == defending_team) &
