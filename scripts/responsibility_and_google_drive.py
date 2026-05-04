@@ -802,7 +802,7 @@ def main():
     _do_create_matchsums = st.toggle("Create matchsums", value=False)
     _do_concat_matchsums = st.toggle("Concat matchsums", value=True)
     _do_videos = st.toggle("Create videos", value=False)
-    _do_analysis = st.toggle("Do analysis", value=False)
+    _do_analysis = st.toggle("Do analysis", value=True)
     _do_summary = st.toggle("Analyse summary metrics", False, key=f"summary_table")
 
     folder = st.text_input("Folder", "Y:/m_raw/2324/")
@@ -816,6 +816,8 @@ def main():
     radius = st.selectbox("Involvement radius (meters)", [10], index=0)
     fpath_all_player_matchsums = f"all_player_matchsums/{radius}.csv"
     fpath_all_team_matchsums = f"all_team_matchsums/{radius}.csv"
+
+    radius = st.selectbox("Involvement radius (meters)", [10], index=0)
 
     folder_tracking = "tracking/"
     folder_events = "events/"
