@@ -20,7 +20,7 @@ METRICS = ["raw_involvement", "valued_involvement", "raw_fault", "valued_fault",
            "raw_contribution", "valued_contribution"]
 
 COLOR_STARTER = "#FFD700"   # gold
-COLOR_SUB     = "#87CEEB"   # sky blue
+COLOR_SUB = "#87CEEB"   # sky blue
 
 
 @st.cache_data
