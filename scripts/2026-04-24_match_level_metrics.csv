@@ -1,0 +1,129 @@
+match_team_id,match_id,team_id,team_name,goals_against,shots_against,xg_against,n_tackles,goal_difference,result,competition_stage,passes_against
+10502_366,10502,366,Netherlands,1,18,1.6521,35,2,win,Round of 16,598
+10502_51,10502,51,United States,3,13,1.4819,21,-2,lose,Round of 16,432
+10503_364,10503,364,Argentina,1,5,0.4261,27,1,win,Round of 16,463
+10503_386,10503,386,Australia,2,14,1.4816,22,-1,lose,Round of 16,727
+10504_363,10504,363,France,1,12,0.81,22,2,win,Round of 16,474
+10504_376,10504,376,Poland,3,17,1.1264,19,-2,lose,Round of 16,574
+10505_372,10505,372,Senegal,3,7,1.02,25,-3,lose,Round of 16,612
+10505_50,10505,50,England,0,10,0.9728,17,3,win,Round of 16,392
+10506_371,10506,371,Croatia,1,16,1.069,51,0,draw,Round of 16,558
+10506_57,10506,57,Japan,1,20,0.8544,41,0,draw,Round of 16,768
+10507_361,10507,361,Brazil,1,12,0.3448,21,3,win,Round of 16,550
+10507_377,10507,377,South Korea,4,18,2.4779,18,-3,lose,Round of 16,622
+10508_374,10508,374,Morocco,0,17,0.495,29,0,draw,Round of 16,1041
+10508_52,10508,52,Spain,0,10,0.5704,21,0,draw,Round of 16,355
+10509_365,10509,365,Portugal,1,10,1.2718,19,5,win,Round of 16,519
+10509_370,10509,370,Switzerland,6,14,2.2843,16,-5,lose,Round of 16,472
+10510_361,10510,361,Brazil,1,6,0.6329,25,0,draw,Quarter-finals,556
+10510_371,10510,371,Croatia,1,17,1.8163,13,0,draw,Quarter-finals,566
+10511_364,10511,364,Argentina,2,5,0.5695,26,0,draw,Quarter-finals,601
+10511_366,10511,366,Netherlands,2,8,1.1557,22,0,draw,Quarter-finals,408
+10512_365,10512,365,Portugal,1,11,0.972,26,-1,lose,Quarter-finals,248
+10512_374,10512,374,Morocco,0,11,0.7441,29,1,win,Quarter-finals,702
+10513_363,10513,363,France,1,15,0.7856,39,1,win,Quarter-finals,527
+10513_50,10513,50,England,2,9,0.8394,17,-1,lose,Quarter-finals,392
+10514_364,10514,364,Argentina,0,12,0.4101,22,3,win,Semi-finals,629
+10514_371,10514,371,Croatia,3,10,1.0809,16,-3,lose,Semi-finals,429
+10515_363,10515,363,France,0,15,1.2304,28,2,win,Semi-finals,589
+10515_374,10515,374,Morocco,2,16,2.0024,19,-2,lose,Semi-finals,387
+10516_371,10516,371,Croatia,1,8,0.9915,24,1,win,3rd Place Final,490
+10516_374,10516,374,Morocco,2,14,0.8493,19,-1,lose,3rd Place Final,504
+10517_363,10517,363,France,3,28,1.9748,45,0,draw,Final,672
+10517_364,10517,364,Argentina,3,15,0.7056,33,0,draw,Final,556
+3812_366,3812,366,Netherlands,0,17,0.6915,29,2,win,Group Stage,411
+3812_372,3812,372,Senegal,2,10,1.1239,38,-2,lose,Group Stage,480
+3813_373,3813,373,Iran,6,12,1.9872,22,-4,lose,Group Stage,831
+3813_50,3813,50,England,2,8,0.6722,21,4,win,Group Stage,251
+3814_360,3814,360,Qatar,2,11,0.3705,28,-2,lose,Group Stage,513
+3814_381,3814,381,Ecuador,0,5,0.3042,28,2,win,Group Stage,458
+3815_384,3815,384,Wales,1,6,0.6025,30,0,draw,Group Stage,588
+3815_51,3815,51,United States,1,7,0.6118,25,0,draw,Group Stage,430
+3816_364,3816,364,Argentina,2,3,0.1535,28,-1,lose,Group Stage,269
+3816_382,3816,382,Saudi Arabia,1,21,1.7081,25,1,win,Group Stage,643
+3817_367,3817,367,Denmark,0,13,1.0599,26,0,draw,Group Stage,403
+3817_378,3817,378,Tunisia,0,13,1.5666,27,0,draw,Group Stage,629
+3818_376,3818,376,Poland,0,13,0.5291,33,0,draw,Group Stage,513
+3818_58,3818,58,Mexico,0,8,0.3544,25,0,draw,Group Stage,353
+3819_363,3819,363,France,1,4,0.3233,23,3,win,Group Stage,466
+3819_386,3819,386,Australia,4,22,3.1705,17,-3,lose,Group Stage,736
+3820_371,3820,371,Croatia,0,8,0.3626,26,0,draw,Group Stage,380
+3820_374,3820,374,Morocco,0,6,0.8499,24,0,draw,Group Stage,673
+3821_368,3821,368,Germany,2,12,1.2493,26,-1,lose,Group Stage,286
+3821_57,3821,57,Japan,1,28,1.9845,21,1,win,Group Stage,801
+3822_385,3822,385,Costa Rica,7,18,1.9784,13,-7,lose,Group Stage,1073
+3822_52,3822,52,Spain,0,0,0,15,7,win,Group Stage,246
+3823_362,3823,362,Belgium,0,22,1.7627,20,1,win,Group Stage,471
+3823_380,3823,380,Canada,1,10,0.67,23,-1,lose,Group Stage,539
+3824_370,3824,370,Switzerland,0,9,0.6131,26,1,win,Group Stage,509
+3824_379,3824,379,Cameroon,1,8,1.4265,22,-1,lose,Group Stage,526
+3825_369,3825,369,Uruguay,0,7,0.493,37,0,draw,Group Stage,453
+3825_377,3825,377,South Korea,0,10,0.4173,35,0,draw,Group Stage,572
+3826_365,3826,365,Portugal,2,10,0.78,27,1,win,Group Stage,398
+3826_383,3826,383,Ghana,3,12,1.3134,17,-1,lose,Group Stage,648
+3827_361,3827,361,Brazil,0,6,0.1633,22,2,win,Group Stage,426
+3827_375,3827,375,Serbia,2,21,2.1239,20,-2,lose,Group Stage,606
+3828_373,3828,373,Iran,0,9,0.6156,34,2,win,Group Stage,541
+3828_384,3828,384,Wales,2,22,1.454,32,-2,lose,Group Stage,330
+3829_360,3829,360,Qatar,3,12,0.903,26,-2,lose,Group Stage,532
+3829_372,3829,372,Senegal,1,11,0.9601,24,2,win,Group Stage,437
+3830_366,3830,366,Netherlands,1,14,1.6511,34,0,draw,Group Stage,448
+3830_381,3830,381,Ecuador,1,3,0.1045,33,0,draw,Group Stage,546
+3831_50,3831,50,England,0,10,0.5143,24,0,draw,Group Stage,453
+3831_51,3831,51,United States,0,8,0.4606,11,0,draw,Group Stage,565
+3832_378,3832,378,Tunisia,1,10,0.359,39,-1,lose,Group Stage,382
+3832_386,3832,386,Australia,0,14,1.0522,47,1,win,Group Stage,534
+3833_376,3833,376,Poland,0,18,1.1885,24,2,win,Group Stage,566
+3833_382,3833,382,Saudi Arabia,2,8,1.7342,24,-2,lose,Group Stage,340
+3834_363,3834,363,France,1,11,0.8885,24,1,win,Group Stage,549
+3834_367,3834,367,Denmark,2,20,1.9336,20,-1,lose,Group Stage,523
+3835_364,3835,364,Argentina,0,4,0.2064,22,2,win,Group Stage,392
+3835_58,3835,58,Mexico,2,5,0.3252,32,-2,lose,Group Stage,564
+3836_385,3836,385,Costa Rica,0,14,0.7735,31,1,win,Group Stage,607
+3836_57,3836,57,Japan,1,4,0.1994,22,-1,lose,Group Stage,466
+3837_362,3837,362,Belgium,2,10,0.9911,19,-2,lose,Group Stage,341
+3837_374,3837,374,Morocco,0,11,0.6426,20,2,win,Group Stage,681
+3838_371,3838,371,Croatia,1,8,0.2868,19,3,win,Group Stage,522
+3838_380,3838,380,Canada,4,14,2.6102,28,-3,lose,Group Stage,484
+3839_368,3839,368,Germany,1,8,0.6395,25,0,draw,Group Stage,654
+3839_52,3839,52,Spain,1,12,1.147,17,0,draw,Group Stage,372
+3840_375,3840,375,Serbia,3,12,2.0703,32,0,draw,Group Stage,377
+3840_379,3840,379,Cameroon,3,19,1.7381,27,0,draw,Group Stage,535
+3841_377,3841,377,South Korea,3,8,1.1805,26,-1,lose,Group Stage,339
+3841_383,3841,383,Ghana,2,23,1.3678,32,1,win,Group Stage,555
+3842_361,3842,361,Brazil,0,5,0.2886,22,1,win,Group Stage,498
+3842_370,3842,370,Switzerland,1,11,0.9227,16,-1,lose,Group Stage,581
+3843_365,3843,365,Portugal,0,11,1.2167,25,2,win,Group Stage,427
+3843_369,3843,369,Uruguay,2,16,0.4302,29,-2,lose,Group Stage,633
+3844_372,3844,372,Senegal,1,9,1.0017,36,1,win,Group Stage,455
+3844_381,3844,381,Ecuador,2,13,0.924,39,-1,lose,Group Stage,300
+3845_360,3845,360,Qatar,2,15,1.714,21,-2,lose,Group Stage,810
+3845_366,3845,366,Netherlands,0,5,0.1437,19,2,win,Group Stage,448
+3846_384,3846,384,Wales,3,16,2.9155,13,-3,lose,Group Stage,618
+3846_50,3846,50,England,0,7,0.208,35,3,win,Group Stage,350
+3847_373,3847,373,Iran,1,12,1.1697,25,-1,lose,Group Stage,501
+3847_51,3847,51,United States,0,5,0.9208,30,1,win,Group Stage,487
+3848_367,3848,367,Denmark,1,9,0.4697,44,-1,lose,Group Stage,338
+3848_386,3848,386,Australia,0,14,0.7372,39,1,win,Group Stage,699
+3849_363,3849,363,France,1,6,0.2983,31,-1,lose,Group Stage,346
+3849_378,3849,378,Tunisia,0,9,0.477,20,1,win,Group Stage,644
+3850_364,3850,364,Argentina,0,4,0.1976,17,2,win,Group Stage,340
+3850_376,3850,376,Poland,2,24,2.2932,23,-2,lose,Group Stage,887
+3851_382,3851,382,Saudi Arabia,2,27,2.3221,36,-1,lose,Group Stage,466
+3851_58,3851,58,Mexico,1,11,1.0761,36,1,win,Group Stage,314
+3852_362,3852,362,Belgium,0,11,0.695,21,0,draw,Group Stage,595
+3852_371,3852,371,Croatia,0,13,2.3818,32,0,draw,Group Stage,622
+3853_374,3853,374,Morocco,1,6,1.0956,27,1,win,Group Stage,548
+3853_380,3853,380,Canada,2,7,0.4264,29,-1,lose,Group Stage,400
+3854_52,3854,52,Spain,2,6,1.1578,12,-1,lose,Group Stage,236
+3854_57,3854,57,Japan,1,13,0.8577,13,1,win,Group Stage,1070
+3855_368,3855,368,Germany,2,7,1.0347,31,2,win,Group Stage,359
+3855_385,3855,385,Costa Rica,4,34,4.3161,27,-2,lose,Group Stage,737
+3856_369,3856,369,Uruguay,0,10,0.6092,37,2,win,Group Stage,471
+3856_383,3856,383,Ghana,2,13,1.6366,25,-2,lose,Group Stage,463
+3857_365,3857,365,Portugal,2,13,1.399,25,-1,lose,Group Stage,380
+3857_377,3857,377,South Korea,1,13,0.9737,31,1,win,Group Stage,600
+3858_370,3858,370,Switzerland,2,10,1.189,34,1,win,Group Stage,502
+3858_375,3858,375,Serbia,3,14,3.1035,29,-1,lose,Group Stage,436
+3859_361,3859,361,Brazil,1,8,0.3834,23,-1,lose,Group Stage,326
+3859_379,3859,379,Cameroon,0,22,2.3782,34,1,win,Group Stage,566
