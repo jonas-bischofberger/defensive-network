@@ -18,7 +18,7 @@ edge_dfs = {
     "sum": pd.read_csv("scripts/2026-04-28_defensive_network_edge(sum).csv")}
 
 
-player_df = pd.read_csv("scripts/2026-04-29-player_level_metrics.csv")
+player_df = pd.read_csv("scripts/2026-05-06_node_level_metrics_with_mins.csv")
 meta_df = pd.read_csv("scripts/meta_worldcup.csv")
 
 

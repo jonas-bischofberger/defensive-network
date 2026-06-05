@@ -1,3 +1,4 @@
+
 import sys, os, math
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -94,6 +95,8 @@ def plot_player_network(edges_all, nodes_all, match_id, team_id, defender,
         (edges_all["defender_name"] == defender) &
         (edges_all["n_passes"] >= min_passes)
     ].copy()
+    if "involvement" not in metric:
+        edges = edges[edges[metric_avg_col] > 0]
 
     node_rows = nodes_all[
         (nodes_all["match_id"] == match_id) &

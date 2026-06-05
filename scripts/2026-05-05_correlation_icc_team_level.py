@@ -5,7 +5,7 @@ import streamlit as st
 from scipy.stats import pearsonr
 
 outcomes = pd.read_csv("scripts/2026-04-24_match_level_metrics.csv")
-squad_size = (pd.read_csv("scripts/2026-04-29-player_level_metrics.csv")
+squad_size = (pd.read_csv("scripts/2026-05-06_node_level_metrics_with_mins.csv")
               .groupby("match_team_id")["defender_id"].count().rename("n_players"))
 edge_dfs = {k: pd.read_csv(f"scripts/2026-04-28_defensive_network_edge({k}).csv")
               for k in ("average", "min", "product", "sum")}
