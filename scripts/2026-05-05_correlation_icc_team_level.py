@@ -81,7 +81,7 @@ def corr_tbl(df, cols, partial=False):
     r = {(m, t): _r(m, t) for m in cols for t in TARGETS}
     to_df = lambda i: pd.Series({k: v[i] for k, v in r.items()}).rename_axis(["metric", "outcome"]).unstack("outcome")
     rdf, pdf = to_df(0), to_df(1)
-    disp = rdf.applymap(lambda v: f"{v: .2f}") + " (" + pdf.applymap(lambda v: f"{v:.3f}") + ")"
+    disp = rdf.map(lambda v: f"{v: .2f}") + " (" + pdf.map(lambda v: f"{v:.3f}") + ")"
     st.dataframe(disp.style.background_gradient(cmap="RdYlGn", gmap=rdf.values, axis=None, vmin=-1, vmax=1))
 
 

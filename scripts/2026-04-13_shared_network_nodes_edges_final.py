@@ -6,13 +6,23 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 import defensive_network.parse.drive
 
 
+def gini_simpson(vals):
+    """Raw Gini-Simpson sharedness: 1 - sum(p_i^2).
+    Solo pass -> 0.0, n-way even split -> (n-1)/n."""
+    v = [x for x in vals if x > 0]
+    if len(v) <= 1:
+        return 0.0
+    total = sum(v)
+    return 1.0 - sum((x / total) ** 2 for x in v)
+
+
 # 1. parameters
 FOLDER = "involvement/10/"
 MATCH_FILTER = "fifa-men-s-world-cup-2022"
 # MATCH_FILTER = "fifa-men-s-world-cup-2022-2-st-england-united-states"
-ROLE_VALUE_FILE = "FIFA Mens World Cup_10.csv"
+ROLE_VALUE_FILE = "FIFA Mens World Cup_10.csv"  # from Drive: responsibility_model/FIFA Mens World Cup_10.csv
 OUTPUT_FILE = "2026-04-28_defensive_network_edge(sum).csv"
-player_info_df = pd.read_csv("2026-04-24_player_level_metrics.csv")
+player_info_df = pd.read_csv("scripts/2026-05-06_node_level_metrics_with_mins.csv")
 
 
 metrics = ["raw_involvement", "raw_fault", "raw_contribution", "valued_involvement", "valued_contribution",
@@ -26,7 +36,7 @@ role_value_cols = ["raw_responsibility"]
 edge_keys = ["match_id", "match_name", "defending_team", "player_1", "player_2"]
 
 
-# 2. read role value
+# 2. read role value (optional — responsibility metrics skipped if missing)
 
 role_df = pd.read_csv(ROLE_VALUE_FILE)
 # keep the chosen columns
@@ -39,6 +49,8 @@ all_match_self_count_tables = []
 
 for metric in metrics:
     player_info_df[f"{metric}_self_inv"] = 0.0
+    player_info_df[f"{metric}_self_inv_gs"] = 0.0
+    player_info_df[f"{metric}_shared_inv_gs"] = 0.0
 
 for f in files:
     file_name = f["name"]
@@ -58,7 +70,7 @@ for f in files:
     match_id = int(match_id)
     match_name = file_name.replace(".parquet", "")
 
-    # 4. merge role-based
+    # 4. merge role-based (only if role file was available)
 
     df_match = df_match.merge(role_df, on=role_keys, how="left")
 
@@ -96,8 +108,9 @@ for f in files:
 
             for pass_id, df_pass in df_team.groupby("involvement_pass_id"):
                 defenders = sorted(df_pass["defender_name"].tolist())
+                player_vals = df_pass.set_index("defender_name")[metric].to_dict()
 
-                # calculate self-inv （only 1 player invovled） and merge to player_info_df
+                # existing binary self-inv (solo passes only) — unchanged
                 if len(defenders) < 2:
                     defender = defenders[0]
                     self_inv = df_pass[metric].iloc[0]
@@ -122,8 +135,18 @@ for f in files:
                         current = player_info_df.loc[mask, f"{metric}_self_inv"].fillna(0)
                         player_info_df.loc[mask, f"{metric}_self_inv"] = current + self_inv
 
+                # Gini-Simpson continuous split — all passes
+                s = gini_simpson(player_vals.values())
+                for defender, v in player_vals.items():
+                    mask = ((player_info_df["match_id"] == match_id) &
+                            (player_info_df["defending_team"] == defending_team) &
+                            (player_info_df["defender_name"] == defender))
+                    if mask.any():
+                        player_info_df.loc[mask, f"{metric}_self_inv_gs"]   += (1 - s) * v
+                        player_info_df.loc[mask, f"{metric}_shared_inv_gs"] += s * v
+
 # 8.  player_info_df
-player_info_df.to_csv("2026-04-29-player_level_metrics_self_inv.csv", index=False)
+player_info_df.to_csv("scripts/2026-06-07_node_level_metrics_with_gs.csv", index=False)
 print("Saved")
 
 #                 else:

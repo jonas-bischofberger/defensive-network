@@ -17,11 +17,13 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from scipy.stats import pearsonr, kruskal, mannwhitneyu, t as t_dist
+from scipy.stats import pearsonr, spearmanr, kruskal, mannwhitneyu, t as t_dist
 
 # ── Data loading ──────────────────────────────────────────────────────────────
+import os as _os
 outcomes  = pd.read_csv("scripts/2026-04-24_match_level_metrics.csv")
-nodes     = pd.read_csv("scripts/2026-05-06_node_level_metrics_with_mins.csv")
+_gs_csv   = "scripts/2026-06-07_node_level_metrics_with_gs.csv"
+nodes     = pd.read_csv(_gs_csv if _os.path.exists(_gs_csv) else "scripts/2026-05-06_node_level_metrics_with_mins.csv")
 m2_edges  = pd.read_csv("scripts/2026-05-05_player_net_m2_edges.csv")
 edge_dfs  = {k: pd.read_csv(f"scripts/2026-04-28_defensive_network_edge({k}).csv")
              for k in ("average", "min", "product", "sum")}
@@ -40,6 +42,7 @@ match_labels = (
 )
 _self_inv_cols = [c for c in nodes.columns if c.endswith("_self_inv")]
 self_inv_match = nodes.groupby("match_team_id")[_self_inv_cols].sum().reset_index()
+GS_AVAILABLE   = any(c.endswith("_self_inv_gs") for c in nodes.columns)
 
 # ── Column groups ─────────────────────────────────────────────────────────────
 WEIGHT_COLS = [
@@ -229,12 +232,17 @@ def plot_conc_team(df, outcome_col, strength_col="strength", x_label="Total Stre
 
 
 # ── Self vs Shared ────────────────────────────────────────────────────────────
-def build_selfshared_match(edge_df, metric):
+def build_selfshared_match(edge_df, metric, use_gs=False):
     edge_df = edge_df.copy()
     edge_df["match_team_id"] = edge_df["match_id"].astype(str) + "_" + edge_df["defending_team"].astype(str)
-    shared   = edge_df.groupby("match_team_id")[metric].sum().rename("shared_inv")
-    self_inv = nodes.groupby("match_team_id")[metric + "_self_inv"].sum().rename("self_inv")
-    ratio    = (self_inv / (self_inv + shared)).rename("self_ratio")
+    if use_gs and GS_AVAILABLE:
+        self_inv = nodes.groupby("match_team_id")[metric + "_self_inv_gs"].sum().rename("self_inv")
+        shared   = nodes.groupby("match_team_id")[metric + "_shared_inv_gs"].sum().rename("shared_inv")
+        ratio    = (shared / (self_inv + shared)).rename("self_ratio")  # sharedness: high = shared
+    else:
+        shared   = edge_df.groupby("match_team_id")[metric].sum().rename("shared_inv")
+        self_inv = nodes.groupby("match_team_id")[metric + "_self_inv"].sum().rename("self_inv")
+        ratio    = (self_inv / (self_inv + shared)).rename("self_ratio")
     df = _join_outcomes(pd.concat([self_inv, shared, ratio], axis=1)).dropna(subset=["self_inv", "shared_inv"])
     return df.reset_index()
 
@@ -247,37 +255,58 @@ def build_selfshared_team(df):
     return agg.merge(_furthest_stage(df), on="team_name")
 
 
-def plot_selfshared(df_team, outcome_col):
+def plot_selfshared(df_team, outcome_col, use_gs=False, correct_possession=False):
     df_sorted = df_team.sort_values("self_ratio", ascending=False).reset_index(drop=True)
     fig_bar = px.bar(df_sorted, x="team_name", y=["self_inv", "shared_inv"],
                      title="Self vs Shared Involvement per Team",
                      labels={"value": "Total Involvement", "team_name": "Team"}, barmode="stack")
     fig_bar.update_xaxes(tickangle=45)
 
-    _valid = df_sorted[["self_ratio", outcome_col]].dropna()
-    r_val, p_val = pearsonr(_valid["self_ratio"], _valid[outcome_col])
-    sig = "***" if p_val < 0.001 else "**" if p_val < 0.01 else "*" if p_val < 0.05 else "ns"
+    ratio_label = "Sharedness (shared / total) [Gini-Simpson]" if use_gs else "Self ratio (self / total)"
+    def _sig(p): return "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
 
-    if "passes_against" in df_sorted.columns:
+    # build plot df — residualize y if possession correction requested
+    if correct_possession and "passes_against" in df_sorted.columns:
+        _s = df_sorted[[outcome_col, "passes_against"]].dropna()
+        _ry = np.full(len(df_sorted), np.nan)
+        _ry[_s.index] = _resid(_s[outcome_col].values, _s["passes_against"].values)
+        df_plot = df_sorted.copy()
+        df_plot["_y"] = _ry
+        y_col_plot, y_label = "_y", f"{outcome_col} (residual after passes against)"
+    else:
+        df_plot, y_col_plot, y_label = df_sorted, outcome_col, outcome_col
+
+    _valid = df_plot[["self_ratio", y_col_plot]].dropna()
+    r_val, p_val = pearsonr(_valid["self_ratio"], _valid[y_col_plot])
+    rho,   p_rho = spearmanr(_valid["self_ratio"], _valid[y_col_plot])
+
+    if "passes_against" in df_sorted.columns and not correct_possession:
         _s = df_sorted[["self_ratio", outcome_col, "passes_against"]].dropna()
         _a = _resid(_s["self_ratio"].values, _s["passes_against"].values)
-        _b = _resid(_s[outcome_col].values, _s["passes_against"].values)
-        _mask = ~(np.isnan(_a) | np.isnan(_b))
-        r_p, p_p = pearsonr(_a[_mask], _b[_mask])
-        sig_p = "***" if p_p < 0.001 else "**" if p_p < 0.01 else "*" if p_p < 0.05 else "ns"
-        _title_r = (f"r = {r_val:.3f} ({sig})  |  partial r = {r_p:.3f} ({sig_p}, controlling passes_against)")
+        _b = _resid(_s[outcome_col].values,  _s["passes_against"].values)
+        _mk = ~(np.isnan(_a) | np.isnan(_b))
+        r_p,   p_p  = pearsonr(_a[_mk],  _b[_mk])
+        rho_p, p_rp = spearmanr(_a[_mk], _b[_mk])
+        _title_r = (
+            f"r = {r_val:.3f}, p = {p_val:.3f} ({_sig(p_val)})  |  partial r = {r_p:.3f}, p = {p_p:.3f} ({_sig(p_p)}, ctrl passes_against)  |  "
+            f"ρ = {rho:.3f}, p = {p_rho:.3f} ({_sig(p_rho)})  |  partial ρ = {rho_p:.3f}, p = {p_rp:.3f} ({_sig(p_rp)}, ctrl passes_against)"
+        )
     else:
-        _title_r = f"r = {r_val:.3f}, p = {p_val:.3f} ({sig})"
+        _note = " corrected" if correct_possession else ""
+        _title_r = (f"r = {r_val:.3f}, p = {p_val:.3f} ({_sig(p_val)}){_note}  |  "
+                    f"ρ = {rho:.3f}, p = {p_rho:.3f} ({_sig(p_rho)}){_note}")
 
-    fig_scatter = px.scatter(df_sorted, x="self_ratio", y=outcome_col,
+    fig_scatter = px.scatter(df_plot, x="self_ratio", y=y_col_plot,
                              text="team_name", color="furthest_stage",
                              color_discrete_map=STAGE_PALETTE,
                              category_orders={"furthest_stage": STAGE_CATEGORY_ORDER},
                              trendline="ols", trendline_scope="overall",
                              trendline_color_override="black",
                              title=f"Self-involvement ratio vs Defensive Performance  |  {_title_r}",
-                             labels={"self_ratio": "Self ratio (self / total)", "furthest_stage": "Furthest Stage"})
+                             labels={"self_ratio": ratio_label, y_col_plot: y_label,
+                                     "furthest_stage": "Furthest Stage"})
     fig_scatter.update_traces(textposition="top center", selector={"mode": "markers+text"})
+    fig_scatter.update_layout(title_font_size=11)
     return fig_bar, fig_scatter, df_sorted
 
 
@@ -763,8 +792,15 @@ with st.sidebar:
     _y_opts = {"centralization_w": "Centralization (weighted)", "kcore_max": "Max K-core"}
     y_conc = st.selectbox("Y axis", list(_y_opts), format_func=_y_opts.__getitem__, key="y_conc")
     st.subheader("Self vs Shared")
-    metric_self  = st.selectbox("Metric (contribution)", CONTRIBUTION_COLS, key="metric_self")
+    metric_self  = st.selectbox("Metric", WEIGHT_COLS, key="metric_self")
     outcome_col  = st.selectbox("Outcome metric", OUTCOME_COLS)
+    if GS_AVAILABLE:
+        _gs_opts = {"Binary (solo = self, multi = shared)": False, "Gini-Simpson (continuous)": True}
+        use_gs = _gs_opts[st.selectbox("Self/Shared method", list(_gs_opts))]
+    else:
+        use_gs = False
+        st.caption("Gini-Simpson not available — regenerate node CSV.")
+    correct_possession = st.checkbox("Correct for passes against")
     st.subheader("Defensive Style")
     _norm_opts   = ["raw", "per_90", "per_pass_against"]
     _norm_labels = {"raw": "Raw", "per_90": "Per 90 min", "per_pass_against": "Per pass against"}
@@ -785,7 +821,7 @@ df_conc_fault_match = build_conc_match(edge_dfs[method], metric_conc_fault, thr)
 df_conc_fault_team  = build_conc_team(df_conc_fault_match)
 df_conc_cont_match  = build_conc_match(edge_dfs[method], metric_conc_cont,  thr)
 df_conc_cont_team   = build_conc_team(df_conc_cont_match)
-df_self_match       = build_selfshared_match(edge_dfs[method], metric_self)
+df_self_match       = build_selfshared_match(edge_dfs[method], metric_self, use_gs=use_gs)
 df_self_team        = build_selfshared_team(df_self_match)
 df_style_match, df_style_team = build_style_team(edge_dfs[method], x_col, y_col, size_col, x_normalize, y_normalize)
 avg_co, avg_co_team = build_co_defender_data()
@@ -976,18 +1012,19 @@ with tab_conc:
             )
 
 with tab_self:
-    fig_bar, fig_scatter, df_self_sorted = plot_selfshared(df_self_team, outcome_col)
+    fig_bar, fig_scatter, df_self_sorted = plot_selfshared(df_self_team, outcome_col, use_gs=use_gs, correct_possession=correct_possession)
     st.plotly_chart(fig_bar, use_container_width=True)
 
+    def _msig(p): return "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
     _vm = df_self_match[["self_ratio", outcome_col]].dropna()
-    _rm, _pm = pearsonr(_vm["self_ratio"], _vm[outcome_col])
-    _sigm = "***" if _pm < 0.001 else "**" if _pm < 0.01 else "*" if _pm < 0.05 else "ns"
+    _rm,  _pm   = pearsonr(_vm["self_ratio"],  _vm[outcome_col])
+    _rhom, _pms = spearmanr(_vm["self_ratio"], _vm[outcome_col])
     _sm = df_self_match[["self_ratio", outcome_col, "passes_against"]].dropna()
     _a = _resid(_sm["self_ratio"].values, _sm["passes_against"].values)
-    _b = _resid(_sm[outcome_col].values, _sm["passes_against"].values)
+    _b = _resid(_sm[outcome_col].values,  _sm["passes_against"].values)
     _mk = ~(np.isnan(_a) | np.isnan(_b))
-    _rmp, _pmp = pearsonr(_a[_mk], _b[_mk])
-    _sigmp = "***" if _pmp < 0.001 else "**" if _pmp < 0.01 else "*" if _pmp < 0.05 else "ns"
+    _rmp,  _pmp  = pearsonr(_a[_mk],  _b[_mk])
+    _rhomp, _pmps = spearmanr(_a[_mk], _b[_mk])
 
     fig_scatter_m = px.scatter(
         df_self_match, x="self_ratio", y=outcome_col,
@@ -998,9 +1035,12 @@ with tab_self:
         trendline="ols", trendline_scope="overall",
         trendline_color_override="black",
         title=(f"Match level (n={len(_vm)}) — Self ratio vs {outcome_col}  |  "
-               f"r = {_rm:.3f} ({_sigm})  |  partial r = {_rmp:.3f} ({_sigmp})"),
-        labels={"self_ratio": "Self ratio (self / total)", "competition_stage": "Stage"},
+               f"r = {_rm:.3f}, p = {_pm:.3f} ({_msig(_pm)})  |  partial r = {_rmp:.3f}, p = {_pmp:.3f} ({_msig(_pmp)})  |  "
+               f"ρ = {_rhom:.3f}, p = {_pms:.3f} ({_msig(_pms)})  |  partial ρ = {_rhomp:.3f}, p = {_pmps:.3f} ({_msig(_pmps)})"),
+        labels={"self_ratio": "Sharedness (shared / total) [Gini-Simpson]" if use_gs else "Self ratio (self / total)",
+                "competition_stage": "Stage"},
     )
+    fig_scatter_m.update_layout(title_font_size=11)
 
     _c1, _c2 = st.columns(2)
     _c1.plotly_chart(fig_scatter, use_container_width=True)
