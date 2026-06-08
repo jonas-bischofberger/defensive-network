@@ -162,7 +162,11 @@ def plot_player_network(edges_all, nodes_all, match_id, team_id, defender,
 
     # draw nodes
     NODE_MULT = 200
-    max_passer = max(edges.groupby("passer_name")["n_passes"].sum().max(), 1) if use_m2 else None
+    if use_m2:
+        _passer_sum   = edges.groupby("passer_name")["n_passes"].sum()
+        _receiver_sum = edges.groupby("receiver_name")["n_passes"].sum()
+        _total = (_passer_sum.add(_receiver_sum, fill_value=0))
+        max_total = max(_total.max(), 1)
 
     for pn, info in pos.items():
         x, y = info["player_x"], info["player_y"]
@@ -176,9 +180,11 @@ def plot_player_network(edges_all, nodes_all, match_id, team_id, defender,
                 continue
             s = max(50, n_bd ** 1.5 * NODE_MULT / 15) if n_bd > 0 else 50
         else:
-            # Method 2: size normalized by max passer in this network
-            passer_n = edges.loc[edges["passer_name"] == pn, "n_passes"].sum()
-            s = 50 + (passer_n / max_passer) * 200
+            # Method 2: skip nodes not connected to any edge in this metric network
+            if not in_edge:
+                continue
+            total_n = _total.get(pn, 0)
+            s = 50 + (total_n / max_total) * 200
 
         color = node_color(info.get("starter", np.nan))
         ax.scatter(x, y, s=s, c=[color], edgecolors="black",
