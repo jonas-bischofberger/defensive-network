@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from scipy.stats import pearsonr, spearmanr, kruskal, mannwhitneyu, t as t_dist
+from scipy.stats import pearsonr, spearmanr, kruskal, mannwhitneyu, t as t_dist, f as f_dist
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 import os as _os
@@ -584,10 +584,23 @@ def icc_tbl(df, cols):
         msw = g.apply(lambda x: ((x - x.mean()) ** 2).sum()).sum() / (nt - ng)
         k0  = (nt - (sz ** 2).sum() / nt) / (ng - 1)
         icc = (msb - msw) / (msb + (k0 - 1) * msw)
-        rows.append({"metric": c, "ICC": round(icc, 3), "n_teams": ng, "n_obs": nt,
-                     "interpretation": "stable trait" if icc > 0.5 else "match-driven"})
-    st.dataframe(pd.DataFrame(rows).style.background_gradient(cmap="RdYlGn", subset=["ICC"], vmin=0, vmax=1),
-                 use_container_width=True)
+        # F-test for H0: ICC = 0 (MSB/MSW ~ F(ng-1, nt-ng))
+        f_stat = msb / msw if msw > 0 else float("nan")
+        p_val  = f_dist.sf(f_stat, ng - 1, nt - ng) if not np.isnan(f_stat) else float("nan")
+        rows.append({
+            "metric": c,
+            "ICC": round(icc, 3),
+            "F": round(f_stat, 2),
+            "p": round(p_val, 4),
+            "sig": "***" if p_val < 0.001 else ("**" if p_val < 0.01 else ("*" if p_val < 0.05 else "")),
+            "n_teams": ng,
+            "n_obs": nt,
+            "interpretation": "stable trait" if icc > 0.5 else "match-driven",
+        })
+    st.dataframe(
+        pd.DataFrame(rows).style.background_gradient(cmap="RdYlGn", subset=["ICC"], vmin=0, vmax=1),
+        use_container_width=True,
+    )
 
 
 # ── Axis Selection & Quadrant Analysis ───────────────────────────────────────
@@ -1162,7 +1175,10 @@ with tab_corr:
                 corr_tbl(df_corr, cols, _partial)
 
 with tab_icc:
-    st.markdown("**ICC(1,1)**: >0.75 stable trait · 0.5–0.75 moderate · <0.5 match-driven")
+    st.markdown(
+        "**ICC(1,1)**: >0.75 stable trait · 0.5–0.75 moderate · <0.5 match-driven  \n"
+        "**sig** (F-test H₀: ICC = 0): \\* p<0.05 · \\*\\* p<0.01 · \\*\\*\\* p<0.001"
+    )
     stage = st.selectbox("Competition stage",
                          ["All"] + sorted(df_corr["competition_stage"].dropna().unique().tolist()))
     dff = df_corr if stage == "All" else df_corr[df_corr["competition_stage"] == stage]
