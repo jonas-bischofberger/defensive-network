@@ -31,6 +31,19 @@ edge_dfs  = {k: pd.read_csv(f"scripts/2026-04-28_defensive_network_edge({k}).csv
 nodes["match_team_id"]    = nodes["match_id"].astype(str) + "_" + nodes["defending_team"].astype(str)
 m2_edges["match_team_id"] = m2_edges["match_id"].astype(str) + "_" + m2_edges["defending_team"].astype(str)
 
+# Reached the knockout stage = team played any non-group-stage match (16 of 32 teams)
+_reached_ko = outcomes.groupby("team_name")["competition_stage"].apply(
+    lambda s: bool((s != "Group Stage").any()))
+outcomes["reached_knockout"] = outcomes["team_name"].map(_reached_ko)
+
+# Pitch-zone defensive metrics (produced by 2026-06-08_team_zone_metrics.py).
+# Optional: app still runs without it (the Zones tab shows a hint instead).
+try:
+    zone_raw = pd.read_csv("scripts/2026-06-08_team_zone_metrics.csv")
+    zone_raw["match_team_id"] = zone_raw["match_team_id"].astype(str)
+except FileNotFoundError:
+    zone_raw = None
+
 match_mins   = nodes.groupby("match_team_id")["mins_played"].max().rename("match_mins")
 squad_size   = nodes.groupby("match_team_id")["defender_id"].count().rename("n_players")
 team_names   = nodes.groupby("match_team_id")["team_name"].first()
@@ -792,6 +805,186 @@ def run_ols(df, x_cols, y_col):
     return coef, r2, r2_adj, n
 
 
+# ── Zones (pitch-area defensive metrics) ───────────────────────────────────────
+ZONE_ORDER   = ["own", "mid", "high_press"]              # near own goal -> high press
+ZONE_LABEL   = {"own": "Own-third (forced)", "mid": "Midfield", "high_press": "High press"}
+ZONE_SHORT   = {"own": "Own", "mid": "Mid", "high_press": "High press"}
+SCHEME_LABEL = {"thirds": "Pitch thirds (±17.5)",
+                "scheme_4060": "40 / 60 split (±10.5)",
+                "half": "Half — own vs opponent (0)"}
+# zone weight -> (label, value col, contribution col, fault col).  con + fault == total.
+WEIGHT_SPLIT = {
+    "n_actions":          ("Defended passes",  "n_actions",
+                           "raw_contribution_npass",  "raw_fault_npass"),
+    "raw_involvement":    ("Raw involvement",  "raw_involvement_sum",
+                           "raw_contribution_sum",    "raw_fault_sum"),
+    "valued_involvement": ("Valued involvement", "valued_involvement_sum",
+                           "valued_contribution_sum", "valued_fault_sum"),
+}
+# medium hue per zone (con = solid, fault = hatched, same colour)
+ZONE_COLOR = {
+    "own":        "#5e9eca",   # blue
+    "mid":        "#71bc63",   # green
+    "high_press": "#ec5c5d",   # red
+}
+# metrics whose per-zone SUMS we correlate with outcomes (raw + valued)
+ZONE_CORR_METRICS = ["raw_involvement", "valued_involvement",
+                     "raw_contribution", "valued_contribution",
+                     "raw_fault", "valued_fault"]
+METRIC_LABEL = {"raw_involvement": "raw inv",  "valued_involvement": "val inv",
+                "raw_contribution": "raw con", "valued_contribution": "val con",
+                "raw_fault": "raw fault",      "valued_fault": "val fault"}
+def build_zone_corr(zone_df, scheme, outcomes_df, outcome_cols,
+                    partial=False, control="passes_against"):
+    """Correlation between each (zone, metric) SUM and each outcome, match-team level.
+
+    Each match-team is one observation; a zone with no actions counts as 0.
+    partial=True controls for `control`. Returns long df: metric, zone, outcome, r, p, n.
+    """
+    d = zone_df[zone_df["scheme"] == scheme].copy()
+    cols = outcome_cols + ([control] if partial else [])
+    o = outcomes_df.set_index("match_team_id")[cols]
+    rows = []
+    for m in ZONE_CORR_METRICS:
+        wide = d.pivot_table(index="match_team_id", columns="zone",
+                             values=f"{m}_sum", aggfunc="sum", fill_value=0)
+        for z in [zz for zz in ZONE_ORDER if zz in wide.columns]:
+            j = pd.concat([wide[z].rename("x"), o], axis=1)
+            for oc in outcome_cols:
+                if partial:
+                    s = j[["x", oc, control]].dropna()
+                    if len(s) <= 3 or s["x"].std() == 0:
+                        continue
+                    a = _resid(s["x"].values, s[control].values)
+                    b = _resid(s[oc].values, s[control].values)
+                    mk = ~(np.isnan(a) | np.isnan(b))
+                    if a[mk].std() == 0 or b[mk].std() == 0:
+                        continue
+                    r, p = pearsonr(a[mk], b[mk]); n = int(mk.sum())
+                else:
+                    s = j[["x", oc]].dropna()
+                    if len(s) <= 3 or s["x"].std() == 0:
+                        continue
+                    r, p = pearsonr(s["x"], s[oc]); n = len(s)
+                rows.append(dict(metric=m, zone=z, outcome=oc, r=r, p=p, n=n))
+    return pd.DataFrame(rows)
+
+
+def build_zone_ratio_corr(zone_df, scheme, outcomes_df, outcome_cols,
+                          partial=False, control="passes_against"):
+    """Correlation between per-zone contribution/fault RATIO and outcomes, match-team level.
+
+    Ratio = contribution_sum / fault_sum per match-team-zone (raw and valued). Match-teams
+    with zero fault in a zone are dropped (undefined ratio). partial=True controls for
+    `control`. Returns long df: ratio, zone, outcome, r, p, n.
+    """
+    d = zone_df[zone_df["scheme"] == scheme]
+    cols = outcome_cols + ([control] if partial else [])
+    o = outcomes_df.set_index("match_team_id")[cols]
+    rows = []
+    for kind, ccol, fcol in [("raw", "raw_contribution_sum", "raw_fault_sum"),
+                             ("valued", "valued_contribution_sum", "valued_fault_sum")]:
+        con = d.pivot_table(index="match_team_id", columns="zone", values=ccol,
+                            aggfunc="sum", fill_value=0)
+        fau = d.pivot_table(index="match_team_id", columns="zone", values=fcol,
+                            aggfunc="sum", fill_value=0)
+        for z in [zz for zz in ZONE_ORDER if zz in con.columns]:
+            j = pd.concat([(con[z] / fau[z].replace(0, np.nan)).rename("x"), o], axis=1)
+            if partial:
+                s = j[["x"] + cols].dropna()
+                if len(s) <= 3 or s["x"].std() == 0:
+                    continue
+                for oc in outcome_cols:
+                    a = _resid(s["x"].values, s[control].values)
+                    b = _resid(s[oc].values, s[control].values)
+                    mk = ~(np.isnan(a) | np.isnan(b))
+                    if a[mk].std() == 0 or b[mk].std() == 0:
+                        continue
+                    r, p = pearsonr(a[mk], b[mk])
+                    rows.append(dict(ratio=kind, zone=z, outcome=oc, r=r, p=p, n=int(mk.sum())))
+            else:
+                for oc in outcome_cols:
+                    s = j[["x", oc]].dropna()
+                    if len(s) <= 3 or s["x"].std() == 0:
+                        continue
+                    r, p = pearsonr(s["x"], s[oc])
+                    rows.append(dict(ratio=kind, zone=z, outcome=oc, r=r, p=p, n=len(s)))
+    return pd.DataFrame(rows)
+
+
+def build_team_style(zone_df, scheme, outcomes_df, kind="raw"):
+    """Team-level defensive-style profile + performance (pooled across a team's matches).
+
+    Zone proportions are of involvement; press_index = high_press_share − own_share
+    (mid is the neutral pivot). Joined with mean outcomes & knockout flag.
+    """
+    icol = f"{kind}_involvement_sum"
+    d = zone_df[zone_df["scheme"] == scheme].merge(
+        outcomes_df[["match_team_id", "team_name"]], on="match_team_id")
+    g = (d.groupby(["team_name", "zone"], observed=True)
+           .agg(inv=(icol, "sum")).reset_index())
+    inv = g.pivot(index="team_name", columns="zone", values="inv").fillna(0)
+    share = inv.div(inv.sum(axis=1).replace(0, np.nan), axis=0)
+    t = pd.DataFrame(index=inv.index)
+    for z in ZONE_ORDER:
+        if z in share.columns:
+            t[f"{z}_share"] = share[z]
+    t["press_index"] = share.get("high_press", 0) - share.get("own", 0)
+    perf = outcomes_df.groupby("team_name").agg(
+        shots_against=("shots_against", "mean"), xg_against=("xg_against", "mean"),
+        goals_against=("goals_against", "mean"),
+        reached_knockout=("reached_knockout", "first"))
+    return t.join(perf)
+
+
+def build_team_zone_ratio(zone_df, scheme, kind, mode):
+    """Team × zone contribution/fault ratio matrix (unweighted mean of per-match ratios).
+
+    kind: 'raw' or 'valued'.
+    mode: 'plain'     -> contribution_sum / fault_sum  per match, then mean over matches.
+          'per_event' -> (contribution_sum/contribution_npass) / (fault_sum/fault_npass),
+                         i.e. mean contribution intensity ÷ mean fault intensity per match,
+                         then mean over matches.
+    Matches with an undefined ratio in a zone (zero denominator) are dropped.
+    """
+    ccol, fcol = f"{kind}_contribution_sum", f"{kind}_fault_sum"
+    d = zone_df[zone_df["scheme"] == scheme].copy()
+    if mode == "per_event":
+        cnp, fnp = f"{kind}_contribution_npass", f"{kind}_fault_npass"
+        con = d[ccol] / d[cnp].replace(0, np.nan)
+        fau = d[fcol] / d[fnp].replace(0, np.nan)
+        d["ratio"] = con / fau.replace(0, np.nan)
+    else:
+        d["ratio"] = d[ccol] / d[fcol].replace(0, np.nan)
+    agg = (d.groupby(["defending_team_name", "zone"], observed=True)["ratio"]
+             .mean().reset_index())
+    zones = [z for z in ZONE_ORDER if z in set(agg["zone"])]
+    mat = (agg.pivot(index="defending_team_name", columns="zone", values="ratio")
+              .reindex(columns=zones))
+    return mat, zones
+
+
+def build_zone_split(zone_df, scheme, weight):
+    """Team × zone × {contribution, fault} long table, pooled across a team's matches.
+
+    `weight` selects the measure (defended passes / raw inv / valued inv); it is split
+    into its contribution and fault parts (which sum to the whole). `share` is each
+    part's fraction of the team's total across all zones (one bar per team sums to 1).
+    """
+    _, _, con_col, fault_col = WEIGHT_SPLIT[weight]
+    d = zone_df[zone_df["scheme"] == scheme]
+    agg = (d.groupby(["defending_team_name", "zone"], observed=True)
+             .agg(contribution=(con_col, "sum"), fault=(fault_col, "sum"))
+             .reset_index())
+    long = agg.melt(id_vars=["defending_team_name", "zone"],
+                    value_vars=["contribution", "fault"],
+                    var_name="type", value_name="value")
+    team_total = long.groupby("defending_team_name")["value"].transform("sum")
+    long["share"] = long["value"] / team_total.replace(0, np.nan)
+    zones = [z for z in ZONE_ORDER if z in set(long["zone"])]
+    return long, zones
+
+
 # ── UI ────────────────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide")
 st.title("Defensive Network Analysis — Team Level")
@@ -827,6 +1020,11 @@ with st.sidebar:
     size_scale  = st.slider("Bubble size scale", 10, 80, 40)
     st.subheader("Correlation / ICC")
     thr = st.slider("Edge count threshold (≥)", 1, 20, 1)
+    st.subheader("Zones (pitch area)")
+    zone_scheme = st.selectbox("Zoning scheme", list(SCHEME_LABEL),
+                               format_func=SCHEME_LABEL.__getitem__, key="zone_scheme")
+    zone_weight = st.selectbox("Zone weight", list(WEIGHT_SPLIT),
+                               format_func=lambda c: WEIGHT_SPLIT[c][0], key="zone_weight")
 
 df_conc_inv_match   = build_conc_match(edge_dfs[method], metric_conc_inv,   thr)
 df_conc_inv_team    = build_conc_team(df_conc_inv_match)
@@ -841,9 +1039,9 @@ avg_co, avg_co_team = build_co_defender_data()
 partnerships        = build_partnerships()
 df_corr             = process(edge_dfs[method], thr)
 
-(tab_conc, tab_self, tab_style, tab_codef,
+(tab_conc, tab_self, tab_style, tab_codef, tab_zone,
  tab_corr, tab_icc, tab_reg, tab_data) = st.tabs([
-    "Concentrated vs Balanced", "Self vs Shared", "Defensive Style", "Co-Defenders",
+    "Concentrated vs Balanced", "Self vs Shared", "Defensive Style", "Co-Defenders", "Zones",
     "Correlation", "Robustness (ICC)", "Regression", "Data",
 ])
 
@@ -1162,6 +1360,281 @@ with tab_codef:
         st.plotly_chart(fig_heat, use_container_width=True)
     else:
         st.info("No partnership data for this team.")
+
+with tab_zone:
+    st.caption(
+        "Defensive actions split by **where the ball is** when the pass is made "
+        "(`x_def = -x_norm`, defending-team perspective: larger = closer to the "
+        "opponent goal = higher press). `x_norm` already folds in home/away "
+        "orientation and the first/second-half flip, so both teams share one "
+        "direction. Both successful (C) and unsuccessful (B/D) passes are included."
+    )
+    _need = ["n_actions"] + [WEIGHT_SPLIT[w][i] for w in WEIGHT_SPLIT for i in (1, 2, 3)]
+    _missing = [] if zone_raw is None else [c for c in set(_need) if c not in zone_raw.columns]
+    if zone_raw is None:
+        st.warning(
+            "Zone data not found. Run `scripts/2026-06-08_team_zone_metrics.py` "
+            "first to generate `2026-06-08_team_zone_metrics.csv`."
+        )
+    elif _missing:
+        st.warning(
+            "Zone CSV is out of date (missing columns: "
+            f"`{', '.join(sorted(_missing))}`). Re-run "
+            "`scripts/2026-06-08_team_zone_metrics.py` to regenerate it."
+        )
+    else:
+        _wlabel = WEIGHT_SPLIT[zone_weight][0]
+        st.subheader("Zone composition per team")
+        st.caption(
+            f"Each team's defensive **{_wlabel}**, split by pitch zone (colour) and, "
+            "within each zone, contribution (solid) vs fault (hatched). Bars sum to 1; "
+            "pooled across all of a team's matches."
+        )
+        zsplit, zones = build_zone_split(zone_raw, zone_scheme, zone_weight)
+        zsplit["Zone"] = zsplit["zone"].map(ZONE_LABEL)
+        zone_label_order = [ZONE_LABEL[z] for z in zones]
+        zone_color = {ZONE_LABEL[z]: ZONE_COLOR[z] for z in zones}
+        team_order = (zsplit[zsplit["zone"] == zones[-1]]
+                      .groupby("defending_team_name")["share"].sum()
+                      .sort_values(ascending=False).index.tolist())
+        fig_share = px.bar(
+            zsplit, x="share", y="defending_team_name",
+            color="Zone", pattern_shape="type",
+            orientation="h", barmode="stack",
+            color_discrete_map=zone_color,
+            pattern_shape_map={"contribution": "", "fault": "/"},
+            category_orders={"Zone": zone_label_order,
+                             "type": ["contribution", "fault"],
+                             "defending_team_name": team_order},
+            labels={"share": f"Proportion of team's total {_wlabel.lower()}"},
+            title=f"Zone composition of {_wlabel} ({SCHEME_LABEL[zone_scheme]})")
+        # denser hatching for the fault segments
+        fig_share.update_traces(marker_pattern_size=3, marker_pattern_solidity=0.35)
+        fig_share.update_layout(height=max(420, 24 * len(team_order)),
+                                yaxis=dict(autorange="reversed", title=None),
+                                xaxis=dict(tickformat=".0%"),
+                                legend_title_text="Zone / con-fault")
+        st.plotly_chart(fig_share, use_container_width=True)
+        with st.expander("Composition table (proportion)"):
+            tbl = (zsplit.assign(seg=zsplit["Zone"] + " · " + zsplit["type"])
+                   .pivot_table(index="defending_team_name", columns="seg", values="share")
+                   .loc[team_order])
+            st.dataframe(tbl.round(3))
+
+        # ── Correlation: zone metric vs outcomes ──────────────────────────────
+        st.subheader("Zone metric × outcome correlation")
+        zc_partial = st.radio(
+            "Correlation", ["Raw", "Partial (controlling passes_against)"],
+            horizontal=True, key="zone_corr_partial") != "Raw"
+        st.caption(
+            "Correlation between each zone metric **sum** (rows: raw/val × inv/con/fault) "
+            "and each outcome (cols), at **match-team level** (one point per team per "
+            "match). One heatmap per zone. Red = positive (more ↔ conceding more, worse); "
+            "blue = negative (↔ conceding less). `*` = p<0.05. "
+            + ("Partial = residualised on passes_against to strip exposure."
+               if zc_partial else "")
+        )
+        corr_df = build_zone_corr(zone_raw, zone_scheme, outcomes, OUTCOME_COLS,
+                                  partial=zc_partial)
+        zones_c = [z for z in ZONE_ORDER if z in set(corr_df["zone"])]
+        ocl = [c.replace("_against", " ag.") for c in OUTCOME_COLS]
+        cols = st.columns(len(zones_c))
+        for col, z in zip(cols, zones_c):
+            rmat, tmat = [], []
+            for m in ZONE_CORR_METRICS:
+                rrow, trow = [], []
+                for oc in OUTCOME_COLS:
+                    sel = corr_df[(corr_df["metric"] == m) & (corr_df["zone"] == z)
+                                  & (corr_df["outcome"] == oc)]
+                    if len(sel):
+                        r, p = sel["r"].iloc[0], sel["p"].iloc[0]
+                        rrow.append(r); trow.append(f"{r:+.2f}{'*' if p < 0.05 else ''}")
+                    else:
+                        rrow.append(np.nan); trow.append("")
+                rmat.append(rrow); tmat.append(trow)
+            rmat = pd.DataFrame(rmat, index=[METRIC_LABEL[m] for m in ZONE_CORR_METRICS],
+                                columns=ocl)
+            fig = px.imshow(rmat, color_continuous_scale="RdBu_r", zmin=-0.6, zmax=0.6,
+                            aspect="equal", labels=dict(color="r"),
+                            title=ZONE_LABEL[z])
+            fig.update_traces(text=tmat, texttemplate="%{text}", textfont_size=12)
+            fig.update_xaxes(side="top")
+            fig.update_layout(width=300, height=520, margin=dict(l=10, r=10, t=60, b=10),
+                              coloraxis_showscale=False)
+            col.plotly_chart(fig, use_container_width=False)
+        with st.expander("Correlation table (r, p, n)"):
+            st.dataframe(
+                corr_df.assign(metric=corr_df["metric"].map(METRIC_LABEL),
+                               zone=corr_df["zone"].map(ZONE_LABEL))
+                       .round({"r": 3, "p": 4}))
+
+        # ── Team × zone contribution/fault ratio ──────────────────────────────
+        st.subheader("Team × zone contribution / fault ratio")
+        st.caption(
+            "Per team, mean of per-match contribution÷fault ratios in each zone (each "
+            "match weighted equally). **Original** = Σcon/Σfault per match; **per-event** "
+            "= (con/con-passes) ÷ (fault/fault-passes), i.e. mean contribution intensity "
+            "÷ mean fault intensity (strips how *often* you act, keeps how *impactful*). "
+            "Darker = higher. Teams sorted by raw-original high-press ratio."
+        )
+        # team order from raw / original / high-press
+        _base, _zb = build_team_zone_ratio(zone_raw, zone_scheme, "raw", "plain")
+        team_order = _base[_zb[-1]].sort_values(ascending=False).index.tolist()
+        for mode, mlab in [("plain", "Original  con/fault"),
+                           ("per_event", "Per-event  con/fault")]:
+            st.markdown(f"**{mlab}**")
+            for col, kind in zip(st.columns(2), ("raw", "valued")):
+                m, zns = build_team_zone_ratio(zone_raw, zone_scheme, kind, mode)
+                mm = m.reindex(index=team_order)
+                mm.columns = [ZONE_SHORT[z] for z in zns]
+                fig_tr = px.imshow(mm, color_continuous_scale="Reds", text_auto=".2f",
+                                   aspect="auto", labels=dict(color="ratio"),
+                                   title=f"{kind}")
+                fig_tr.update_xaxes(side="top", tickangle=0, tickfont_size=13)
+                fig_tr.update_yaxes(title=None, tickfont_size=12)
+                fig_tr.update_traces(textfont_size=13)
+                fig_tr.update_layout(height=max(900, 28 * len(team_order)),
+                                     margin=dict(l=8, r=8, t=50, b=8))
+                col.plotly_chart(fig_tr, use_container_width=True)
+
+        # ── con/fault RATIO × outcome correlation (match level, table) ────────
+        st.subheader("Contribution / Fault ratio × outcome correlation")
+        st.caption(
+            "Pearson r between each zone's **contribution÷fault** ratio (per match-team) "
+            "and each outcome, at **match-team level**. Match-teams with zero fault in a "
+            "zone are dropped. `*` p<0.05, `**` p<0.01. "
+            + ("Partial: controlling passes_against." if zc_partial else "Raw correlation.")
+        )
+        rc = build_zone_ratio_corr(zone_raw, zone_scheme, outcomes, OUTCOME_COLS,
+                                   partial=zc_partial)
+        if rc.empty:
+            st.info("Not enough data for ratio correlations in this scheme.")
+        else:
+            rc["cell"] = rc.apply(
+                lambda x: f"{x.r:+.2f}{'**' if x.p < 0.01 else '*' if x.p < 0.05 else ''}"
+                          f" (n={x.n})", axis=1)
+            rc["row"] = rc["zone"].map(ZONE_LABEL) + " · " + rc["ratio"]
+            row_order = [f"{ZONE_LABEL[z]} · {k}"
+                         for z in ZONE_ORDER if z in set(rc["zone"])
+                         for k in ("raw", "valued")]
+            tbl_rc = (rc.pivot(index="row", columns="outcome", values="cell")
+                        .reindex(index=row_order,
+                                 columns=[c for c in OUTCOME_COLS if c in set(rc["outcome"])]))
+            tbl_rc.columns = [c.replace("_against", " ag.") for c in tbl_rc.columns]
+            st.table(tbl_rc.fillna("—"))
+
+        # ── Zone profile by stage (boxplots: reached knockout?) ───────────────
+        st.subheader("Zone profile — group-stage-out vs knockout teams")
+        bx1, bx2 = st.columns(2)
+        bx_measure = bx1.selectbox(
+            "Measure", ["involvement proportion", "contribution proportion",
+                        "fault proportion"], key="bx_measure")
+        bx_kind = bx2.selectbox("raw / valued", ["raw", "valued"], key="bx_kind")
+        dd = zone_raw[zone_raw["scheme"] == zone_scheme].copy()
+        metric = {"involvement proportion": "involvement",
+                  "contribution proportion": "contribution",
+                  "fault proportion": "fault"}[bx_measure]
+        mcol = f"{bx_kind}_{metric}_sum"
+        tot = dd.groupby("match_team_id")[mcol].transform("sum")
+        dd["val"] = dd[mcol] / tot.replace(0, np.nan)
+        ylab = f"{bx_kind} {metric} zone proportion"
+        dd = dd.merge(outcomes[["match_team_id", "reached_knockout"]], on="match_team_id")
+        dd["Zone"] = dd["zone"].map(ZONE_LABEL)
+        dd["Stage"] = dd["reached_knockout"].map({True: "Reached knockout", False: "Group only"})
+        zorder = [ZONE_LABEL[z] for z in ZONE_ORDER if z in set(dd["zone"])]
+        dd = dd.dropna(subset=["val"])
+        fig_bx = px.box(dd, x="Zone", y="val", color="Stage",
+                        category_orders={"Zone": zorder,
+                                         "Stage": ["Group only", "Reached knockout"]},
+                        color_discrete_map={"Group only": "#bbbbbb",
+                                            "Reached knockout": "#1f78b4"},
+                        labels={"val": ylab},
+                        title=f"{ylab} by zone (match-team level)")
+        st.plotly_chart(fig_bx, use_container_width=True)
+        mw = []
+        for z in [zz for zz in ZONE_ORDER if zz in set(dd["zone"])]:
+            g = dd[dd["zone"] == z]
+            a = g[g["reached_knockout"]]["val"]; b = g[~g["reached_knockout"]]["val"]
+            if len(a) > 2 and len(b) > 2:
+                _, p = mannwhitneyu(a, b)
+                mw.append(dict(Zone=ZONE_LABEL[z],
+                               knockout_median=round(a.median(), 3),
+                               group_median=round(b.median(), 3),
+                               p=round(p, 4), sig="*" if p < 0.05 else ""))
+        st.caption("Median per group + Mann–Whitney U p (knockout vs group-only; "
+                   "a knockout team's group matches count as 'knockout').")
+        if mw:
+            st.table(pd.DataFrame(mw).set_index("Zone"))
+
+        # ── Defensive style map (team level) ──────────────────────────────────
+        st.subheader("Defensive style map (team level)")
+        st.caption(
+            "One point per team (pooled across its matches). **press index** = "
+            "high-press proportion − own-third proportion (right = proactive/high line; "
+            "left = forced/deep; midfield is the neutral pivot, not in this axis). Colour = "
+            "reached knockout. Lower y (shots/xG against) = better defence."
+        )
+        sm1, sm2, sm3 = st.columns(3)
+        _xopts = {"press_index": "Press index (high − own proportion)",
+                  "high_press_share": "High-press proportion", "own_share": "Own-third proportion",
+                  "mid_share": "Midfield proportion"}
+        sm_kind = sm1.selectbox("raw / valued", ["raw", "valued"], key="style_kind")
+        team_style = build_team_style(zone_raw, zone_scheme, outcomes, kind=sm_kind)
+        _xavail = [k for k in _xopts if k in team_style.columns]
+        sm_x = sm2.selectbox("X axis", _xavail, format_func=_xopts.__getitem__, key="style_x")
+        sm_y = sm3.selectbox("Y axis (outcome)", OUTCOME_COLS, index=1, key="style_y")
+        ts = team_style.reset_index().dropna(subset=[sm_x, sm_y])
+        ts["Stage"] = ts["reached_knockout"].map({True: "Reached knockout", False: "Group only"})
+        r_sm, p_sm = pearsonr(ts[sm_x], ts[sm_y])
+        fig_sm = px.scatter(ts, x=sm_x, y=sm_y, color="Stage", text="team_name",
+                            color_discrete_map={"Group only": "#bbbbbb",
+                                                "Reached knockout": "#1f78b4"},
+                            trendline="ols", trendline_scope="overall",
+                            trendline_color_override="black",
+                            labels={sm_x: _xopts[sm_x], sm_y: sm_y.replace("_", " ")},
+                            title=f"{_xopts[sm_x]} vs {sm_y.replace('_',' ')}  "
+                                  f"(r={r_sm:+.2f}, p={p_sm:.3f}, N={len(ts)})")
+        fig_sm.update_traces(textposition="top center",
+                             marker=dict(size=11, line=dict(width=1, color="white")),
+                             selector=dict(mode="markers+text"))
+        fig_sm.add_vline(x=ts[sm_x].median(), line_dash="dash", line_color="grey", opacity=0.5)
+        fig_sm.add_hline(y=ts[sm_y].median(), line_dash="dash", line_color="grey", opacity=0.5)
+        fig_sm.update_layout(height=620)
+        st.plotly_chart(fig_sm, use_container_width=True)
+        st.caption(
+            "Note: press index strongly tracks **defensive** quality (fewer shots/xG "
+            "against) but **not** knockout qualification — deep/forced teams can still "
+            "advance via attack & results, so colour (knockout) scatters across the plot."
+        )
+
+        # index × performance summary tables (team level)
+        _idx = [k for k in _xopts if k in team_style.columns]
+        st.markdown(f"**Style index × outcome correlation** (team level, N={len(team_style)}, "
+                    f"{sm_kind}). `*` p<0.05, `**` p<0.01.")
+        rowsA = []
+        for ix in _idx:
+            cell = {}
+            for oc in OUTCOME_COLS:
+                s = team_style[[ix, oc]].dropna()
+                r, p = pearsonr(s[ix], s[oc])
+                cell[oc.replace("_against", " ag.")] = \
+                    f"{r:+.2f}{'**' if p < 0.01 else '*' if p < 0.05 else ''}"
+            rowsA.append(pd.Series(cell, name=_xopts[ix]))
+        st.table(pd.DataFrame(rowsA))
+
+        st.markdown("**Style index by stage** — median (knockout vs group-only) + "
+                    "Mann–Whitney U p.")
+        rowsB = []
+        for ix in _idx:
+            a = team_style[team_style["reached_knockout"]][ix].dropna()
+            b = team_style[~team_style["reached_knockout"]][ix].dropna()
+            if len(a) > 2 and len(b) > 2:
+                _, p = mannwhitneyu(a, b)
+                rowsB.append(dict(Index=_xopts[ix], knockout_med=round(a.median(), 3),
+                                  group_med=round(b.median(), 3), p=round(p, 3),
+                                  sig="*" if p < 0.05 else ""))
+        if rowsB:
+            st.table(pd.DataFrame(rowsB).set_index("Index"))
 
 with tab_corr:
     for _tab, _partial in zip(
