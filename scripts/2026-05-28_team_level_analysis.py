@@ -835,34 +835,41 @@ METRIC_LABEL = {"raw_involvement": "raw inv",  "valued_involvement": "val inv",
                 "raw_contribution": "raw con", "valued_contribution": "val con",
                 "raw_fault": "raw fault",      "valued_fault": "val fault"}
 def build_zone_corr(zone_df, scheme, outcomes_df, outcome_cols,
-                    partial=False, control="passes_against"):
+                    partial=False, control="total"):
     """Correlation between each (zone, metric) SUM and each outcome, match-team level.
 
     Each match-team is one observation; a zone with no actions counts as 0.
-    partial=True controls for `control`. Returns long df: metric, zone, outcome, r, p, n.
+    partial: control='total' residualises on the match's total passes_against;
+    control='zone' residualises on that zone's own faced-pass count (n_passes).
+    Returns long df: metric, zone, outcome, r, p, n.
     """
     d = zone_df[zone_df["scheme"] == scheme].copy()
-    cols = outcome_cols + ([control] if partial else [])
-    o = outcomes_df.set_index("match_team_id")[cols]
+    o = outcomes_df.set_index("match_team_id")
+    npass = (d.pivot_table(index="match_team_id", columns="zone", values="n_passes",
+                           aggfunc="sum", fill_value=0)
+             if partial and control == "zone" else None)
     rows = []
     for m in ZONE_CORR_METRICS:
         wide = d.pivot_table(index="match_team_id", columns="zone",
                              values=f"{m}_sum", aggfunc="sum", fill_value=0)
         for z in [zz for zz in ZONE_ORDER if zz in wide.columns]:
-            j = pd.concat([wide[z].rename("x"), o], axis=1)
+            base = pd.concat([wide[z].rename("x"), o[outcome_cols]], axis=1)
+            if partial:
+                ctrl = o["passes_against"] if control == "total" else npass[z]
+                base = base.join(ctrl.rename("ctrl"))
             for oc in outcome_cols:
                 if partial:
-                    s = j[["x", oc, control]].dropna()
+                    s = base[["x", oc, "ctrl"]].dropna()
                     if len(s) <= 3 or s["x"].std() == 0:
                         continue
-                    a = _resid(s["x"].values, s[control].values)
-                    b = _resid(s[oc].values, s[control].values)
+                    a = _resid(s["x"].values, s["ctrl"].values)
+                    b = _resid(s[oc].values, s["ctrl"].values)
                     mk = ~(np.isnan(a) | np.isnan(b))
                     if a[mk].std() == 0 or b[mk].std() == 0:
                         continue
                     r, p = pearsonr(a[mk], b[mk]); n = int(mk.sum())
                 else:
-                    s = j[["x", oc]].dropna()
+                    s = base[["x", oc]].dropna()
                     if len(s) <= 3 or s["x"].std() == 0:
                         continue
                     r, p = pearsonr(s["x"], s[oc]); n = len(s)
@@ -910,6 +917,32 @@ def build_zone_ratio_corr(zone_df, scheme, outcomes_df, outcome_cols,
                     r, p = pearsonr(s["x"], s[oc])
                     rows.append(dict(ratio=kind, zone=z, outcome=oc, r=r, p=p, n=len(s)))
     return pd.DataFrame(rows)
+
+
+def build_zone_volume_diag(zone_df, scheme, outcomes_df, outcome, kind="raw"):
+    """Per-zone diagnostic (match-team level): how much each zone's metric SUM is just
+    volume (n_passes), whether that volume itself relates to the outcome, and the
+    per-faced-pass intensity vs outcome (volume removed)."""
+    d = zone_df[zone_df["scheme"] == scheme].merge(
+        outcomes_df[["match_team_id", outcome]], on="match_team_id")
+
+    def _r(a, b):
+        s = pd.concat([a.rename("a"), b.rename("b")], axis=1).dropna()
+        return (pearsonr(s["a"], s["b"])[0]
+                if len(s) > 2 and s["a"].std() > 0 and s["b"].std() > 0 else np.nan)
+
+    oc = outcome.replace("_against", " ag.")
+    rows = []
+    for z in [zz for zz in ZONE_ORDER if zz in set(d["zone"])]:
+        g = d[(d["zone"] == z) & (d["n_passes"] > 0)]
+        npass = g["n_passes"]
+        rows.append({"zone": ZONE_LABEL[z],
+                     "npass↔inv":  _r(npass, g[f"{kind}_involvement_sum"]),
+                     "npass↔con":  _r(npass, g[f"{kind}_contribution_sum"]),
+                     "npass↔fault": _r(npass, g[f"{kind}_fault_sum"]),
+                     f"npass↔{oc}": _r(npass, g[outcome]),
+                     f"invPerPass↔{oc}": _r(g[f"{kind}_involvement_sum"] / npass, g[outcome])})
+    return pd.DataFrame(rows).set_index("zone").round(2)
 
 
 def build_team_style(zone_df, scheme, outcomes_df, kind="raw"):
@@ -962,6 +995,27 @@ def build_team_zone_ratio(zone_df, scheme, kind, mode):
     mat = (agg.pivot(index="defending_team_name", columns="zone", values="ratio")
               .reindex(columns=zones))
     return mat, zones
+
+
+def build_team_zone_volume_ratio(zone_df, scheme, outcomes_df, kind):
+    """Per team × zone: involvement volume (total & per-match), pooled con/fault ratio,
+    and the team's mean-per-match outcomes (for colour). Aligned via match_team_id to
+    avoid team-name mismatches. Returns long df: team, zone, inv, inv_pm, ratio, outcomes.
+    """
+    ic, cc, fc = f"{kind}_involvement_sum", f"{kind}_contribution_sum", f"{kind}_fault_sum"
+    d = zone_df[zone_df["scheme"] == scheme]
+    g = (d.groupby(["defending_team_name", "zone"], observed=True)
+           .agg(inv=(ic, "sum"), con=(cc, "sum"), fault=(fc, "sum")).reset_index())
+    g["ratio"] = g["con"] / g["fault"].replace(0, np.nan)
+    # matches played + mean-per-match outcomes per team (aligned by match_team_id)
+    om = (d[["match_team_id", "defending_team_name"]].drop_duplicates()
+          .merge(outcomes_df.set_index("match_team_id")[OUTCOME_COLS],
+                 left_on="match_team_id", right_index=True, how="left"))
+    nm = om.groupby("defending_team_name")["match_team_id"].nunique().rename("n_matches")
+    perf = om.groupby("defending_team_name")[OUTCOME_COLS].mean()
+    g = g.merge(nm, on="defending_team_name").merge(perf, on="defending_team_name", how="left")
+    g["inv_pm"] = g["inv"] / g["n_matches"]
+    return g
 
 
 def build_zone_split(zone_df, scheme, weight):
@@ -1423,19 +1477,23 @@ with tab_zone:
 
         # ── Correlation: zone metric vs outcomes ──────────────────────────────
         st.subheader("Zone metric × outcome correlation")
-        zc_partial = st.radio(
-            "Correlation", ["Raw", "Partial (controlling passes_against)"],
-            horizontal=True, key="zone_corr_partial") != "Raw"
+        _zc_modes = {"Raw": (False, "total"),
+                     "Partial — control total passes against": (True, "total"),
+                     "Partial — control this zone's passes faced": (True, "zone")}
+        zc_mode = st.radio("Correlation", list(_zc_modes), horizontal=True,
+                           key="zone_corr_partial")
+        zc_partial, zc_control = _zc_modes[zc_mode]
         st.caption(
             "Correlation between each zone metric **sum** (rows: raw/val × inv/con/fault) "
             "and each outcome (cols), at **match-team level** (one point per team per "
             "match). One heatmap per zone. Red = positive (more ↔ conceding more, worse); "
             "blue = negative (↔ conceding less). `*` = p<0.05. "
-            + ("Partial = residualised on passes_against to strip exposure."
-               if zc_partial else "")
+            + {"total": "Partial = residualised on the match's **total** passes_against.",
+               "zone": "Partial = residualised on **this zone's** faced-pass count "
+                       "(n_passes)."}[zc_control] if zc_partial else ""
         )
         corr_df = build_zone_corr(zone_raw, zone_scheme, outcomes, OUTCOME_COLS,
-                                  partial=zc_partial)
+                                  partial=zc_partial, control=zc_control)
         zones_c = [z for z in ZONE_ORDER if z in set(corr_df["zone"])]
         ocl = [c.replace("_against", " ag.") for c in OUTCOME_COLS]
         cols = st.columns(len(zones_c))
@@ -1468,6 +1526,20 @@ with tab_zone:
                                zone=corr_df["zone"].map(ZONE_LABEL))
                        .round({"r": 3, "p": 4}))
 
+        with st.expander("Volume diagnostic — why 'control passes' behaves differently per zone"):
+            vd1, vd2 = st.columns(2)
+            vdo = vd1.selectbox("Outcome", OUTCOME_COLS, index=1, key="vol_diag_out")
+            vdk = vd2.selectbox("raw / valued", ["raw", "valued"], key="vol_diag_kind")
+            st.caption(
+                "Match-team level (N=128). **npass↔metric**: how much the zone's metric "
+                "SUM is just volume (n_passes). **npass↔outcome**: whether that volume "
+                "itself relates to the outcome (large + in own third = being pinned back). "
+                "**invPerPass↔outcome**: per-faced-pass intensity vs outcome (volume "
+                "removed). Explains why controlling zone passes helps high-press but "
+                "erases own-third's real exposure signal."
+            )
+            st.table(build_zone_volume_diag(zone_raw, zone_scheme, outcomes, vdo, vdk))
+
         # ── Team × zone contribution/fault ratio ──────────────────────────────
         st.subheader("Team × zone contribution / fault ratio")
         st.caption(
@@ -1496,6 +1568,42 @@ with tab_zone:
                 fig_tr.update_layout(height=max(900, 28 * len(team_order)),
                                      margin=dict(l=8, r=8, t=50, b=8))
                 col.plotly_chart(fig_tr, use_container_width=True)
+
+        # ── Volume vs efficiency scatter (per zone) ───────────────────────────
+        st.subheader("Volume vs efficiency, per zone")
+        st.caption(
+            "One point per team. X = involvement in the zone (how much they defend "
+            "there); Y = con/fault ratio (efficiency, pooled Σcon/Σfault). Colour = "
+            "mean-per-match outcome (darker = concedes more). Top-left = efficient but "
+            "barely defends there; top-right = efficient AND high volume. Dashed line = "
+            "ratio 1 (con=fault). OLS fit + r in each title."
+        )
+        ve1, ve2, ve3 = st.columns(3)
+        ve_kind = ve1.selectbox("raw / valued", ["raw", "valued"], key="ve_kind")
+        ve_xmode = ve2.radio("X axis", ["per-match", "total"], horizontal=True, key="ve_xmode")
+        ve_color = ve3.selectbox("Colour by", OUTCOME_COLS, index=1, key="ve_color")
+        xcol = "inv_pm" if ve_xmode == "per-match" else "inv"
+        xlab = f"{'per-match' if ve_xmode == 'per-match' else 'total'} involvement"
+        ve = build_team_zone_volume_ratio(zone_raw, zone_scheme, outcomes, ve_kind)
+        ve_zones = [z for z in ZONE_ORDER if z in set(ve["zone"])]
+        cmax = ve[ve_color].max()
+        for col, z in zip(st.columns(len(ve_zones)), ve_zones):
+            g = ve[ve["zone"] == z].dropna(subset=[xcol, "ratio"])
+            r, p = pearsonr(g[xcol], g["ratio"]) if len(g) > 2 else (np.nan, np.nan)
+            fig_ve = px.scatter(g, x=xcol, y="ratio", text="defending_team_name",
+                                color=ve_color, color_continuous_scale="Reds",
+                                range_color=(0, cmax), trendline="ols",
+                                trendline_scope="overall", trendline_color_override="black",
+                                labels={xcol: xlab, "ratio": "con/fault",
+                                        ve_color: ve_color.replace("_", " ")},
+                                title=f"{ZONE_LABEL[z]}  (r={r:+.2f}, p={p:.3f})")
+            fig_ve.update_traces(textposition="top center", textfont_size=9,
+                                 marker=dict(size=10, line=dict(width=1, color="white")),
+                                 selector=dict(mode="markers+text"))
+            fig_ve.add_hline(y=1.0, line_dash="dash", line_color="grey", opacity=0.6)
+            fig_ve.update_layout(height=500, margin=dict(l=8, r=8, t=50, b=8),
+                                 coloraxis_showscale=(z == ve_zones[-1]))
+            col.plotly_chart(fig_ve, use_container_width=True)
 
         # ── con/fault RATIO × outcome correlation (match level, table) ────────
         st.subheader("Contribution / Fault ratio × outcome correlation")
