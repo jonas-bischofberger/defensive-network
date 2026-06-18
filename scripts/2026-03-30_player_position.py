@@ -17,8 +17,11 @@ METRICS = ["raw_involvement", "raw_contribution", "raw_fault", "valued_involveme
 # 2. standardize coordinates for first and second half
 def align_coordinates(df):
     df = df.copy()
-    df["x"] = np.where(df["section"] == 2, -df["defender_x"], df["defender_x"])
-    df["y"] = np.where(df["section"] == 1, -df["defender_y"], df["defender_y"])
+    # teams switch ends every period, so orientation alternates: odd sections (1, 3)
+    # share one orientation, even sections (2, 4) the other. Flip x on even sections and
+    # y on odd sections to map all sections (incl. extra time) into a common frame.
+    df["x"] = np.where(df["section"] % 2 == 0, -df["defender_x"], df["defender_x"])
+    df["y"] = np.where(df["section"] % 2 == 1, -df["defender_y"], df["defender_y"])
     # y is a bit strange, if you do same as "x" axis, the defensive position will be flipped
     return df
 

@@ -161,8 +161,10 @@ for f in parquet_files:
     df["x_def"] = -df["x_norm"]
 
     # align coordinates across halves (mirrors 2026-03-30_player_position.py)
-    df["x"] = np.where(df["section"] == 2, -df["defender_x"], df["defender_x"])
-    df["y"] = np.where(df["section"] == 1, -df["defender_y"], df["defender_y"])
+    # odd sections (1, 3) share one orientation, even sections (2, 4) the other;
+    # flip x on even sections and y on odd sections so extra time aligns too.
+    df["x"] = np.where(df["section"] % 2 == 0, -df["defender_x"], df["defender_x"])
+    df["y"] = np.where(df["section"] % 2 == 1, -df["defender_y"], df["defender_y"])
 
     for zone_name, lo, hi in ZONES:
         df_zone = df[(df["x_def"] >= lo) & (df["x_def"] < hi)].copy()
