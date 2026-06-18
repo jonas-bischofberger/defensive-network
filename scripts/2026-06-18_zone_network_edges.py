@@ -70,7 +70,12 @@ for method_name, agg_fn in METHODS.items():
 
         match_id = int(df["match_id"].iloc[0])
         match_name = f["name"].replace(".parquet", "")
-        df["x_def"] = -df["x_norm"]
+        # x_norm is normalized for regulation (sections 1 & 2 share one frame) but
+        # extra time (sections 3 & 4) is mirrored, so re-align ET before deriving
+        # x_def. NB: this is a *different* convention than defender_x, which flips
+        # every period — so here we negate only sections 3 & 4, not even sections.
+        x_norm_aligned = np.where(df["section"].fillna(1).astype(int) >= 3, -df["x_norm"], df["x_norm"])
+        df["x_def"] = -x_norm_aligned
 
         metric_edge_tables = []
 
@@ -158,7 +163,9 @@ for f in parquet_files:
     match_id = int(df["match_id"].iloc[0])
     df["match_id"] = match_id
     df["defending_team"] = df["defending_team"].astype(int)
-    df["x_def"] = -df["x_norm"]
+    # see note above: x_norm is aligned for regulation but mirrored in extra time
+    x_norm_aligned = np.where(df["section"].fillna(1).astype(int) >= 3, -df["x_norm"], df["x_norm"])
+    df["x_def"] = -x_norm_aligned
 
     # align coordinates across halves (mirrors 2026-03-30_player_position.py)
     # odd sections (1, 3) share one orientation, even sections (2, 4) the other;
