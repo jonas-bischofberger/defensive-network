@@ -25,7 +25,7 @@ python-slugify
 rapidfuzz
 requests
 scikit-learn
-scipy<1.13
+scipy
 seaborn
 selenium
 setuptools
