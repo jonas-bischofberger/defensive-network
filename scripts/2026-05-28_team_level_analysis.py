@@ -44,6 +44,16 @@ try:
 except FileNotFoundError:
     zone_raw = None
 
+# Per-zone network topology (produced by 2026-06-19_zone_topology.py). One file
+# per edge-weight method, one row per (match_team_id, zone). Optional.
+try:
+    zone_topo_dfs = {k: pd.read_csv(f"scripts/2026-06-19_zone_topology({k}).csv")
+                     for k in ("average", "min", "product", "sum")}
+    for _d in zone_topo_dfs.values():
+        _d["match_team_id"] = _d["match_team_id"].astype(str)
+except FileNotFoundError:
+    zone_topo_dfs = None
+
 match_mins   = nodes.groupby("match_team_id")["mins_played"].max().rename("match_mins")
 squad_size   = nodes.groupby("match_team_id")["defender_id"].count().rename("n_players")
 team_names   = nodes.groupby("match_team_id")["team_name"].first()
@@ -1039,6 +1049,105 @@ def build_zone_split(zone_df, scheme, weight):
     return long, zones
 
 
+# ── Zone topology (per-zone network structure) ─────────────────────────────────
+# label -> column suffix on a weight col (empty suffix = the bare strength sum).
+TOPO_METRICS = {
+    "Total strength":               "",
+    "Density":                      "_density",
+    "Gini (strength inequality)":   "_gini",
+    "Clustering (unweighted)":      "_cc_unweighted",
+    "Clustering (weighted)":        "_cc_weighted",
+    "Centralization (unweighted)":  "_centralization",
+    "Centralization (weighted)":    "_centralization_weighted",
+    "Degree assortativity":         "_assortativity",
+    "Max k-core":                   "_kcore_max",
+    "LCC ratio":                    "_lcc_ratio",
+}
+# higher value means... (for reading the descriptive plot)
+TOPO_HINT = {
+    "_density": "more squad pairs co-defend together",
+    "_gini": "load concentrated on fewer players",
+    "_cc_unweighted": "tighter local triangles",
+    "_cc_weighted": "tighter, stronger local triangles",
+    "_centralization": "one hub dominates connectivity",
+    "_centralization_weighted": "one hub dominates the load",
+    "_assortativity": "hubs pair with hubs",
+    "_kcore_max": "a denser mutually-connected core",
+    "_lcc_ratio": "defense acts as one connected group",
+    "": "more total co-defensive activity",
+}
+# compact row labels for the all-metrics overview grid
+TOPO_SHORT = {
+    "Total strength": "strength", "Density": "density",
+    "Gini (strength inequality)": "gini", "Clustering (unweighted)": "cc",
+    "Clustering (weighted)": "cc(w)", "Centralization (unweighted)": "centr",
+    "Centralization (weighted)": "centr(w)", "Degree assortativity": "assort",
+    "Max k-core": "kcore", "LCC ratio": "lcc",
+}
+
+
+def build_zone_topo_corr(topo_df, outcomes_df, outcome_cols, suffix, partial=False,
+                         control="total", zone_npass=None):
+    """Correlate a per-zone topology metric (one column per weight metric) with each
+    outcome, at match-team level. One observation per match-team that has a value in
+    the zone. partial=True residualises both sides on a control variable (mirrors the
+    Zones tab): control='total' uses the match's total passes_against; control='zone'
+    uses that zone's own faced-pass count (zone_npass: match_team_id × zone pivot).
+    Returns long df: metric (weight col), zone, outcome, r, p, n.
+    """
+    o = outcomes_df.set_index("match_team_id")
+    rows = []
+    for z in ZONE_ORDER:
+        dz = topo_df[topo_df["zone"] == z].set_index("match_team_id")
+        if dz.empty:
+            continue
+        for c in WEIGHT_COLS:
+            col = c + suffix if suffix else c
+            if col not in dz.columns:
+                continue
+            base = pd.concat([dz[col].rename("x"), o[outcome_cols]], axis=1)
+            if partial:
+                if control == "zone":
+                    if zone_npass is None or z not in zone_npass.columns:
+                        continue
+                    ctrl = zone_npass[z]
+                else:
+                    ctrl = o["passes_against"]
+                base = base.join(ctrl.rename("ctrl"))
+            for oc in outcome_cols:
+                if partial:
+                    s = base[["x", oc, "ctrl"]].dropna()
+                    if len(s) <= 3 or s["x"].std() == 0:
+                        continue
+                    a = _resid(s["x"].values, s["ctrl"].values)
+                    b = _resid(s[oc].values, s["ctrl"].values)
+                    mk = ~(np.isnan(a) | np.isnan(b))
+                    if a[mk].std() == 0 or b[mk].std() == 0:
+                        continue
+                    r, p = pearsonr(a[mk], b[mk]); n = int(mk.sum())
+                else:
+                    s = base[["x", oc]].dropna()
+                    if len(s) <= 3 or s["x"].std() == 0:
+                        continue
+                    r, p = pearsonr(s["x"], s[oc]); n = len(s)
+                rows.append(dict(metric=c, zone=z, outcome=oc, r=r, p=p, n=n))
+    return pd.DataFrame(rows)
+
+
+def build_zone_topo_corr_all(topo_df, outcomes_df, outcome_cols, partial=False,
+                             control="total", zone_npass=None):
+    """Every (topology metric × weight metric × zone × outcome) correlation in one
+    long df. Adds a `topo` column (topology-metric label) on top of build_zone_topo_corr."""
+    frames = []
+    for label, suffix in TOPO_METRICS.items():
+        d = build_zone_topo_corr(topo_df, outcomes_df, outcome_cols, suffix, partial=partial,
+                                 control=control, zone_npass=zone_npass)
+        if not d.empty:
+            d.insert(0, "topo", label)
+            frames.append(d)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
 # ── UI ────────────────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide")
 st.title("Defensive Network Analysis — Team Level")
@@ -1093,10 +1202,10 @@ avg_co, avg_co_team = build_co_defender_data()
 partnerships        = build_partnerships()
 df_corr             = process(edge_dfs[method], thr)
 
-(tab_conc, tab_self, tab_style, tab_codef, tab_zone,
+(tab_conc, tab_self, tab_style, tab_codef, tab_zone, tab_ztopo,
  tab_corr, tab_icc, tab_reg, tab_data) = st.tabs([
     "Concentrated vs Balanced", "Self vs Shared", "Defensive Style", "Co-Defenders", "Zones",
-    "Correlation", "Robustness (ICC)", "Regression", "Data",
+    "Zone Topology", "Correlation", "Robustness (ICC)", "Regression", "Data",
 ])
 
 _QUAD_EXPLAIN = {
@@ -1241,633 +1350,803 @@ def _render_conc_group(match_df, team_df, group_label, y_conc, y_label_conc, out
                 _show_quad_tables(team_df, _pp_ocs, "Per-pass outcomes")
 
 with tab_conc:
-    _y_label_conc = {"centralization_w": "Centralization (weighted)", "kcore_max": "Max K-core"}[y_conc]
-    if y_conc == "centralization_w":
-        st.caption("Centralization (weighted) is scale-invariant — y axis values are identical across all normalisation sections; only quadrant *boundaries* shift as x changes.")
+    @st.fragment
+    def _frag_tab_conc():
+        _y_label_conc = {"centralization_w": "Centralization (weighted)", "kcore_max": "Max K-core"}[y_conc]
+        if y_conc == "centralization_w":
+            st.caption("Centralization (weighted) is scale-invariant — y axis values are identical across all normalisation sections; only quadrant *boundaries* shift as x changes.")
 
-    for _group, _mdf, _tdf in [
-        ("Involvement",  df_conc_inv_match,   df_conc_inv_team),
-        ("Fault",        df_conc_fault_match,  df_conc_fault_team),
-        ("Contribution", df_conc_cont_match,   df_conc_cont_team),
-    ]:
-        st.subheader(_group)
-        _render_conc_group(_mdf, _tdf, _group, y_conc, _y_label_conc, outcome_col)
+        for _group, _mdf, _tdf in [
+            ("Involvement",  df_conc_inv_match,   df_conc_inv_team),
+            ("Fault",        df_conc_fault_match,  df_conc_fault_team),
+            ("Contribution", df_conc_cont_match,   df_conc_cont_team),
+        ]:
+            st.subheader(_group)
+            _render_conc_group(_mdf, _tdf, _group, y_conc, _y_label_conc, outcome_col)
+            st.divider()
+
         st.divider()
-
-    st.divider()
-    st.subheader("Axis Selection — η²")
-    st.caption(
-        "η² = proportion of total variance explained by team identity.  "
-        "**Higher → this metric better differentiates teams.**  "
-        "Pick two metrics with high η² *and* low mutual correlation as quadrant axes."
-    )
-    eta_df = eta_sq_tbl(df_corr, only_from=INV_COLS)
-    st.dataframe(
-        eta_df.style.background_gradient(cmap="YlOrRd", subset=["η²"], vmin=0, vmax=1),
-        use_container_width=True, height=320,
-    )
-    all_eta_metrics = eta_df["metric"].tolist()
-    if len(all_eta_metrics) >= 2:
-        with st.expander("Pairwise correlations — all metrics"):
-            st.caption("Lower correlation = more independent dimensions — better for a 2-axis quadrant plot.")
-            corr_all = df_corr[all_eta_metrics].corr().round(2)
-            st.dataframe(
-                corr_all.style.background_gradient(cmap="RdYlGn_r", vmin=-1, vmax=1),
-                use_container_width=True,
-            )
+        st.subheader("Axis Selection — η²")
+        st.caption(
+            "η² = proportion of total variance explained by team identity.  "
+            "**Higher → this metric better differentiates teams.**  "
+            "Pick two metrics with high η² *and* low mutual correlation as quadrant axes."
+        )
+        eta_df = eta_sq_tbl(df_corr, only_from=INV_COLS)
+        st.dataframe(
+            eta_df.style.background_gradient(cmap="YlOrRd", subset=["η²"], vmin=0, vmax=1),
+            use_container_width=True, height=320,
+        )
+        all_eta_metrics = eta_df["metric"].tolist()
+        if len(all_eta_metrics) >= 2:
+            with st.expander("Pairwise correlations — all metrics"):
+                st.caption("Lower correlation = more independent dimensions — better for a 2-axis quadrant plot.")
+                corr_all = df_corr[all_eta_metrics].corr().round(2)
+                st.dataframe(
+                    corr_all.style.background_gradient(cmap="RdYlGn_r", vmin=-1, vmax=1),
+                    use_container_width=True,
+                )
+    _frag_tab_conc()
 
 with tab_self:
-    fig_bar, fig_scatter, df_self_sorted = plot_selfshared(df_self_team, outcome_col, use_gs=use_gs, correct_possession=correct_possession)
-    st.plotly_chart(fig_bar, use_container_width=True)
+    @st.fragment
+    def _frag_tab_self():
+        global df_self_sorted  # consumed by the Data tab
+        fig_bar, fig_scatter, df_self_sorted = plot_selfshared(df_self_team, outcome_col, use_gs=use_gs, correct_possession=correct_possession)
+        st.plotly_chart(fig_bar, use_container_width=True)
 
-    def _msig(p): return "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
-    _vm = df_self_match[["self_ratio", outcome_col]].dropna()
-    _rm,  _pm   = pearsonr(_vm["self_ratio"],  _vm[outcome_col])
-    _rhom, _pms = spearmanr(_vm["self_ratio"], _vm[outcome_col])
-    _sm = df_self_match[["self_ratio", outcome_col, "passes_against"]].dropna()
-    _a = _resid(_sm["self_ratio"].values, _sm["passes_against"].values)
-    _b = _resid(_sm[outcome_col].values,  _sm["passes_against"].values)
-    _mk = ~(np.isnan(_a) | np.isnan(_b))
-    _rmp,  _pmp  = pearsonr(_a[_mk],  _b[_mk])
-    _rhomp, _pmps = spearmanr(_a[_mk], _b[_mk])
+        def _msig(p): return "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
+        _vm = df_self_match[["self_ratio", outcome_col]].dropna()
+        _rm,  _pm   = pearsonr(_vm["self_ratio"],  _vm[outcome_col])
+        _rhom, _pms = spearmanr(_vm["self_ratio"], _vm[outcome_col])
+        _sm = df_self_match[["self_ratio", outcome_col, "passes_against"]].dropna()
+        _a = _resid(_sm["self_ratio"].values, _sm["passes_against"].values)
+        _b = _resid(_sm[outcome_col].values,  _sm["passes_against"].values)
+        _mk = ~(np.isnan(_a) | np.isnan(_b))
+        _rmp,  _pmp  = pearsonr(_a[_mk],  _b[_mk])
+        _rhomp, _pmps = spearmanr(_a[_mk], _b[_mk])
 
-    fig_scatter_m = px.scatter(
-        df_self_match, x="self_ratio", y=outcome_col,
-        color="competition_stage",
-        color_discrete_map=STYLE_STAGE_PALETTE,
-        category_orders={"competition_stage": STYLE_STAGE_ORDER},
-        hover_name="team_name",
-        trendline="ols", trendline_scope="overall",
-        trendline_color_override="black",
-        title=(f"Match level (n={len(_vm)}) — Self ratio vs {outcome_col}  |  "
-               f"r = {_rm:.3f}, p = {_pm:.3f} ({_msig(_pm)})  |  partial r = {_rmp:.3f}, p = {_pmp:.3f} ({_msig(_pmp)})  |  "
-               f"ρ = {_rhom:.3f}, p = {_pms:.3f} ({_msig(_pms)})  |  partial ρ = {_rhomp:.3f}, p = {_pmps:.3f} ({_msig(_pmps)})"),
-        labels={"self_ratio": "Sharedness (shared / total) [Gini-Simpson]" if use_gs else "Self ratio (self / total)",
-                "competition_stage": "Stage"},
-    )
-    fig_scatter_m.update_layout(title_font_size=11)
+        fig_scatter_m = px.scatter(
+            df_self_match, x="self_ratio", y=outcome_col,
+            color="competition_stage",
+            color_discrete_map=STYLE_STAGE_PALETTE,
+            category_orders={"competition_stage": STYLE_STAGE_ORDER},
+            hover_name="team_name",
+            trendline="ols", trendline_scope="overall",
+            trendline_color_override="black",
+            title=(f"Match level (n={len(_vm)}) — Self ratio vs {outcome_col}  |  "
+                   f"r = {_rm:.3f}, p = {_pm:.3f} ({_msig(_pm)})  |  partial r = {_rmp:.3f}, p = {_pmp:.3f} ({_msig(_pmp)})  |  "
+                   f"ρ = {_rhom:.3f}, p = {_pms:.3f} ({_msig(_pms)})  |  partial ρ = {_rhomp:.3f}, p = {_pmps:.3f} ({_msig(_pmps)})"),
+            labels={"self_ratio": "Sharedness (shared / total) [Gini-Simpson]" if use_gs else "Self ratio (self / total)",
+                    "competition_stage": "Stage"},
+        )
+        fig_scatter_m.update_layout(title_font_size=11)
 
-    _c1, _c2 = st.columns(2)
-    _c1.plotly_chart(fig_scatter, use_container_width=True)
-    _c2.plotly_chart(fig_scatter_m, use_container_width=True)
+        _c1, _c2 = st.columns(2)
+        _c1.plotly_chart(fig_scatter, use_container_width=True)
+        _c2.plotly_chart(fig_scatter_m, use_container_width=True)
+    _frag_tab_self()
 
 with tab_style:
-    cs1, cs2 = st.columns(2)
+    @st.fragment
+    def _frag_tab_style():
+        cs1, cs2 = st.columns(2)
 
-    fig_m = px.scatter(
-        df_style_match, x=x_col, y=y_col, color="competition_stage",
-        hover_name="team_name", hover_data=OUTCOME_COLS,
-        color_discrete_map=STYLE_STAGE_PALETTE,
-        category_orders={"competition_stage": STYLE_STAGE_ORDER},
-        title=f"{x_col} vs {y_col} — match level",
-        labels={x_col: x_col, y_col: y_col, "competition_stage": "Stage"},
-    )
-    _add_quadrant_lines(fig_m, df_style_match, x_col, y_col, opacity=0.5)
-    fig_m.update_layout(height=550)
-    cs1.plotly_chart(fig_m, use_container_width=True)
-
-    fig1, _ = plot_style(df_style_team, x_col, y_col, size_col, size_scale)
-    fig1.update_layout(height=550)
-    cs2.plotly_chart(fig1, use_container_width=True)
-
-    st.subheader("Team-level values")
-    st.dataframe(
-        df_style_team[["team_name", "x", "y", "size", "n_matches", "best_stage"]]
-        .rename(columns={"x": x_col, "y": y_col, "size": size_col})
-        .sort_values("best_stage", ascending=False).round(3),
-        use_container_width=True,
-    )
-
-    with st.expander("Quadrant Analysis — split at median"):
-        st.caption(
-            f"X = `{x_col}`  |  Y = `{y_col}`  "
-            f"|  HX = high contribution · LX = low  |  HY = high fault · LY = low"
+        fig_m = px.scatter(
+            df_style_match, x=x_col, y=y_col, color="competition_stage",
+            hover_name="team_name", hover_data=OUTCOME_COLS,
+            color_discrete_map=STYLE_STAGE_PALETTE,
+            category_orders={"competition_stage": STYLE_STAGE_ORDER},
+            title=f"{x_col} vs {y_col} — match level",
+            labels={x_col: x_col, y_col: y_col, "competition_stage": "Stage"},
         )
-        _mw_caption = ("**Pairwise Mann-Whitney U** (p = raw · p_bonf = Bonferroni corrected"
-                       " · sig based on p_bonf · 🟢 p_bonf<0.05 · 🟡 p<0.05 only)")
-        st.markdown("##### Match level")
-        _, sm_m, kw_m, mw_m, _ = quadrant_analysis(df_style_match, x_col, y_col)
-        st.markdown("**Outcome means per quadrant**")
-        st.dataframe(sm_m, use_container_width=True)
-        if not kw_m.empty:
-            st.markdown("**Kruskal-Wallis**")
-            st.dataframe(_style_kw(kw_m), use_container_width=True)
-        if not mw_m.empty:
-            st.markdown(_mw_caption)
-            st.dataframe(_style_mw(mw_m), use_container_width=True)
-        mg_m = marginal_analysis(df_style_match, x_col, y_col)
-        if not mg_m.empty:
-            st.markdown("**Marginal analysis** (High vs Low on X alone / Y alone)")
-            st.dataframe(mg_m.style.apply(
-                lambda r: ["background-color: #c6efce"] * len(r) if r.get("sig", "ns") != "ns" else [""] * len(r),
-                axis=1), use_container_width=True)
+        _add_quadrant_lines(fig_m, df_style_match, x_col, y_col, opacity=0.5)
+        fig_m.update_layout(height=550)
+        cs1.plotly_chart(fig_m, use_container_width=True)
 
-        st.markdown("##### Team level")
-        st.caption("n = 32 teams — treat p-values as indicative only.")
-        _, sm_t, kw_t, mw_t, _ = quadrant_analysis(df_style_team, "x", "y")
-        st.markdown("**Outcome means per quadrant**")
-        st.dataframe(sm_t, use_container_width=True)
-        if not kw_t.empty:
-            st.markdown("**Kruskal-Wallis**")
-            st.dataframe(_style_kw(kw_t), use_container_width=True)
-        if not mw_t.empty:
-            st.markdown(_mw_caption)
-            st.dataframe(_style_mw(mw_t), use_container_width=True)
-        mg_t = marginal_analysis(df_style_team, "x", "y")
-        if not mg_t.empty:
-            st.markdown("**Marginal analysis**")
-            st.dataframe(mg_t.style.apply(
-                lambda r: ["background-color: #c6efce"] * len(r) if r.get("sig", "ns") != "ns" else [""] * len(r),
-                axis=1), use_container_width=True)
+        fig1, _ = plot_style(df_style_team, x_col, y_col, size_col, size_scale)
+        fig1.update_layout(height=550)
+        cs2.plotly_chart(fig1, use_container_width=True)
+
+        st.subheader("Team-level values")
+        st.dataframe(
+            df_style_team[["team_name", "x", "y", "size", "n_matches", "best_stage"]]
+            .rename(columns={"x": x_col, "y": y_col, "size": size_col})
+            .sort_values("best_stage", ascending=False).round(3),
+            use_container_width=True,
+        )
+
+        with st.expander("Quadrant Analysis — split at median"):
+            st.caption(
+                f"X = `{x_col}`  |  Y = `{y_col}`  "
+                f"|  HX = high contribution · LX = low  |  HY = high fault · LY = low"
+            )
+            _mw_caption = ("**Pairwise Mann-Whitney U** (p = raw · p_bonf = Bonferroni corrected"
+                           " · sig based on p_bonf · 🟢 p_bonf<0.05 · 🟡 p<0.05 only)")
+            st.markdown("##### Match level")
+            _, sm_m, kw_m, mw_m, _ = quadrant_analysis(df_style_match, x_col, y_col)
+            st.markdown("**Outcome means per quadrant**")
+            st.dataframe(sm_m, use_container_width=True)
+            if not kw_m.empty:
+                st.markdown("**Kruskal-Wallis**")
+                st.dataframe(_style_kw(kw_m), use_container_width=True)
+            if not mw_m.empty:
+                st.markdown(_mw_caption)
+                st.dataframe(_style_mw(mw_m), use_container_width=True)
+            mg_m = marginal_analysis(df_style_match, x_col, y_col)
+            if not mg_m.empty:
+                st.markdown("**Marginal analysis** (High vs Low on X alone / Y alone)")
+                st.dataframe(mg_m.style.apply(
+                    lambda r: ["background-color: #c6efce"] * len(r) if r.get("sig", "ns") != "ns" else [""] * len(r),
+                    axis=1), use_container_width=True)
+
+            st.markdown("##### Team level")
+            st.caption("n = 32 teams — treat p-values as indicative only.")
+            _, sm_t, kw_t, mw_t, _ = quadrant_analysis(df_style_team, "x", "y")
+            st.markdown("**Outcome means per quadrant**")
+            st.dataframe(sm_t, use_container_width=True)
+            if not kw_t.empty:
+                st.markdown("**Kruskal-Wallis**")
+                st.dataframe(_style_kw(kw_t), use_container_width=True)
+            if not mw_t.empty:
+                st.markdown(_mw_caption)
+                st.dataframe(_style_mw(mw_t), use_container_width=True)
+            mg_t = marginal_analysis(df_style_team, "x", "y")
+            if not mg_t.empty:
+                st.markdown("**Marginal analysis**")
+                st.dataframe(mg_t.style.apply(
+                    lambda r: ["background-color: #c6efce"] * len(r) if r.get("sig", "ns") != "ns" else [""] * len(r),
+                    axis=1), use_container_width=True)
+    _frag_tab_style()
 
 with tab_codef:
-    st.caption(
-        "**Co-defender** = number of teammates also defending the same attacking pass. "
-        "Computed from Method-2 player edges. "
-        "High avg co-defenders → team defends in groups (pressing style). "
-        "Low → more zonal / individual defending."
-    )
-    st.subheader("Avg co-defenders per pass")
-    fig_match, fig_team = plot_avg_co_defenders(avg_co, avg_co_team, outcome_col)
-    c1, c2 = st.columns(2)
-    c1.plotly_chart(fig_match, use_container_width=True)
-    c2.plotly_chart(fig_team, use_container_width=True)
+    @st.fragment
+    def _frag_tab_codef():
+        st.caption(
+            "**Co-defender** = number of teammates also defending the same attacking pass. "
+            "Computed from Method-2 player edges. "
+            "High avg co-defenders → team defends in groups (pressing style). "
+            "Low → more zonal / individual defending."
+        )
+        st.subheader("Avg co-defenders per pass")
+        fig_match, fig_team = plot_avg_co_defenders(avg_co, avg_co_team, outcome_col)
+        c1, c2 = st.columns(2)
+        c1.plotly_chart(fig_match, use_container_width=True)
+        c2.plotly_chart(fig_team, use_container_width=True)
 
-    st.subheader("Top co-defending pairs")
-    n_top = st.slider("Top N pairs", 10, 50, 20, key="pair_n")
-    top = (partnerships.groupby(["player_a", "player_b"])
-           .agg(co_defenses=("co_defenses", "sum"), team_name=("team_name", "first"))
-           .reset_index()
-           .sort_values("co_defenses", ascending=False)
-           .head(n_top).copy())
-    top["pair"] = top["player_a"] + "  +  " + top["player_b"]
-    fig_pairs = px.bar(top, x="co_defenses", y="pair", orientation="h",
-                       hover_data={"team_name": True},
-                       title=f"Top {n_top} co-defending pairs (all teams)")
-    fig_pairs.update_layout(yaxis=dict(autorange="reversed"), height=600)
-    st.plotly_chart(fig_pairs, use_container_width=True)
+        st.subheader("Top co-defending pairs")
+        n_top = st.slider("Top N pairs", 10, 50, 20, key="pair_n")
+        top = (partnerships.groupby(["player_a", "player_b"])
+               .agg(co_defenses=("co_defenses", "sum"), team_name=("team_name", "first"))
+               .reset_index()
+               .sort_values("co_defenses", ascending=False)
+               .head(n_top).copy())
+        top["pair"] = top["player_a"] + "  +  " + top["player_b"]
+        fig_pairs = px.bar(top, x="co_defenses", y="pair", orientation="h",
+                           hover_data={"team_name": True},
+                           title=f"Top {n_top} co-defending pairs (all teams)")
+        fig_pairs.update_layout(yaxis=dict(autorange="reversed"), height=600)
+        st.plotly_chart(fig_pairs, use_container_width=True)
 
-    st.subheader("Team co-defending heatmap")
-    team_sel = st.selectbox("Select team", sorted(partnerships["team_name"].dropna().unique()))
-    fig_heat = plot_partnership_heatmap(partnerships, team_sel)
-    if fig_heat:
-        st.plotly_chart(fig_heat, use_container_width=True)
-    else:
-        st.info("No partnership data for this team.")
+        st.subheader("Team co-defending heatmap")
+        team_sel = st.selectbox("Select team", sorted(partnerships["team_name"].dropna().unique()))
+        fig_heat = plot_partnership_heatmap(partnerships, team_sel)
+        if fig_heat:
+            st.plotly_chart(fig_heat, use_container_width=True)
+        else:
+            st.info("No partnership data for this team.")
+    _frag_tab_codef()
 
 with tab_zone:
-    st.caption(
-        "Defensive actions split by **where the ball is** when the pass is made "
-        "(`x_def = -x_norm`, defending-team perspective: larger = closer to the "
-        "opponent goal = higher press). `x_norm` already folds in home/away "
-        "orientation and the first/second-half flip, so both teams share one "
-        "direction. Both successful (C) and unsuccessful (B/D) passes are included."
-    )
-    _need = ["n_actions"] + [WEIGHT_SPLIT[w][i] for w in WEIGHT_SPLIT for i in (1, 2, 3)]
-    _missing = [] if zone_raw is None else [c for c in set(_need) if c not in zone_raw.columns]
-    if zone_raw is None:
-        st.warning(
-            "Zone data not found. Run `scripts/2026-06-08_team_zone_metrics.py` "
-            "first to generate `2026-06-08_team_zone_metrics.csv`."
-        )
-    elif _missing:
-        st.warning(
-            "Zone CSV is out of date (missing columns: "
-            f"`{', '.join(sorted(_missing))}`). Re-run "
-            "`scripts/2026-06-08_team_zone_metrics.py` to regenerate it."
-        )
-    else:
-        _wlabel = WEIGHT_SPLIT[zone_weight][0]
-        st.subheader("Zone composition per team")
+    @st.fragment
+    def _frag_tab_zone():
         st.caption(
-            f"Each team's defensive **{_wlabel}**, split by pitch zone (colour) and, "
-            "within each zone, contribution (solid) vs fault (hatched). Bars sum to 1; "
-            "pooled across all of a team's matches."
+            "Defensive actions split by **where the ball is** when the pass is made "
+            "(`x_def = -x_norm`, defending-team perspective: larger = closer to the "
+            "opponent goal = higher press). `x_norm` already folds in home/away "
+            "orientation and the first/second-half flip, so both teams share one "
+            "direction. Both successful (C) and unsuccessful (B/D) passes are included."
         )
-        zsplit, zones = build_zone_split(zone_raw, zone_scheme, zone_weight)
-        zsplit["Zone"] = zsplit["zone"].map(ZONE_LABEL)
-        zone_label_order = [ZONE_LABEL[z] for z in zones]
-        zone_color = {ZONE_LABEL[z]: ZONE_COLOR[z] for z in zones}
-        team_order = (zsplit[zsplit["zone"] == zones[-1]]
-                      .groupby("defending_team_name")["share"].sum()
-                      .sort_values(ascending=False).index.tolist())
-        fig_share = px.bar(
-            zsplit, x="share", y="defending_team_name",
-            color="Zone", pattern_shape="type",
-            orientation="h", barmode="stack",
-            color_discrete_map=zone_color,
-            pattern_shape_map={"contribution": "", "fault": "/"},
-            category_orders={"Zone": zone_label_order,
-                             "type": ["contribution", "fault"],
-                             "defending_team_name": team_order},
-            labels={"share": f"Proportion of team's total {_wlabel.lower()}"},
-            title=f"Zone composition of {_wlabel} ({SCHEME_LABEL[zone_scheme]})")
-        # denser hatching for the fault segments
-        fig_share.update_traces(marker_pattern_size=3, marker_pattern_solidity=0.35)
-        fig_share.update_layout(height=max(420, 24 * len(team_order)),
-                                yaxis=dict(autorange="reversed", title=None),
-                                xaxis=dict(tickformat=".0%"),
-                                legend_title_text="Zone / con-fault")
-        st.plotly_chart(fig_share, use_container_width=True)
-        with st.expander("Composition table (proportion)"):
-            tbl = (zsplit.assign(seg=zsplit["Zone"] + " · " + zsplit["type"])
-                   .pivot_table(index="defending_team_name", columns="seg", values="share")
-                   .loc[team_order])
-            st.dataframe(tbl.round(3))
-
-        # ── Correlation: zone metric vs outcomes ──────────────────────────────
-        st.subheader("Zone metric × outcome correlation")
-        _zc_modes = {"Raw": (False, "total"),
-                     "Partial — control total passes against": (True, "total"),
-                     "Partial — control this zone's passes faced": (True, "zone")}
-        zc_mode = st.radio("Correlation", list(_zc_modes), horizontal=True,
-                           key="zone_corr_partial")
-        zc_partial, zc_control = _zc_modes[zc_mode]
-        st.caption(
-            "Correlation between each zone metric **sum** (rows: raw/val × inv/con/fault) "
-            "and each outcome (cols), at **match-team level** (one point per team per "
-            "match). One heatmap per zone. Red = positive (more ↔ conceding more, worse); "
-            "blue = negative (↔ conceding less). `*` = p<0.05. "
-            + {"total": "Partial = residualised on the match's **total** passes_against.",
-               "zone": "Partial = residualised on **this zone's** faced-pass count "
-                       "(n_passes)."}[zc_control] if zc_partial else ""
-        )
-        corr_df = build_zone_corr(zone_raw, zone_scheme, outcomes, OUTCOME_COLS,
-                                  partial=zc_partial, control=zc_control)
-        zones_c = [z for z in ZONE_ORDER if z in set(corr_df["zone"])]
-        ocl = [c.replace("_against", " ag.") for c in OUTCOME_COLS]
-        cols = st.columns(len(zones_c))
-        for col, z in zip(cols, zones_c):
-            rmat, tmat = [], []
-            for m in ZONE_CORR_METRICS:
-                rrow, trow = [], []
-                for oc in OUTCOME_COLS:
-                    sel = corr_df[(corr_df["metric"] == m) & (corr_df["zone"] == z)
-                                  & (corr_df["outcome"] == oc)]
-                    if len(sel):
-                        r, p = sel["r"].iloc[0], sel["p"].iloc[0]
-                        rrow.append(r); trow.append(f"{r:+.2f}{'*' if p < 0.05 else ''}")
-                    else:
-                        rrow.append(np.nan); trow.append("")
-                rmat.append(rrow); tmat.append(trow)
-            rmat = pd.DataFrame(rmat, index=[METRIC_LABEL[m] for m in ZONE_CORR_METRICS],
-                                columns=ocl)
-            fig = px.imshow(rmat, color_continuous_scale="RdBu_r", zmin=-0.6, zmax=0.6,
-                            aspect="equal", labels=dict(color="r"),
-                            title=ZONE_LABEL[z])
-            fig.update_traces(text=tmat, texttemplate="%{text}", textfont_size=12)
-            fig.update_xaxes(side="top")
-            fig.update_layout(width=300, height=520, margin=dict(l=10, r=10, t=60, b=10),
-                              coloraxis_showscale=False)
-            col.plotly_chart(fig, use_container_width=False)
-        with st.expander("Correlation table (r, p, n)"):
-            st.dataframe(
-                corr_df.assign(metric=corr_df["metric"].map(METRIC_LABEL),
-                               zone=corr_df["zone"].map(ZONE_LABEL))
-                       .round({"r": 3, "p": 4}))
-
-        with st.expander("Volume diagnostic — why 'control passes' behaves differently per zone"):
-            vd1, vd2 = st.columns(2)
-            vdo = vd1.selectbox("Outcome", OUTCOME_COLS, index=1, key="vol_diag_out")
-            vdk = vd2.selectbox("raw / valued", ["raw", "valued"], key="vol_diag_kind")
-            st.caption(
-                "Match-team level (N=128). **npass↔metric**: how much the zone's metric "
-                "SUM is just volume (n_passes). **npass↔outcome**: whether that volume "
-                "itself relates to the outcome (large + in own third = being pinned back). "
-                "**invPerPass↔outcome**: per-faced-pass intensity vs outcome (volume "
-                "removed). Explains why controlling zone passes helps high-press but "
-                "erases own-third's real exposure signal."
+        _need = ["n_actions"] + [WEIGHT_SPLIT[w][i] for w in WEIGHT_SPLIT for i in (1, 2, 3)]
+        _missing = [] if zone_raw is None else [c for c in set(_need) if c not in zone_raw.columns]
+        if zone_raw is None:
+            st.warning(
+                "Zone data not found. Run `scripts/2026-06-08_team_zone_metrics.py` "
+                "first to generate `2026-06-08_team_zone_metrics.csv`."
             )
-            st.table(build_zone_volume_diag(zone_raw, zone_scheme, outcomes, vdo, vdk))
-
-        # ── Team × zone contribution/fault ratio ──────────────────────────────
-        st.subheader("Team × zone contribution / fault ratio")
-        st.caption(
-            "Per team, mean of per-match contribution÷fault ratios in each zone (each "
-            "match weighted equally). **Original** = Σcon/Σfault per match; **per-event** "
-            "= (con/con-passes) ÷ (fault/fault-passes), i.e. mean contribution intensity "
-            "÷ mean fault intensity (strips how *often* you act, keeps how *impactful*). "
-            "Darker = higher. Teams sorted by raw-original high-press ratio."
-        )
-        # team order from raw / original / high-press
-        _base, _zb = build_team_zone_ratio(zone_raw, zone_scheme, "raw", "plain")
-        team_order = _base[_zb[-1]].sort_values(ascending=False).index.tolist()
-        for mode, mlab in [("plain", "Original  con/fault"),
-                           ("per_event", "Per-event  con/fault")]:
-            st.markdown(f"**{mlab}**")
-            for col, kind in zip(st.columns(2), ("raw", "valued")):
-                m, zns = build_team_zone_ratio(zone_raw, zone_scheme, kind, mode)
-                mm = m.reindex(index=team_order)
-                mm.columns = [ZONE_SHORT[z] for z in zns]
-                fig_tr = px.imshow(mm, color_continuous_scale="Reds", text_auto=".2f",
-                                   aspect="auto", labels=dict(color="ratio"),
-                                   title=f"{kind}")
-                fig_tr.update_xaxes(side="top", tickangle=0, tickfont_size=13)
-                fig_tr.update_yaxes(title=None, tickfont_size=12)
-                fig_tr.update_traces(textfont_size=13)
-                fig_tr.update_layout(height=max(900, 28 * len(team_order)),
-                                     margin=dict(l=8, r=8, t=50, b=8))
-                col.plotly_chart(fig_tr, use_container_width=True)
-
-        # ── Volume vs efficiency scatter (per zone) ───────────────────────────
-        st.subheader("Volume vs efficiency, per zone")
-        st.caption(
-            "One point per team. X = involvement in the zone (how much they defend "
-            "there); Y = con/fault ratio (efficiency, pooled Σcon/Σfault). Colour = "
-            "mean-per-match outcome (darker = concedes more). Top-left = efficient but "
-            "barely defends there; top-right = efficient AND high volume. Dashed line = "
-            "ratio 1 (con=fault). OLS fit + r in each title."
-        )
-        ve1, ve2, ve3 = st.columns(3)
-        ve_kind = ve1.selectbox("raw / valued", ["raw", "valued"], key="ve_kind")
-        ve_xmode = ve2.radio("X axis", ["per-match", "total"], horizontal=True, key="ve_xmode")
-        ve_color = ve3.selectbox("Colour by", OUTCOME_COLS, index=1, key="ve_color")
-        xcol = "inv_pm" if ve_xmode == "per-match" else "inv"
-        xlab = f"{'per-match' if ve_xmode == 'per-match' else 'total'} involvement"
-        ve = build_team_zone_volume_ratio(zone_raw, zone_scheme, outcomes, ve_kind)
-        ve_zones = [z for z in ZONE_ORDER if z in set(ve["zone"])]
-        cmax = ve[ve_color].max()
-        for col, z in zip(st.columns(len(ve_zones)), ve_zones):
-            g = ve[ve["zone"] == z].dropna(subset=[xcol, "ratio"])
-            r, p = pearsonr(g[xcol], g["ratio"]) if len(g) > 2 else (np.nan, np.nan)
-            fig_ve = px.scatter(g, x=xcol, y="ratio", text="defending_team_name",
-                                color=ve_color, color_continuous_scale="Reds",
-                                range_color=(0, cmax), trendline="ols",
-                                trendline_scope="overall", trendline_color_override="black",
-                                labels={xcol: xlab, "ratio": "con/fault",
-                                        ve_color: ve_color.replace("_", " ")},
-                                title=f"{ZONE_LABEL[z]}  (r={r:+.2f}, p={p:.3f})")
-            fig_ve.update_traces(textposition="top center", textfont_size=9,
-                                 marker=dict(size=10, line=dict(width=1, color="white")),
-                                 selector=dict(mode="markers+text"))
-            fig_ve.add_hline(y=1.0, line_dash="dash", line_color="grey", opacity=0.6)
-            fig_ve.update_layout(height=500, margin=dict(l=8, r=8, t=50, b=8),
-                                 coloraxis_showscale=(z == ve_zones[-1]))
-            col.plotly_chart(fig_ve, use_container_width=True)
-
-        # ── con/fault RATIO × outcome correlation (match level, table) ────────
-        st.subheader("Contribution / Fault ratio × outcome correlation")
-        st.caption(
-            "Pearson r between each zone's **contribution÷fault** ratio (per match-team) "
-            "and each outcome, at **match-team level**. Match-teams with zero fault in a "
-            "zone are dropped. `*` p<0.05, `**` p<0.01. "
-            + ("Partial: controlling passes_against." if zc_partial else "Raw correlation.")
-        )
-        rc = build_zone_ratio_corr(zone_raw, zone_scheme, outcomes, OUTCOME_COLS,
-                                   partial=zc_partial)
-        if rc.empty:
-            st.info("Not enough data for ratio correlations in this scheme.")
+        elif _missing:
+            st.warning(
+                "Zone CSV is out of date (missing columns: "
+                f"`{', '.join(sorted(_missing))}`). Re-run "
+                "`scripts/2026-06-08_team_zone_metrics.py` to regenerate it."
+            )
         else:
-            rc["cell"] = rc.apply(
-                lambda x: f"{x.r:+.2f}{'**' if x.p < 0.01 else '*' if x.p < 0.05 else ''}"
-                          f" (n={x.n})", axis=1)
-            rc["row"] = rc["zone"].map(ZONE_LABEL) + " · " + rc["ratio"]
-            row_order = [f"{ZONE_LABEL[z]} · {k}"
-                         for z in ZONE_ORDER if z in set(rc["zone"])
-                         for k in ("raw", "valued")]
-            tbl_rc = (rc.pivot(index="row", columns="outcome", values="cell")
-                        .reindex(index=row_order,
-                                 columns=[c for c in OUTCOME_COLS if c in set(rc["outcome"])]))
-            tbl_rc.columns = [c.replace("_against", " ag.") for c in tbl_rc.columns]
-            st.table(tbl_rc.fillna("—"))
+            _wlabel = WEIGHT_SPLIT[zone_weight][0]
+            st.subheader("Zone composition per team")
+            st.caption(
+                f"Each team's defensive **{_wlabel}**, split by pitch zone (colour) and, "
+                "within each zone, contribution (solid) vs fault (hatched). Bars sum to 1; "
+                "pooled across all of a team's matches."
+            )
+            zsplit, zones = build_zone_split(zone_raw, zone_scheme, zone_weight)
+            zsplit["Zone"] = zsplit["zone"].map(ZONE_LABEL)
+            zone_label_order = [ZONE_LABEL[z] for z in zones]
+            zone_color = {ZONE_LABEL[z]: ZONE_COLOR[z] for z in zones}
+            team_order = (zsplit[zsplit["zone"] == zones[-1]]
+                          .groupby("defending_team_name")["share"].sum()
+                          .sort_values(ascending=False).index.tolist())
+            fig_share = px.bar(
+                zsplit, x="share", y="defending_team_name",
+                color="Zone", pattern_shape="type",
+                orientation="h", barmode="stack",
+                color_discrete_map=zone_color,
+                pattern_shape_map={"contribution": "", "fault": "/"},
+                category_orders={"Zone": zone_label_order,
+                                 "type": ["contribution", "fault"],
+                                 "defending_team_name": team_order},
+                labels={"share": f"Proportion of team's total {_wlabel.lower()}"},
+                title=f"Zone composition of {_wlabel} ({SCHEME_LABEL[zone_scheme]})")
+            # denser hatching for the fault segments
+            fig_share.update_traces(marker_pattern_size=3, marker_pattern_solidity=0.35)
+            fig_share.update_layout(height=max(420, 24 * len(team_order)),
+                                    yaxis=dict(autorange="reversed", title=None),
+                                    xaxis=dict(tickformat=".0%"),
+                                    legend_title_text="Zone / con-fault")
+            st.plotly_chart(fig_share, use_container_width=True)
+            with st.expander("Composition table (proportion)"):
+                tbl = (zsplit.assign(seg=zsplit["Zone"] + " · " + zsplit["type"])
+                       .pivot_table(index="defending_team_name", columns="seg", values="share")
+                       .loc[team_order])
+                st.dataframe(tbl.round(3))
 
-        # ── Zone profile by stage (boxplots: reached knockout?) ───────────────
-        st.subheader("Zone profile — group-stage-out vs knockout teams")
-        bx1, bx2 = st.columns(2)
-        bx_measure = bx1.selectbox(
-            "Measure", ["involvement proportion", "contribution proportion",
-                        "fault proportion"], key="bx_measure")
-        bx_kind = bx2.selectbox("raw / valued", ["raw", "valued"], key="bx_kind")
-        dd = zone_raw[zone_raw["scheme"] == zone_scheme].copy()
-        metric = {"involvement proportion": "involvement",
-                  "contribution proportion": "contribution",
-                  "fault proportion": "fault"}[bx_measure]
-        mcol = f"{bx_kind}_{metric}_sum"
-        tot = dd.groupby("match_team_id")[mcol].transform("sum")
-        dd["val"] = dd[mcol] / tot.replace(0, np.nan)
-        ylab = f"{bx_kind} {metric} zone proportion"
-        dd = dd.merge(outcomes[["match_team_id", "reached_knockout"]], on="match_team_id")
-        dd["Zone"] = dd["zone"].map(ZONE_LABEL)
-        dd["Stage"] = dd["reached_knockout"].map({True: "Reached knockout", False: "Group only"})
-        zorder = [ZONE_LABEL[z] for z in ZONE_ORDER if z in set(dd["zone"])]
-        dd = dd.dropna(subset=["val"])
-        fig_bx = px.box(dd, x="Zone", y="val", color="Stage",
-                        category_orders={"Zone": zorder,
-                                         "Stage": ["Group only", "Reached knockout"]},
-                        color_discrete_map={"Group only": "#bbbbbb",
-                                            "Reached knockout": "#1f78b4"},
-                        labels={"val": ylab},
-                        title=f"{ylab} by zone (match-team level)")
-        st.plotly_chart(fig_bx, use_container_width=True)
-        mw = []
-        for z in [zz for zz in ZONE_ORDER if zz in set(dd["zone"])]:
-            g = dd[dd["zone"] == z]
-            a = g[g["reached_knockout"]]["val"]; b = g[~g["reached_knockout"]]["val"]
-            if len(a) > 2 and len(b) > 2:
-                _, p = mannwhitneyu(a, b)
-                mw.append(dict(Zone=ZONE_LABEL[z],
-                               knockout_median=round(a.median(), 3),
-                               group_median=round(b.median(), 3),
-                               p=round(p, 4), sig="*" if p < 0.05 else ""))
-        st.caption("Median per group + Mann–Whitney U p (knockout vs group-only; "
-                   "a knockout team's group matches count as 'knockout').")
-        if mw:
-            st.table(pd.DataFrame(mw).set_index("Zone"))
+            # ── Correlation: zone metric vs outcomes ──────────────────────────────
+            st.subheader("Zone metric × outcome correlation")
+            _zc_modes = {"Raw": (False, "total"),
+                         "Partial — control total passes against": (True, "total"),
+                         "Partial — control this zone's passes faced": (True, "zone")}
+            zc_mode = st.radio("Correlation", list(_zc_modes), horizontal=True,
+                               key="zone_corr_partial")
+            zc_partial, zc_control = _zc_modes[zc_mode]
+            st.caption(
+                "Correlation between each zone metric **sum** (rows: raw/val × inv/con/fault) "
+                "and each outcome (cols), at **match-team level** (one point per team per "
+                "match). One heatmap per zone. Red = positive (more ↔ conceding more, worse); "
+                "blue = negative (↔ conceding less). `*` = p<0.05. "
+                + {"total": "Partial = residualised on the match's **total** passes_against.",
+                   "zone": "Partial = residualised on **this zone's** faced-pass count "
+                           "(n_passes)."}[zc_control] if zc_partial else ""
+            )
+            corr_df = build_zone_corr(zone_raw, zone_scheme, outcomes, OUTCOME_COLS,
+                                      partial=zc_partial, control=zc_control)
+            zones_c = [z for z in ZONE_ORDER if z in set(corr_df["zone"])]
+            ocl = [c.replace("_against", " ag.") for c in OUTCOME_COLS]
+            cols = st.columns(len(zones_c))
+            for col, z in zip(cols, zones_c):
+                rmat, tmat = [], []
+                for m in ZONE_CORR_METRICS:
+                    rrow, trow = [], []
+                    for oc in OUTCOME_COLS:
+                        sel = corr_df[(corr_df["metric"] == m) & (corr_df["zone"] == z)
+                                      & (corr_df["outcome"] == oc)]
+                        if len(sel):
+                            r, p = sel["r"].iloc[0], sel["p"].iloc[0]
+                            rrow.append(r); trow.append(f"{r:+.2f}{'*' if p < 0.05 else ''}")
+                        else:
+                            rrow.append(np.nan); trow.append("")
+                    rmat.append(rrow); tmat.append(trow)
+                rmat = pd.DataFrame(rmat, index=[METRIC_LABEL[m] for m in ZONE_CORR_METRICS],
+                                    columns=ocl)
+                fig = px.imshow(rmat, color_continuous_scale="RdBu_r", zmin=-0.6, zmax=0.6,
+                                aspect="equal", labels=dict(color="r"),
+                                title=ZONE_LABEL[z])
+                fig.update_traces(text=tmat, texttemplate="%{text}", textfont_size=12)
+                fig.update_xaxes(side="top")
+                fig.update_layout(width=300, height=520, margin=dict(l=10, r=10, t=60, b=10),
+                                  coloraxis_showscale=False)
+                col.plotly_chart(fig, use_container_width=False)
+            with st.expander("Correlation table (r, p, n)"):
+                st.dataframe(
+                    corr_df.assign(metric=corr_df["metric"].map(METRIC_LABEL),
+                                   zone=corr_df["zone"].map(ZONE_LABEL))
+                           .round({"r": 3, "p": 4}))
 
-        # ── Defensive style map (team level) ──────────────────────────────────
-        st.subheader("Defensive style map (team level)")
-        st.caption(
-            "One point per team (pooled across its matches). **press index** = "
-            "high-press proportion − own-third proportion (right = proactive/high line; "
-            "left = forced/deep; midfield is the neutral pivot, not in this axis). Colour = "
-            "reached knockout. Lower y (shots/xG against) = better defence."
-        )
-        sm1, sm2, sm3 = st.columns(3)
-        _xopts = {"press_index": "Press index (high − own proportion)",
-                  "high_press_share": "High-press proportion", "own_share": "Own-third proportion",
-                  "mid_share": "Midfield proportion"}
-        sm_kind = sm1.selectbox("raw / valued", ["raw", "valued"], key="style_kind")
-        team_style = build_team_style(zone_raw, zone_scheme, outcomes, kind=sm_kind)
-        _xavail = [k for k in _xopts if k in team_style.columns]
-        sm_x = sm2.selectbox("X axis", _xavail, format_func=_xopts.__getitem__, key="style_x")
-        sm_y = sm3.selectbox("Y axis (outcome)", OUTCOME_COLS, index=1, key="style_y")
-        ts = team_style.reset_index().dropna(subset=[sm_x, sm_y])
-        ts["Stage"] = ts["reached_knockout"].map({True: "Reached knockout", False: "Group only"})
-        r_sm, p_sm = pearsonr(ts[sm_x], ts[sm_y])
-        fig_sm = px.scatter(ts, x=sm_x, y=sm_y, color="Stage", text="team_name",
+            with st.expander("Volume diagnostic — why 'control passes' behaves differently per zone"):
+                vd1, vd2 = st.columns(2)
+                vdo = vd1.selectbox("Outcome", OUTCOME_COLS, index=1, key="vol_diag_out")
+                vdk = vd2.selectbox("raw / valued", ["raw", "valued"], key="vol_diag_kind")
+                st.caption(
+                    "Match-team level (N=128). **npass↔metric**: how much the zone's metric "
+                    "SUM is just volume (n_passes). **npass↔outcome**: whether that volume "
+                    "itself relates to the outcome (large + in own third = being pinned back). "
+                    "**invPerPass↔outcome**: per-faced-pass intensity vs outcome (volume "
+                    "removed). Explains why controlling zone passes helps high-press but "
+                    "erases own-third's real exposure signal."
+                )
+                st.table(build_zone_volume_diag(zone_raw, zone_scheme, outcomes, vdo, vdk))
+
+            # ── Team × zone contribution/fault ratio ──────────────────────────────
+            st.subheader("Team × zone contribution / fault ratio")
+            st.caption(
+                "Per team, mean of per-match contribution÷fault ratios in each zone (each "
+                "match weighted equally). **Original** = Σcon/Σfault per match; **per-event** "
+                "= (con/con-passes) ÷ (fault/fault-passes), i.e. mean contribution intensity "
+                "÷ mean fault intensity (strips how *often* you act, keeps how *impactful*). "
+                "Darker = higher. Teams sorted by raw-original high-press ratio."
+            )
+            # team order from raw / original / high-press
+            _base, _zb = build_team_zone_ratio(zone_raw, zone_scheme, "raw", "plain")
+            team_order = _base[_zb[-1]].sort_values(ascending=False).index.tolist()
+            for mode, mlab in [("plain", "Original  con/fault"),
+                               ("per_event", "Per-event  con/fault")]:
+                st.markdown(f"**{mlab}**")
+                for col, kind in zip(st.columns(2), ("raw", "valued")):
+                    m, zns = build_team_zone_ratio(zone_raw, zone_scheme, kind, mode)
+                    mm = m.reindex(index=team_order)
+                    mm.columns = [ZONE_SHORT[z] for z in zns]
+                    fig_tr = px.imshow(mm, color_continuous_scale="Reds", text_auto=".2f",
+                                       aspect="auto", labels=dict(color="ratio"),
+                                       title=f"{kind}")
+                    fig_tr.update_xaxes(side="top", tickangle=0, tickfont_size=13)
+                    fig_tr.update_yaxes(title=None, tickfont_size=12)
+                    fig_tr.update_traces(textfont_size=13)
+                    fig_tr.update_layout(height=max(900, 28 * len(team_order)),
+                                         margin=dict(l=8, r=8, t=50, b=8))
+                    col.plotly_chart(fig_tr, use_container_width=True)
+
+            # ── Volume vs efficiency scatter (per zone) ───────────────────────────
+            st.subheader("Volume vs efficiency, per zone")
+            st.caption(
+                "One point per team. X = involvement in the zone (how much they defend "
+                "there); Y = con/fault ratio (efficiency, pooled Σcon/Σfault). Colour = "
+                "mean-per-match outcome (darker = concedes more). Top-left = efficient but "
+                "barely defends there; top-right = efficient AND high volume. Dashed line = "
+                "ratio 1 (con=fault). OLS fit + r in each title."
+            )
+            ve1, ve2, ve3 = st.columns(3)
+            ve_kind = ve1.selectbox("raw / valued", ["raw", "valued"], key="ve_kind")
+            ve_xmode = ve2.radio("X axis", ["per-match", "total"], horizontal=True, key="ve_xmode")
+            ve_color = ve3.selectbox("Colour by", OUTCOME_COLS, index=1, key="ve_color")
+            xcol = "inv_pm" if ve_xmode == "per-match" else "inv"
+            xlab = f"{'per-match' if ve_xmode == 'per-match' else 'total'} involvement"
+            ve = build_team_zone_volume_ratio(zone_raw, zone_scheme, outcomes, ve_kind)
+            ve_zones = [z for z in ZONE_ORDER if z in set(ve["zone"])]
+            cmax = ve[ve_color].max()
+            for col, z in zip(st.columns(len(ve_zones)), ve_zones):
+                g = ve[ve["zone"] == z].dropna(subset=[xcol, "ratio"])
+                r, p = pearsonr(g[xcol], g["ratio"]) if len(g) > 2 else (np.nan, np.nan)
+                fig_ve = px.scatter(g, x=xcol, y="ratio", text="defending_team_name",
+                                    color=ve_color, color_continuous_scale="Reds",
+                                    range_color=(0, cmax), trendline="ols",
+                                    trendline_scope="overall", trendline_color_override="black",
+                                    labels={xcol: xlab, "ratio": "con/fault",
+                                            ve_color: ve_color.replace("_", " ")},
+                                    title=f"{ZONE_LABEL[z]}  (r={r:+.2f}, p={p:.3f})")
+                fig_ve.update_traces(textposition="top center", textfont_size=9,
+                                     marker=dict(size=10, line=dict(width=1, color="white")),
+                                     selector=dict(mode="markers+text"))
+                fig_ve.add_hline(y=1.0, line_dash="dash", line_color="grey", opacity=0.6)
+                fig_ve.update_layout(height=500, margin=dict(l=8, r=8, t=50, b=8),
+                                     coloraxis_showscale=(z == ve_zones[-1]))
+                col.plotly_chart(fig_ve, use_container_width=True)
+
+            # ── con/fault RATIO × outcome correlation (match level, table) ────────
+            st.subheader("Contribution / Fault ratio × outcome correlation")
+            st.caption(
+                "Pearson r between each zone's **contribution÷fault** ratio (per match-team) "
+                "and each outcome, at **match-team level**. Match-teams with zero fault in a "
+                "zone are dropped. `*` p<0.05, `**` p<0.01. "
+                + ("Partial: controlling passes_against." if zc_partial else "Raw correlation.")
+            )
+            rc = build_zone_ratio_corr(zone_raw, zone_scheme, outcomes, OUTCOME_COLS,
+                                       partial=zc_partial)
+            if rc.empty:
+                st.info("Not enough data for ratio correlations in this scheme.")
+            else:
+                rc["cell"] = rc.apply(
+                    lambda x: f"{x.r:+.2f}{'**' if x.p < 0.01 else '*' if x.p < 0.05 else ''}"
+                              f" (n={x.n})", axis=1)
+                rc["row"] = rc["zone"].map(ZONE_LABEL) + " · " + rc["ratio"]
+                row_order = [f"{ZONE_LABEL[z]} · {k}"
+                             for z in ZONE_ORDER if z in set(rc["zone"])
+                             for k in ("raw", "valued")]
+                tbl_rc = (rc.pivot(index="row", columns="outcome", values="cell")
+                            .reindex(index=row_order,
+                                     columns=[c for c in OUTCOME_COLS if c in set(rc["outcome"])]))
+                tbl_rc.columns = [c.replace("_against", " ag.") for c in tbl_rc.columns]
+                st.table(tbl_rc.fillna("—"))
+
+            # ── Zone profile by stage (boxplots: reached knockout?) ───────────────
+            st.subheader("Zone profile — group-stage-out vs knockout teams")
+            bx1, bx2 = st.columns(2)
+            bx_measure = bx1.selectbox(
+                "Measure", ["involvement proportion", "contribution proportion",
+                            "fault proportion"], key="bx_measure")
+            bx_kind = bx2.selectbox("raw / valued", ["raw", "valued"], key="bx_kind")
+            dd = zone_raw[zone_raw["scheme"] == zone_scheme].copy()
+            metric = {"involvement proportion": "involvement",
+                      "contribution proportion": "contribution",
+                      "fault proportion": "fault"}[bx_measure]
+            mcol = f"{bx_kind}_{metric}_sum"
+            tot = dd.groupby("match_team_id")[mcol].transform("sum")
+            dd["val"] = dd[mcol] / tot.replace(0, np.nan)
+            ylab = f"{bx_kind} {metric} zone proportion"
+            dd = dd.merge(outcomes[["match_team_id", "reached_knockout"]], on="match_team_id")
+            dd["Zone"] = dd["zone"].map(ZONE_LABEL)
+            dd["Stage"] = dd["reached_knockout"].map({True: "Reached knockout", False: "Group only"})
+            zorder = [ZONE_LABEL[z] for z in ZONE_ORDER if z in set(dd["zone"])]
+            dd = dd.dropna(subset=["val"])
+            fig_bx = px.box(dd, x="Zone", y="val", color="Stage",
+                            category_orders={"Zone": zorder,
+                                             "Stage": ["Group only", "Reached knockout"]},
                             color_discrete_map={"Group only": "#bbbbbb",
                                                 "Reached knockout": "#1f78b4"},
-                            trendline="ols", trendline_scope="overall",
-                            trendline_color_override="black",
-                            labels={sm_x: _xopts[sm_x], sm_y: sm_y.replace("_", " ")},
-                            title=f"{_xopts[sm_x]} vs {sm_y.replace('_',' ')}  "
-                                  f"(r={r_sm:+.2f}, p={p_sm:.3f}, N={len(ts)})")
-        fig_sm.update_traces(textposition="top center",
-                             marker=dict(size=11, line=dict(width=1, color="white")),
-                             selector=dict(mode="markers+text"))
-        fig_sm.add_vline(x=ts[sm_x].median(), line_dash="dash", line_color="grey", opacity=0.5)
-        fig_sm.add_hline(y=ts[sm_y].median(), line_dash="dash", line_color="grey", opacity=0.5)
-        fig_sm.update_layout(height=620)
-        st.plotly_chart(fig_sm, use_container_width=True)
-        st.caption(
-            "Note: press index strongly tracks **defensive** quality (fewer shots/xG "
-            "against) but **not** knockout qualification — deep/forced teams can still "
-            "advance via attack & results, so colour (knockout) scatters across the plot."
+                            labels={"val": ylab},
+                            title=f"{ylab} by zone (match-team level)")
+            st.plotly_chart(fig_bx, use_container_width=True)
+            mw = []
+            for z in [zz for zz in ZONE_ORDER if zz in set(dd["zone"])]:
+                g = dd[dd["zone"] == z]
+                a = g[g["reached_knockout"]]["val"]; b = g[~g["reached_knockout"]]["val"]
+                if len(a) > 2 and len(b) > 2:
+                    _, p = mannwhitneyu(a, b)
+                    mw.append(dict(Zone=ZONE_LABEL[z],
+                                   knockout_median=round(a.median(), 3),
+                                   group_median=round(b.median(), 3),
+                                   p=round(p, 4), sig="*" if p < 0.05 else ""))
+            st.caption("Median per group + Mann–Whitney U p (knockout vs group-only; "
+                       "a knockout team's group matches count as 'knockout').")
+            if mw:
+                st.table(pd.DataFrame(mw).set_index("Zone"))
+
+            # ── Defensive style map (team level) ──────────────────────────────────
+            st.subheader("Defensive style map (team level)")
+            st.caption(
+                "One point per team (pooled across its matches). **press index** = "
+                "high-press proportion − own-third proportion (right = proactive/high line; "
+                "left = forced/deep; midfield is the neutral pivot, not in this axis). Colour = "
+                "reached knockout. Lower y (shots/xG against) = better defence."
+            )
+            sm1, sm2, sm3 = st.columns(3)
+            _xopts = {"press_index": "Press index (high − own proportion)",
+                      "high_press_share": "High-press proportion", "own_share": "Own-third proportion",
+                      "mid_share": "Midfield proportion"}
+            sm_kind = sm1.selectbox("raw / valued", ["raw", "valued"], key="style_kind")
+            team_style = build_team_style(zone_raw, zone_scheme, outcomes, kind=sm_kind)
+            _xavail = [k for k in _xopts if k in team_style.columns]
+            sm_x = sm2.selectbox("X axis", _xavail, format_func=_xopts.__getitem__, key="style_x")
+            sm_y = sm3.selectbox("Y axis (outcome)", OUTCOME_COLS, index=1, key="style_y")
+            ts = team_style.reset_index().dropna(subset=[sm_x, sm_y])
+            ts["Stage"] = ts["reached_knockout"].map({True: "Reached knockout", False: "Group only"})
+            r_sm, p_sm = pearsonr(ts[sm_x], ts[sm_y])
+            fig_sm = px.scatter(ts, x=sm_x, y=sm_y, color="Stage", text="team_name",
+                                color_discrete_map={"Group only": "#bbbbbb",
+                                                    "Reached knockout": "#1f78b4"},
+                                trendline="ols", trendline_scope="overall",
+                                trendline_color_override="black",
+                                labels={sm_x: _xopts[sm_x], sm_y: sm_y.replace("_", " ")},
+                                title=f"{_xopts[sm_x]} vs {sm_y.replace('_',' ')}  "
+                                      f"(r={r_sm:+.2f}, p={p_sm:.3f}, N={len(ts)})")
+            fig_sm.update_traces(textposition="top center",
+                                 marker=dict(size=11, line=dict(width=1, color="white")),
+                                 selector=dict(mode="markers+text"))
+            fig_sm.add_vline(x=ts[sm_x].median(), line_dash="dash", line_color="grey", opacity=0.5)
+            fig_sm.add_hline(y=ts[sm_y].median(), line_dash="dash", line_color="grey", opacity=0.5)
+            fig_sm.update_layout(height=620)
+            st.plotly_chart(fig_sm, use_container_width=True)
+            st.caption(
+                "Note: press index strongly tracks **defensive** quality (fewer shots/xG "
+                "against) but **not** knockout qualification — deep/forced teams can still "
+                "advance via attack & results, so colour (knockout) scatters across the plot."
+            )
+
+            # index × performance summary tables (team level)
+            _idx = [k for k in _xopts if k in team_style.columns]
+            st.markdown(f"**Style index × outcome correlation** (team level, N={len(team_style)}, "
+                        f"{sm_kind}). `*` p<0.05, `**` p<0.01.")
+            rowsA = []
+            for ix in _idx:
+                cell = {}
+                for oc in OUTCOME_COLS:
+                    s = team_style[[ix, oc]].dropna()
+                    r, p = pearsonr(s[ix], s[oc])
+                    cell[oc.replace("_against", " ag.")] = \
+                        f"{r:+.2f}{'**' if p < 0.01 else '*' if p < 0.05 else ''}"
+                rowsA.append(pd.Series(cell, name=_xopts[ix]))
+            st.table(pd.DataFrame(rowsA))
+
+            st.markdown("**Style index by stage** — median (knockout vs group-only) + "
+                        "Mann–Whitney U p.")
+            rowsB = []
+            for ix in _idx:
+                a = team_style[team_style["reached_knockout"]][ix].dropna()
+                b = team_style[~team_style["reached_knockout"]][ix].dropna()
+                if len(a) > 2 and len(b) > 2:
+                    _, p = mannwhitneyu(a, b)
+                    rowsB.append(dict(Index=_xopts[ix], knockout_med=round(a.median(), 3),
+                                      group_med=round(b.median(), 3), p=round(p, 3),
+                                      sig="*" if p < 0.05 else ""))
+            if rowsB:
+                st.table(pd.DataFrame(rowsB).set_index("Index"))
+    _frag_tab_zone()
+
+with tab_ztopo:
+    st.caption(
+        "Network **structure** computed *within each pitch zone* (own / mid / "
+        "high-press, thirds scheme). Same graph metrics as the Correlation tab, but "
+        "the co-defending graph is rebuilt from only the passes whose ball position "
+        "falls in that zone — so you can ask whether a team centralises in the press "
+        "but fragments in the low block, and whether that structure relates to "
+        "conceding. Built from `scripts/2026-06-19_zone_topology(<method>).csv`."
+    )
+    if zone_topo_dfs is None:
+        st.warning(
+            "Zone topology files not found. Run "
+            "`scripts/2026-06-19_zone_topology.py` to generate "
+            "`2026-06-19_zone_topology(<method>).csv` (one per edge-weight method)."
         )
+    else:
+        # Fragment: changing the metric/weight/correlation widgets below reruns only
+        # this block, not the whole app. `method` is a sidebar control outside the
+        # fragment, so switching edge-weight method still triggers a full rerun.
+        @st.fragment
+        def _render_zone_topology(topo_df):
+            zt_zones = [z for z in ZONE_ORDER if z in set(topo_df["zone"])]
+            topo_labels = list(TOPO_METRICS)
 
-        # index × performance summary tables (team level)
-        _idx = [k for k in _xopts if k in team_style.columns]
-        st.markdown(f"**Style index × outcome correlation** (team level, N={len(team_style)}, "
-                    f"{sm_kind}). `*` p<0.05, `**` p<0.01.")
-        rowsA = []
-        for ix in _idx:
-            cell = {}
-            for oc in OUTCOME_COLS:
-                s = team_style[[ix, oc]].dropna()
-                r, p = pearsonr(s[ix], s[oc])
-                cell[oc.replace("_against", " ag.")] = \
-                    f"{r:+.2f}{'**' if p < 0.01 else '*' if p < 0.05 else ''}"
-            rowsA.append(pd.Series(cell, name=_xopts[ix]))
-        st.table(pd.DataFrame(rowsA))
+            # ── All topology × weight correlations, one outcome at a time ──────
+            st.subheader("Zone topology × outcome correlation — all metrics")
+            cc1, cc2 = st.columns([1, 2])
+            zt_outcome = cc1.selectbox("Outcome", OUTCOME_COLS, index=2, key="zt_outcome")
+            # control modes mirror the Zones tab; the per-zone option needs zone_raw
+            _zt_modes = {"Raw": (False, "total"),
+                         "Partial — control total passes against": (True, "total")}
+            if zone_raw is not None:
+                _zt_modes["Partial — control this zone's passes faced"] = (True, "zone")
+            zt_mode = cc2.radio("Correlation", list(_zt_modes),
+                                horizontal=True, key="zt_corr_mode")
+            zt_partial, zt_control = _zt_modes[zt_mode]
+            zt_npass = None
+            if zt_control == "zone":
+                _zr = zone_raw[zone_raw["scheme"] == "thirds"]
+                zt_npass = _zr.pivot_table(index="match_team_id", columns="zone",
+                                           values="n_passes", aggfunc="sum", fill_value=0)
+            st.caption(
+                f"Pearson r between every **topology metric** (rows) × **weight metric** "
+                f"(cols) and **{zt_outcome.replace('_', ' ')}**, at match-team level — one "
+                "heatmap per zone, all combinations shown at once. Red = positive (more ↔ "
+                "conceding more, worse); blue = negative. Every cell shows its r; "
+                "`*` marks p<0.05. "
+                + ({"total": "Partial = residualised on the match's total passes_against.",
+                    "zone": "Partial = residualised on this zone's own faced-pass count "
+                            "(n_passes), so the structure is isolated from how much the "
+                            "team was pinned back in that zone."}[zt_control]
+                   if zt_partial else "Raw correlation.")
+            )
+            corr_all = build_zone_topo_corr_all(topo_df, outcomes, OUTCOME_COLS,
+                                                partial=zt_partial, control=zt_control,
+                                                zone_npass=zt_npass)
+            corr_df = corr_all[corr_all["outcome"] == zt_outcome] if not corr_all.empty \
+                else corr_all
+            if corr_df.empty:
+                st.info("Not enough data to correlate for this selection.")
+            else:
+                zones_c = [z for z in ZONE_ORDER if z in set(corr_df["zone"])]
+                wlabels = [METRIC_LABEL[m] for m in WEIGHT_COLS]
+                row_labels = [TOPO_SHORT[t] for t in topo_labels]
+                cols_ui = st.columns(len(zones_c))
+                for i, (col_ui, z) in enumerate(zip(cols_ui, zones_c)):
+                    col_ui.markdown(f"<div style='text-align:center;font-weight:600'>"
+                                    f"{ZONE_LABEL[z]}</div>", unsafe_allow_html=True)
+                    rmat, tmat = [], []
+                    for tl in topo_labels:
+                        rrow, trow = [], []
+                        for m in WEIGHT_COLS:
+                            sel = corr_df[(corr_df["topo"] == tl) & (corr_df["metric"] == m)
+                                          & (corr_df["zone"] == z)]
+                            if len(sel):
+                                r, p = sel["r"].iloc[0], sel["p"].iloc[0]
+                                rrow.append(r)
+                                # every cell labelled; * marks p<0.05
+                                trow.append(f"{r:+.2f}{'*' if p < 0.05 else ''}")
+                            else:
+                                rrow.append(np.nan); trow.append("")
+                        rmat.append(rrow); tmat.append(trow)
+                    rmat = pd.DataFrame(rmat, index=row_labels, columns=wlabels)
+                    last = (i == len(zones_c) - 1)
+                    fig = px.imshow(rmat, color_continuous_scale="RdBu_r", zmin=-0.5, zmax=0.5,
+                                    aspect="auto", labels=dict(color="r"))
+                    # trace text renders reliably and Plotly auto-contrasts it per cell
+                    fig.update_traces(text=tmat, texttemplate="%{text}", textfont_size=11)
+                    fig.update_xaxes(side="top", tickangle=45, tickfont_size=10)
+                    fig.update_yaxes(showticklabels=(i == 0), tickfont_size=10)
+                    fig.update_layout(height=460, margin=dict(l=4, r=4, t=55, b=4),
+                                      coloraxis_showscale=last)
+                    col_ui.plotly_chart(fig, use_container_width=True)
+                with st.expander("Full correlation table (all outcomes · r, p, n)"):
+                    st.dataframe(
+                        corr_all.assign(metric=corr_all["metric"].map(METRIC_LABEL),
+                                        zone=corr_all["zone"].map(ZONE_LABEL))
+                                .round({"r": 3, "p": 4}),
+                        use_container_width=True, height=360)
 
-        st.markdown("**Style index by stage** — median (knockout vs group-only) + "
-                    "Mann–Whitney U p.")
-        rowsB = []
-        for ix in _idx:
-            a = team_style[team_style["reached_knockout"]][ix].dropna()
-            b = team_style[~team_style["reached_knockout"]][ix].dropna()
-            if len(a) > 2 and len(b) > 2:
-                _, p = mannwhitneyu(a, b)
-                rowsB.append(dict(Index=_xopts[ix], knockout_med=round(a.median(), 3),
-                                  group_med=round(b.median(), 3), p=round(p, 3),
-                                  sig="*" if p < 0.05 else ""))
-        if rowsB:
-            st.table(pd.DataFrame(rowsB).set_index("Index"))
+            # ── Inspect a single metric's distribution across zones ────────────
+            with st.expander("Inspect a single metric across zones"):
+                c1, c2 = st.columns(2)
+                zt_metric_label = c1.selectbox("Topology metric", topo_labels, key="zt_metric")
+                zt_weight = c2.selectbox("Weight metric", WEIGHT_COLS, key="zt_weight")
+                suffix = TOPO_METRICS[zt_metric_label]
+                col = zt_weight + suffix if suffix else zt_weight
+                st.caption(
+                    f"Distribution of **{zt_metric_label}** ({zt_weight}) per zone, one point "
+                    f"per match-team. Higher = {TOPO_HINT.get(suffix, '')}."
+                )
+                dd = topo_df[["zone", col]].dropna().copy()
+                if dd.empty:
+                    st.info("No values for this metric/weight combination.")
+                else:
+                    dd["Zone"] = dd["zone"].map(ZONE_LABEL)
+                    zorder = [ZONE_LABEL[z] for z in zt_zones]
+                    fig_zt = px.box(
+                        dd, x="Zone", y=col, color="Zone", points="all",
+                        category_orders={"Zone": zorder},
+                        color_discrete_map={ZONE_LABEL[z]: ZONE_COLOR[z] for z in zt_zones},
+                        labels={col: zt_metric_label},
+                        title=f"{zt_metric_label} ({zt_weight}) by zone — match-team level")
+                    fig_zt.update_layout(showlegend=False, height=420)
+                    st.plotly_chart(fig_zt, use_container_width=True)
+
+                    mean_rows = []
+                    for c in WEIGHT_COLS:
+                        ccol = c + suffix if suffix else c
+                        if ccol in topo_df.columns:
+                            mean_rows.append(
+                                topo_df.groupby("zone")[ccol].mean().rename(METRIC_LABEL[c]))
+                    if mean_rows:
+                        mean_mat = pd.concat(mean_rows, axis=1).T.reindex(columns=zt_zones)
+                        mean_mat.columns = [ZONE_SHORT[z] for z in zt_zones]
+                        st.markdown(f"**Mean {zt_metric_label} per zone** (rows = weight metric)")
+                        st.dataframe(
+                            mean_mat.style.background_gradient(cmap="Blues", axis=None).format("{:.3f}"),
+                            use_container_width=True)
+
+        _render_zone_topology(zone_topo_dfs[method])
 
 with tab_corr:
-    for _tab, _partial in zip(
-        st.tabs(["Raw", "Partial (controlling passes_against)"]), [False, True]
-    ):
-        with _tab:
-            for name, cols in GROUPS.items():
-                st.subheader(name)
-                if name in GROUP_DESC:
-                    st.caption(GROUP_DESC[name])
-                corr_tbl(df_corr, cols, _partial)
+    @st.fragment
+    def _frag_tab_corr():
+        for _tab, _partial in zip(
+            st.tabs(["Raw", "Partial (controlling passes_against)"]), [False, True]
+        ):
+            with _tab:
+                for name, cols in GROUPS.items():
+                    st.subheader(name)
+                    if name in GROUP_DESC:
+                        st.caption(GROUP_DESC[name])
+                    corr_tbl(df_corr, cols, _partial)
+    _frag_tab_corr()
 
 with tab_icc:
-    st.markdown(
-        "**ICC(1,1)**: >0.75 stable trait · 0.5–0.75 moderate · <0.5 match-driven  \n"
-        "**sig** (F-test H₀: ICC = 0): \\* p<0.05 · \\*\\* p<0.01 · \\*\\*\\* p<0.001"
-    )
-    stage = st.selectbox("Competition stage",
-                         ["All"] + sorted(df_corr["competition_stage"].dropna().unique().tolist()))
-    dff = df_corr if stage == "All" else df_corr[df_corr["competition_stage"] == stage]
-    if stage != "All":
-        st.caption(f"{len(dff)} obs · {dff['team_name'].nunique()} teams")
-    for name, cols in GROUPS.items():
-        st.subheader(name)
-        if name in GROUP_DESC:
-            st.caption(GROUP_DESC[name])
-        icc_tbl(dff, cols)
+    @st.fragment
+    def _frag_tab_icc():
+        st.markdown(
+            "**ICC(1,1)**: >0.75 stable trait · 0.5–0.75 moderate · <0.5 match-driven  \n"
+            "**sig** (F-test H₀: ICC = 0): \\* p<0.05 · \\*\\* p<0.01 · \\*\\*\\* p<0.001"
+        )
+        stage = st.selectbox("Competition stage",
+                             ["All"] + sorted(df_corr["competition_stage"].dropna().unique().tolist()))
+        dff = df_corr if stage == "All" else df_corr[df_corr["competition_stage"] == stage]
+        if stage != "All":
+            st.caption(f"{len(dff)} obs · {dff['team_name'].nunique()} teams")
+        for name, cols in GROUPS.items():
+            st.subheader(name)
+            if name in GROUP_DESC:
+                st.caption(GROUP_DESC[name])
+            icc_tbl(dff, cols)
+    _frag_tab_icc()
 
 with tab_reg:
-    st.caption(
-        "OLS regression predicting defensive outcomes from network metrics. "
-        "**std β** allows comparison of effect sizes across variables. "
-        "Data: match-team level from df_corr."
-    )
-
-    _skip_cols = {"match_team_id", "team_name", "competition_stage", "passes_against"} | set(OUTCOME_COLS)
-    _all_metrics = [c for c in df_corr.columns if c not in _skip_cols]
-
-    rc1, rc2 = st.columns([2, 1])
-    with rc1:
-        reg_x = st.multiselect(
-            "X variables (predictors)",
-            _all_metrics,
-            default=[m for m in ["raw_involvement", "raw_involvement_centralization_weighted"]
-                     if m in _all_metrics],
-            key="reg_x",
+    @st.fragment
+    def _frag_tab_reg():
+        st.caption(
+            "OLS regression predicting defensive outcomes from network metrics. "
+            "**std β** allows comparison of effect sizes across variables. "
+            "Data: match-team level from df_corr."
         )
-    with rc2:
-        reg_y      = st.selectbox("Y (outcome)", OUTCOME_COLS, key="reg_y")
-        reg_ctrl   = st.checkbox("Control for passes_against", value=True, key="reg_ctrl")
 
-    if reg_ctrl and "passes_against" in df_corr.columns:
-        x_full = reg_x + ["passes_against"]
-    else:
-        x_full = reg_x
+        _skip_cols = {"match_team_id", "team_name", "competition_stage", "passes_against"} | set(OUTCOME_COLS)
+        _all_metrics = [c for c in df_corr.columns if c not in _skip_cols]
 
-    if len(x_full) == 0:
-        st.info("Select at least one X variable.")
-    else:
-        res = run_ols(df_corr, x_full, reg_y)
-        if res is None:
-            st.warning("Not enough observations or singular matrix — try fewer predictors.")
+        rc1, rc2 = st.columns([2, 1])
+        with rc1:
+            reg_x = st.multiselect(
+                "X variables (predictors)",
+                _all_metrics,
+                default=[m for m in ["raw_involvement", "raw_involvement_centralization_weighted"]
+                         if m in _all_metrics],
+                key="reg_x",
+            )
+        with rc2:
+            reg_y      = st.selectbox("Y (outcome)", OUTCOME_COLS, key="reg_y")
+            reg_ctrl   = st.checkbox("Control for passes_against", value=True, key="reg_ctrl")
+
+        if reg_ctrl and "passes_against" in df_corr.columns:
+            x_full = reg_x + ["passes_against"]
         else:
-            coef, r2, r2_adj, n = res
-            st.markdown(
-                f"**n = {n}** &nbsp;|&nbsp; **R² = {r2:.3f}** &nbsp;|&nbsp;"
-                f" **Adj. R² = {r2_adj:.3f}**"
-            )
+            x_full = reg_x
 
-            def _style_coef(row):
-                if row.name == "(Intercept)":
-                    return [""] * len(row)
-                p = row.get("p", 1.0)
-                if p < 0.05:
-                    return ["background-color: #c6efce"] * len(row)
-                return [""] * len(row)
-
-            st.subheader("Coefficients")
-            st.dataframe(
-                coef.style.apply(_style_coef, axis=1)
-                          .format({"β": "{:.4f}", "std β": "{:.4f}", "SE": "{:.4f}",
-                                   "t": "{:.3f}", "p": "{:.4f}",
-                                   "CI 2.5%": "{:.4f}", "CI 97.5%": "{:.4f}"}),
-                use_container_width=True,
-            )
-            st.caption(
-                "β = raw coefficient · std β = standardised (comparable effect size) · "
-                "🟢 highlighted rows: p < 0.05"
-            )
-
-            # std β bar chart for quick visual comparison (exclude intercept)
-            _coef_plot = coef.drop("(Intercept)").reset_index()
-            _coef_plot.columns = ["variable"] + list(_coef_plot.columns[1:])
-            if not _coef_plot["std β"].isna().all():
-                fig_coef = px.bar(
-                    _coef_plot, x="std β", y="variable", orientation="h",
-                    color="std β", color_continuous_scale="RdBu_r",
-                    color_continuous_midpoint=0,
-                    error_x=None,
-                    title="Standardised coefficients (std β)",
-                    labels={"variable": "", "std β": "std β"},
+        if len(x_full) == 0:
+            st.info("Select at least one X variable.")
+        else:
+            res = run_ols(df_corr, x_full, reg_y)
+            if res is None:
+                st.warning("Not enough observations or singular matrix — try fewer predictors.")
+            else:
+                coef, r2, r2_adj, n = res
+                st.markdown(
+                    f"**n = {n}** &nbsp;|&nbsp; **R² = {r2:.3f}** &nbsp;|&nbsp;"
+                    f" **Adj. R² = {r2_adj:.3f}**"
                 )
-                fig_coef.update_layout(yaxis={"autorange": "reversed"}, height=40 * len(_coef_plot) + 120)
-                st.plotly_chart(fig_coef, use_container_width=True, key="reg_std_beta")
+
+                def _style_coef(row):
+                    if row.name == "(Intercept)":
+                        return [""] * len(row)
+                    p = row.get("p", 1.0)
+                    if p < 0.05:
+                        return ["background-color: #c6efce"] * len(row)
+                    return [""] * len(row)
+
+                st.subheader("Coefficients")
+                st.dataframe(
+                    coef.style.apply(_style_coef, axis=1)
+                              .format({"β": "{:.4f}", "std β": "{:.4f}", "SE": "{:.4f}",
+                                       "t": "{:.3f}", "p": "{:.4f}",
+                                       "CI 2.5%": "{:.4f}", "CI 97.5%": "{:.4f}"}),
+                    use_container_width=True,
+                )
+                st.caption(
+                    "β = raw coefficient · std β = standardised (comparable effect size) · "
+                    "🟢 highlighted rows: p < 0.05"
+                )
+
+                # std β bar chart for quick visual comparison (exclude intercept)
+                _coef_plot = coef.drop("(Intercept)").reset_index()
+                _coef_plot.columns = ["variable"] + list(_coef_plot.columns[1:])
+                if not _coef_plot["std β"].isna().all():
+                    fig_coef = px.bar(
+                        _coef_plot, x="std β", y="variable", orientation="h",
+                        color="std β", color_continuous_scale="RdBu_r",
+                        color_continuous_midpoint=0,
+                        error_x=None,
+                        title="Standardised coefficients (std β)",
+                        labels={"variable": "", "std β": "std β"},
+                    )
+                    fig_coef.update_layout(yaxis={"autorange": "reversed"}, height=40 * len(_coef_plot) + 120)
+                    st.plotly_chart(fig_coef, use_container_width=True, key="reg_std_beta")
+    _frag_tab_reg()
 
 with tab_data:
-    st.subheader("Concentrated vs Balanced — Involvement (match level)")
-    st.dataframe(df_conc_inv_match)
-    st.subheader("Concentrated vs Balanced — Involvement (team level)")
-    st.dataframe(df_conc_inv_team)
-    st.subheader("Concentrated vs Balanced — Fault (match level)")
-    st.dataframe(df_conc_fault_match)
-    st.subheader("Concentrated vs Balanced — Fault (team level)")
-    st.dataframe(df_conc_fault_team)
-    st.subheader("Concentrated vs Balanced — Contribution (match level)")
-    st.dataframe(df_conc_cont_match)
-    st.subheader("Concentrated vs Balanced — Contribution (team level)")
-    st.dataframe(df_conc_cont_team)
-    st.subheader("Self vs Shared — match level")
-    st.dataframe(df_self_match)
-    st.subheader("Self vs Shared — team level")
-    st.dataframe(df_self_sorted)
-    st.subheader("Co-defenders — match level")
-    st.dataframe(avg_co)
-    st.subheader("Partnerships")
-    st.dataframe(partnerships.head(200))
-    st.subheader("Correlation / ICC — match level")
-    st.dataframe(df_corr)
+    @st.fragment
+    def _frag_tab_data():
+        st.subheader("Concentrated vs Balanced — Involvement (match level)")
+        st.dataframe(df_conc_inv_match)
+        st.subheader("Concentrated vs Balanced — Involvement (team level)")
+        st.dataframe(df_conc_inv_team)
+        st.subheader("Concentrated vs Balanced — Fault (match level)")
+        st.dataframe(df_conc_fault_match)
+        st.subheader("Concentrated vs Balanced — Fault (team level)")
+        st.dataframe(df_conc_fault_team)
+        st.subheader("Concentrated vs Balanced — Contribution (match level)")
+        st.dataframe(df_conc_cont_match)
+        st.subheader("Concentrated vs Balanced — Contribution (team level)")
+        st.dataframe(df_conc_cont_team)
+        st.subheader("Self vs Shared — match level")
+        st.dataframe(df_self_match)
+        st.subheader("Self vs Shared — team level")
+        st.dataframe(df_self_sorted)
+        st.subheader("Co-defenders — match level")
+        st.dataframe(avg_co)
+        st.subheader("Partnerships")
+        st.dataframe(partnerships.head(200))
+        st.subheader("Correlation / ICC — match level")
+        st.dataframe(df_corr)
+    _frag_tab_data()
