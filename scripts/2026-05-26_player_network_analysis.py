@@ -55,6 +55,12 @@ METRIC_FAMILIES: dict[str, list[str]] = {
         "raw_contribution_per_pass_against", "valued_contribution_per_pass_against",
         "passes_defended_per_pass_against",
     ],
+    "Per pass against — on field (opportunity-adjusted)": [
+        "raw_involvement_per_pass_against_onfield",  "valued_involvement_per_pass_against_onfield",
+        "raw_fault_per_pass_against_onfield",        "valued_fault_per_pass_against_onfield",
+        "raw_contribution_per_pass_against_onfield", "valued_contribution_per_pass_against_onfield",
+        "passes_defended_per_pass_against_onfield",
+    ],
     "Per pass defended (efficiency)": [
         "raw_involvement_per_pass_defended",  "valued_involvement_per_pass_defended",
         "raw_fault_per_pass_defended",        "valued_fault_per_pass_defended",
@@ -67,11 +73,6 @@ METRIC_FAMILIES: dict[str, list[str]] = {
         "passes_defended",
     ],
 }
-
-NET_METRICS = [
-    "n_unique_attackers_per90", "degree_per90", "gini",
-    "eig_centrality", "btw_centrality",
-]
 
 BASIC_6_PER90 = [
     "raw_involvement_per90",   "valued_involvement_per90",
@@ -458,77 +459,41 @@ def _residualise_position(df: pd.DataFrame, col: str) -> np.ndarray:
     return result
 
 
-def corr_table(df: pd.DataFrame, x_cols: list, fifa_cols: list,
-               method: str, partial_position: bool) -> pd.DataFrame:
-    rows = []
-    for xc in x_cols:
-        row = {"metric": xc}
-        for fc in fifa_cols:
-            sub = df[[xc, fc, "overall_position"]].dropna()
-            if len(sub) < 5:
-                row[f"r_{fc}"] = np.nan
-                row[f"p_{fc}"] = np.nan
-                continue
-            if partial_position:
-                x    = _residualise_position(sub, xc)
-                y    = _residualise_position(sub, fc)
-                mask = ~(np.isnan(x) | np.isnan(y))
-                x, y = x[mask], y[mask]
-            else:
-                x = sub[xc].values.astype(float)
-                y = sub[fc].values.astype(float)
-            if len(x) < 5:
-                row[f"r_{fc}"] = np.nan
-                row[f"p_{fc}"] = np.nan
-                continue
-            r, p = (pearsonr if method == "Pearson" else spearmanr)(x, y)
-            row[f"r_{fc}"] = round(float(r), 3)
-            row[f"p_{fc}"] = round(float(p), 3)
-        rows.append(row)
-    return pd.DataFrame(rows).set_index("metric")
+def basic6_corr_tbl(df: pd.DataFrame, metrics: list | None = None,
+                    corr_method: str = "Pearson", partial: bool = True) -> None:
+    """basic metrics × (defending_rating + def_awareness_rating) × (raw / partial).
 
-
-def render_corr_table(result: pd.DataFrame, fifa_cols: list):
-    r_cols = [f"r_{fc}" for fc in fifa_cols]
-    p_cols = [f"p_{fc}" for fc in fifa_cols]
-    r_df   = result[r_cols].rename(columns=lambda c: c[2:])
-    p_df   = result[p_cols].rename(columns=lambda c: c[2:])
-    display = (
-        r_df.map(lambda v: f"{v:.3f}" if not np.isnan(v) else "—")
-        + "  ("
-        + p_df.map(lambda v: f"{v:.3f}" if not np.isnan(v) else "—")
-        + ")"
-    )
-    st.dataframe(
-        display.style.background_gradient(
-            cmap="RdYlGn", gmap=r_df.values, axis=None, vmin=-1, vmax=1
-        ),
-        use_container_width=True,
-    )
-
-
-def basic6_corr_tbl(df: pd.DataFrame, corr_method: str = "Pearson") -> None:
-    """6 basic per-90 metrics × (defending_rating + def_awareness_rating) × (raw / partial).
-    Partial = residualised on overall_position."""
+    metrics : list of metric columns (defaults to BASIC_6_PER90). Pass the 6
+              basic metrics of the currently selected normalization family.
+    partial : if True, also compute position-residualised correlations; if
+              False (e.g. a single position is already selected) the partial
+              columns are shown as —.
+    """
+    if metrics is None:
+        metrics = BASIC_6_PER90
     fn = pearsonr if corr_method == "Pearson" else spearmanr
     results: dict = {}
     for fc in PRESENTATION_FIFA:
-        for m in BASIC_6_PER90:
-            sub = df[[m, fc, "overall_position"]].dropna()
+        for m in metrics:
+            sub = (df[[m, fc, "overall_position"]].dropna()
+                   if m in df.columns else df.iloc[0:0])
             if len(sub) < 5:
                 results[(fc, "raw", m)] = (np.nan, np.nan)
                 results[(fc, "partial", m)] = (np.nan, np.nan)
                 continue
             r, p = fn(sub[m].values.astype(float), sub[fc].values.astype(float))
             results[(fc, "raw", m)] = (float(r), float(p))
-            x_r = _residualise_position(sub, m)
-            y_r = _residualise_position(sub, fc)
-            mask = ~(np.isnan(x_r) | np.isnan(y_r))
-            if mask.sum() < 5:
-                results[(fc, "partial", m)] = (np.nan, np.nan)
+            if partial:
+                x_r = _residualise_position(sub, m)
+                y_r = _residualise_position(sub, fc)
+                mask = ~(np.isnan(x_r) | np.isnan(y_r))
+                if mask.sum() < 5:
+                    results[(fc, "partial", m)] = (np.nan, np.nan)
+                else:
+                    rp, pp = fn(x_r[mask], y_r[mask])
+                    results[(fc, "partial", m)] = (float(rp), float(pp))
             else:
-                rp, pp = fn(x_r[mask], y_r[mask])
-                results[(fc, "partial", m)] = (float(rp), float(pp))
+                results[(fc, "partial", m)] = (np.nan, np.nan)
 
     def _fmt(r, p):
         if np.isnan(r):
@@ -541,12 +506,12 @@ def basic6_corr_tbl(df: pd.DataFrame, corr_method: str = "Pearson") -> None:
     )
     rows = [
         [_fmt(*results[(fc, kind, m)]) for fc in PRESENTATION_FIFA for kind in ("raw", "partial")]
-        for m in BASIC_6_PER90
+        for m in metrics
     ]
-    disp = pd.DataFrame(rows, index=BASIC_6_PER90, columns=mi_cols)
+    disp = pd.DataFrame(rows, index=metrics, columns=mi_cols)
     gmap = np.array([
         [results[(fc, kind, m)][0] for fc in PRESENTATION_FIFA for kind in ("raw", "partial")]
-        for m in BASIC_6_PER90
+        for m in metrics
     ])
     st.dataframe(
         disp.style.background_gradient(cmap="RdYlGn", gmap=gmap, axis=None, vmin=-1, vmax=1),
@@ -608,7 +573,11 @@ with st.sidebar:
         help=(
             "**Per 90 min** — volume relative to playing time.\n\n"
             "**Per pass against** — rate per passing opportunity faced. Controls for "
-            "how many passes the team conceded (opportunity-adjusted).\n\n"
+            "how many passes the team conceded (opportunity-adjusted), but uses the "
+            "team's *full-match* opponent passes for everyone.\n\n"
+            "**Per pass against — on field** — same idea, but the denominator is only "
+            "the opponent passes that happened *while this player was on the pitch*. "
+            "More accurate for substitutes / partial-match players.\n\n"
             "**Per pass defended** — rate per pass the player actually stopped (efficiency). "
             "High values = high involvement *on the passes they did stop*."
         ),
@@ -619,7 +588,6 @@ players = get_qualifying(enriched, starters_only, min_minutes, min_matches)
 st.caption(f"**{len(players)} players** pass filters")
 
 ACTIVE_METRICS = METRIC_FAMILIES[norm_method]
-ALL_X_COLS     = ACTIVE_METRICS + NET_METRICS
 
 # Compute once, reuse across all tabs
 # (stability / entropy / breadth computed inside Tab 1 — depend on pos_col selector)
@@ -1073,85 +1041,27 @@ with t_gini:
 
 # ── Tab 3: Correlation vs FIFA ─────────────────────────────────────────────────
 with t_corr:
-    st.subheader("Basic 6 per-90 metrics — defending & awareness ratings")
-    st.caption("partial = residualised on overall_position  |  * p<0.05  ** p<0.01  *** p<0.001")
-    _agg90 = aggregate_player(players, "Per 90 min")
-    _df90  = _agg90.merge(dm, on="defender_name", how="left").merge(cent, on="defender_name", how="left")
-    _corr_method_b6 = st.radio("Method", ["Pearson", "Spearman"], horizontal=True, key="b6_method")
-    basic6_corr_tbl(_df90, _corr_method_b6)
-
-    st.divider()
-    st.markdown(
-        "Correlate player-level metrics (activity + network topology) with FIFA ratings. "
-        "**Partial by position** regresses out `overall_position` (OLS on dummies) from "
-        "both variables before computing r. This removes the between-position effect, "
-        "answering: *within positions, do better network metrics predict higher FIFA ratings?*"
+    st.subheader("Basic 6 metrics — defending & awareness ratings")
+    st.caption(
+        f"Normalization: **{norm_method}** (change in sidebar)  ·  "
+        "raw and position-partialled (residualised on overall_position) shown side by side  ·  "
+        "* p<0.05  ** p<0.01  *** p<0.001"
     )
 
-    c1, c2, c3, c4 = st.columns(4)
-    corr_method  = c1.radio("Method", ["Pearson", "Spearman"], horizontal=True, key="corr_m")
-    partial_pos  = c2.checkbox("Partial by position", value=False, key="corr_pp")
-    selected_fcs = c3.multiselect("FIFA targets", FIFA_COLS, default=FIFA_COLS[:3], key="corr_fc")
-    _corr_pos_opts = ["All"] + sorted(full_df["overall_position"].dropna().unique())
-    pos_filt_corr  = c4.selectbox("Filter by position", _corr_pos_opts, index=0, key="corr_pos")
+    c1, c2 = st.columns(2)
+    _corr_method_b6 = c1.radio("Method", ["Pearson", "Spearman"], horizontal=True, key="b6_method")
+    _b6_pos_opts = ["All"] + sorted(full_df["overall_position"].dropna().unique())
+    _b6_pos_filt = c2.selectbox("Filter by position", _b6_pos_opts, index=0, key="b6_pos")
 
-    corr_df = full_df if pos_filt_corr == "All" else full_df[full_df["overall_position"] == pos_filt_corr]
+    # 6 basic metrics of the currently selected normalization family (drop passes_defended)
+    _basic6 = [m for m in ACTIVE_METRICS if not m.startswith("passes_defended")]
 
-    if not selected_fcs:
-        st.warning("Select at least one FIFA target.")
-    else:
-        _partial = partial_pos and pos_filt_corr == "All"
-        if partial_pos and pos_filt_corr != "All":
-            st.caption("ℹ️ Partial by position is disabled when a specific position is selected.")
-        result = corr_table(corr_df, ALL_X_COLS, selected_fcs, corr_method, _partial)
-        label  = " (position-partialled)" if _partial else ""
-        st.caption(f"Values: r (p-value). Green = positive correlation.{label}")
-        render_corr_table(result, selected_fcs)
+    _b6_df      = full_df if _b6_pos_filt == "All" else full_df[full_df["overall_position"] == _b6_pos_filt]
+    _b6_partial = _b6_pos_filt == "All"
+    if not _b6_partial:
+        st.caption("ℹ️ Partial is disabled when a specific position is selected (partial columns show —).")
 
-        st.divider()
-        st.markdown("**Single-metric scatter plot**")
-        c5, c6 = st.columns(2)
-        x_col     = c5.selectbox("X metric", ALL_X_COLS, index=0, key="corr_x")
-        fifa_col3 = c6.selectbox("FIFA rating (Y)", FIFA_COLS, index=1, key="corr_fifa")
-
-        sub3 = corr_df[[x_col, fifa_col3, "defender_name", "team", "overall_position"]].dropna()
-        if len(sub3) >= 5:
-            if _partial:
-                x_arr   = _residualise_position(sub3, x_col)
-                y_arr   = _residualise_position(sub3, fifa_col3)
-                pp_mask = ~(np.isnan(x_arr) | np.isnan(y_arr))
-                x_plot  = x_arr[pp_mask]
-                y_plot  = y_arr[pp_mask]
-                plot_df = sub3[pp_mask].copy().reset_index(drop=True)
-                x_label = f"{x_col} (position-residual)"
-                y_label = f"{fifa_col3} (position-residual)"
-            else:
-                x_plot  = sub3[x_col].values.astype(float)
-                y_plot  = sub3[fifa_col3].values.astype(float)
-                plot_df = sub3.copy().reset_index(drop=True)
-                x_label = x_col
-                y_label = fifa_col3
-
-            if len(x_plot) >= 5:
-                r_val, p_val = (pearsonr if corr_method == "Pearson" else spearmanr)(x_plot, y_plot)
-                slope, intercept, *_ = linregress(x_plot, y_plot)
-                plot_df["residual"] = y_plot - (slope * x_plot + intercept)
-                plot_df[x_label]   = x_plot
-                plot_df[y_label]   = y_plot
-
-                x_line = np.linspace(x_plot.min(), x_plot.max(), 100)
-                fig = px.scatter(
-                    plot_df, x=x_label, y=y_label,
-                    color="residual", color_continuous_scale="RdYlGn",
-                    hover_name="defender_name",
-                    hover_data={"team": True, "overall_position": True, "residual": ":.3f"},
-                    title=f"{x_label}  vs  {y_label}  ({corr_method} r={r_val:.3f}, p={p_val:.3f})",
-                )
-                fig.add_trace(go.Scatter(
-                    x=x_line, y=slope * x_line + intercept,
-                    mode="lines", line=dict(color="black", dash="dash"), name="regression",
-                ))
-                st.plotly_chart(fig, use_container_width=True)
+    basic6_corr_tbl(_b6_df, metrics=_basic6, corr_method=_corr_method_b6, partial=_b6_partial)
 
 
 # ── Tab 4: ICC ─────────────────────────────────────────────────────────────────
@@ -1371,272 +1281,90 @@ with t_arch:
 
 # ── Tab 9: Over / Underrated ──────────────────────────────────────────────────
 with t_ou:
+    from scipy.stats import percentileofscore as _pct_score
+
     st.markdown(
-        "Residual = actual FIFA − predicted FIFA. "
-        "**Negative residual** → high network contribution but low FIFA rating → potentially **underrated**. "
-        "**Positive residual** → low network contribution but high FIFA rating → potentially **overrated**."
+        "**Percentile method, within position.** For each position group, every player is "
+        "ranked on the chosen network metric and on the FIFA rating *separately*.\n\n"
+        "Metric direction is handled automatically so a **high quality percentile always "
+        "means good defending**: `involvement` and `contribution` are higher-is-better; "
+        "`fault` is lower-is-better (inverted).\n\n"
+        "**gap = FIFA percentile − quality percentile**  ·  "
+        "negative → **underrated** (performance above recognition, green)  ·  "
+        "positive → **overrated** (recognition above performance, red)."
     )
 
-    c1, c2 = st.columns(2)
-    fifa_col_ou  = c1.selectbox("FIFA rating (Y)", FIFA_COLS, index=1, key="ou_fifa")
+    c1, c2, c3 = st.columns(3)
+    fifa_col_ou = c1.selectbox("FIFA rating", FIFA_COLS, index=1, key="ou_fifa")
+    _basic6_ou  = [m for m in ACTIVE_METRICS if not m.startswith("passes_defended")]
+    metric_col_ou = c2.selectbox("Network metric (6 basic)", _basic6_ou, index=0, key="ou_metric")
     _ou_pos_opts = ["All"] + sorted(full_df["overall_position"].dropna().unique())
-    pos_filt_ou  = c2.selectbox("Filter by position", _ou_pos_opts, index=0, key="ou_pos")
+    pos_filt_ou  = c3.selectbox("Filter by position", _ou_pos_opts, index=0, key="ou_pos")
 
-    reg_mode = st.radio(
-        "Analysis mode",
-        ["Single metric", "Multiple metrics (involvement + contribution + stability)",
-         "Percentile rank gap"],
-        horizontal=True, key="ou_reg_mode",
-    )
+    lower_better  = "fault" in metric_col_ou
+    direction_lbl = "lower is better → inverted" if lower_better else "higher is better"
+    st.caption(f"`{metric_col_ou}` — {direction_lbl}  ·  normalization: **{norm_method}**  ·  "
+               "percentiles computed within each position group.")
 
-    # ── build base dataframe ──────────────────────────────────────────────────
-    if reg_mode == "Single metric":
-        metric_col_ou = st.selectbox(
-            "Network / activity metric (X)", ALL_X_COLS, index=1, key="ou_metric"
-        )
-        sub_ou = full_df[[metric_col_ou, fifa_col_ou, "defender_name", "team",
-                           "overall_position"]].dropna()
-        if pos_filt_ou != "All":
-            sub_ou = sub_ou[sub_ou["overall_position"] == pos_filt_ou]
+    base = full_df[[metric_col_ou, fifa_col_ou, "defender_name", "team",
+                    "overall_position"]].dropna()
+    if pos_filt_ou != "All":
+        base = base[base["overall_position"] == pos_filt_ou]
 
-        if len(sub_ou) < 5:
-            st.warning("Too few players — loosen filters.")
-        else:
-            x_ou = sub_ou[metric_col_ou].values.astype(float)
-            y_ou = sub_ou[fifa_col_ou].values.astype(float)
-            slope_ou, intercept_ou, r_ou, p_ou, _ = linregress(x_ou, y_ou)
-            sub_ou = sub_ou.copy()
-            sub_ou["residual"] = y_ou - (slope_ou * x_ou + intercept_ou)
-
-            x_line = np.linspace(x_ou.min(), x_ou.max(), 100)
-            fig = px.scatter(
-                sub_ou, x=metric_col_ou, y=fifa_col_ou,
-                color="residual", color_continuous_scale="RdYlGn",
-                hover_name="defender_name",
-                hover_data={"team": True, "overall_position": True, "residual": ":.3f"},
-                title=f"{metric_col_ou}  vs  {fifa_col_ou}   (r = {r_ou:.3f}, p = {p_ou:.3f})",
-            )
-            fig.add_trace(go.Scatter(
-                x=x_line, y=slope_ou * x_line + intercept_ou,
-                mode="lines", line=dict(color="black", dash="dash"), name="regression",
-            ))
-            st.plotly_chart(fig, use_container_width=True)
-            st.caption("Red = above regression (overrated by FIFA) · Green = below (underrated by FIFA)")
-
-            n_show_ou = st.slider("Top / bottom N", 3, 20, 5, key="ou_n")
-            c1, c2    = st.columns(2)
-            cols_show = ["defender_name", "team", "overall_position",
-                         fifa_col_ou, metric_col_ou, "residual"]
-            c1.markdown("**Most underrated** (high network metric, lower FIFA than predicted)")
-            c1.dataframe(sub_ou.nsmallest(n_show_ou, "residual")[cols_show].reset_index(drop=True),
-                         use_container_width=True)
-            c2.markdown("**Most overrated** (low network metric, higher FIFA than predicted)")
-            c2.dataframe(sub_ou.nlargest(n_show_ou, "residual")[cols_show].reset_index(drop=True),
-                         use_container_width=True)
-
-    elif reg_mode == "Multiple metrics (involvement + contribution + stability)":
-        # ── Multiple regression: involvement + contribution + stability ────────
-        INV_COL  = "valued_involvement_per_pass_against"
-        CONT_COL = "valued_contribution_per_pass_against"
-
-        stab_type_ou = st.radio(
-            "Stability metric",
-            ["Structural (Jaccard)", "Weighted (Cosine similarity)"],
-            horizontal=True, key="ou_stab_type",
-        )
-        stab_col_ou = "jaccard_stability" if stab_type_ou.startswith("Structural") else "cosine_stability"
-
-        st.caption(
-            f"**Predictors:** `{INV_COL}` · `{CONT_COL}` · `{stab_col_ou}`  \n"
-            "Players with only 1 match are excluded (stability requires ≥2 matches)."
-        )
-
-        # Compute stability (cached) and merge
-        _jac_ou = compute_jaccard_stability(players, "overall_position")
-        _cs_ou  = compute_cosine_stability(players, "overall_position")
-        _stab_ou = _jac_ou.merge(
-            _cs_ou[["defender_name", "cosine_stability"]], on="defender_name", how="left"
-        )
-
-        _multi_cols = [INV_COL, CONT_COL, fifa_col_ou, "defender_name", "team", "overall_position"]
-        sub_ou = (
-            full_df[_multi_cols]
-            .merge(_stab_ou[["defender_name", stab_col_ou]], on="defender_name", how="left")
-            .dropna()
-        )
-        if pos_filt_ou != "All":
-            sub_ou = sub_ou[sub_ou["overall_position"] == pos_filt_ou]
-
-        X_COLS = [INV_COL, CONT_COL, stab_col_ou]
-
-        if len(sub_ou) < 8:
-            st.warning("Too few players after dropping missing stability — loosen filters.")
-        else:
-            from sklearn.linear_model import LinearRegression as _LR
-
-            X_ou = sub_ou[X_COLS].values.astype(float)
-            y_ou = sub_ou[fifa_col_ou].values.astype(float)
-
-            _model = _LR().fit(X_ou, y_ou)
-            r2_ou  = _model.score(X_ou, y_ou)
-            y_pred = _model.predict(X_ou)
-            sub_ou = sub_ou.copy()
-            sub_ou["residual"]   = y_ou - y_pred
-            sub_ou["FIFA_predicted"] = y_pred
-
-            # Coefficient table
-            coef_df = pd.DataFrame({
-                "predictor":   X_COLS + ["intercept"],
-                "coefficient": list(_model.coef_) + [_model.intercept_],
-            }).round(3)
-            st.metric("R²", f"{r2_ou:.3f}",
-                      help="Proportion of FIFA rating variance explained by the three predictors jointly.")
-            st.dataframe(coef_df, use_container_width=True)
-
-            # Scatter: predicted vs actual (best diagnostic for multiple regression)
-            fig_multi = px.scatter(
-                sub_ou, x="FIFA_predicted", y=fifa_col_ou,
-                color="residual", color_continuous_scale="RdYlGn",
-                hover_name="defender_name",
-                hover_data={"team": True, "overall_position": True,
-                            "residual": ":.3f", INV_COL: ":.3f",
-                            CONT_COL: ":.3f", stab_col_ou: ":.3f"},
-                title=f"Multiple regression — predicted vs actual {fifa_col_ou}   (R² = {r2_ou:.3f})",
-                labels={"FIFA_predicted": "FIFA predicted (from 3 metrics)",
-                        fifa_col_ou: f"{fifa_col_ou} (actual)"},
-            )
-            _lo = min(y_pred.min(), y_ou.min())
-            _hi = max(y_pred.max(), y_ou.max())
-            fig_multi.add_trace(go.Scatter(
-                x=[_lo, _hi], y=[_lo, _hi],
-                mode="lines", line=dict(color="black", dash="dash"), name="perfect fit",
-            ))
-            st.plotly_chart(fig_multi, use_container_width=True)
-            st.caption("Green = below diagonal (underrated) · Red = above diagonal (overrated)")
-
-            n_show_ou = st.slider("Top / bottom N", 3, 20, 5, key="ou_n")
-            c1, c2    = st.columns(2)
-            cols_show = ["defender_name", "team", "overall_position",
-                         fifa_col_ou, "FIFA_predicted", INV_COL, CONT_COL, stab_col_ou, "residual"]
-            c1.markdown("**Most underrated** (network metrics predict higher FIFA)")
-            c1.dataframe(sub_ou.nsmallest(n_show_ou, "residual")[cols_show].reset_index(drop=True),
-                         use_container_width=True)
-            c2.markdown("**Most overrated** (network metrics predict lower FIFA)")
-            c2.dataframe(sub_ou.nlargest(n_show_ou, "residual")[cols_show].reset_index(drop=True),
-                         use_container_width=True)
-
+    if len(base) < 5:
+        st.warning("Too few players — loosen filters.")
     else:
-        # ── Percentile rank gap ───────────────────────────────────────────────
-        from scipy.stats import percentileofscore as _pct_score
+        rows_p = []
+        for pos, grp in base.groupby("overall_position"):
+            if len(grp) < 2:
+                continue
+            mvals  = grp[metric_col_ou].values.astype(float)
+            signed = -mvals if lower_better else mvals   # direction-corrected
+            fvals  = grp[fifa_col_ou].values.astype(float)
+            for i, (_, row) in enumerate(grp.iterrows()):
+                q_pct = _pct_score(signed, signed[i], kind="rank")
+                f_pct = _pct_score(fvals,  fvals[i],  kind="rank")
+                rows_p.append({
+                    "defender_name":    row["defender_name"],
+                    "team":             row["team"],
+                    "overall_position": pos,
+                    fifa_col_ou:        row[fifa_col_ou],
+                    metric_col_ou:      row[metric_col_ou],
+                    "quality_pct":      round(q_pct, 1),
+                    "fifa_pct":         round(f_pct, 1),
+                    "gap":              round(f_pct - q_pct, 1),
+                })
 
-        st.markdown(
-            "Within each position group, compute each player's percentile rank for the "
-            "network metric and for the FIFA rating separately.  \n"
-            "**gap = FIFA percentile − network percentile**  \n"
-            "Negative gap → network performance above FIFA recognition → **underrated**.  \n"
-            "Positive gap → FIFA rating above network performance → **overrated**."
+        pct_df = pd.DataFrame(rows_p)
+
+        fig_pct = px.scatter(
+            pct_df, x="quality_pct", y="fifa_pct",
+            color="gap", color_continuous_scale="RdYlGn_r", color_continuous_midpoint=0,
+            hover_name="defender_name",
+            hover_data={"team": True, "overall_position": True,
+                        metric_col_ou: ":.3f",
+                        "quality_pct": ":.1f", "fifa_pct": ":.1f", "gap": ":.1f"},
+            title=f"Within-position percentile: {metric_col_ou}  vs  {fifa_col_ou}",
+            labels={"quality_pct": f"Defensive-quality percentile ({metric_col_ou})",
+                    "fifa_pct":    f"FIFA percentile ({fifa_col_ou})"},
+        )
+        fig_pct.add_trace(go.Scatter(
+            x=[0, 100], y=[0, 100],
+            mode="lines", line=dict(color="black", dash="dash"), name="perfect alignment",
+        ))
+        st.plotly_chart(fig_pct, use_container_width=True)
+        st.caption(
+            "Points **above** the diagonal: FIFA percentile > quality percentile → overrated (red).  "
+            "Points **below**: quality percentile > FIFA percentile → underrated (green)."
         )
 
+        n_show_pct = st.slider("Top / bottom N", 3, 20, 5, key="ou_pct_n")
+        cols_pct   = ["defender_name", "team", "overall_position",
+                      fifa_col_ou, metric_col_ou, "quality_pct", "fifa_pct", "gap"]
         c1, c2 = st.columns(2)
-        use_composite = c1.checkbox(
-            "Composite network score (involvement + contribution + stability)",
-            value=False, key="ou_pct_composite",
-        )
-
-        if use_composite:
-            INV_COL_P  = "valued_involvement_per_pass_against"
-            CONT_COL_P = "valued_contribution_per_pass_against"
-            stab_type_p = c2.radio(
-                "Stability metric", ["Structural (Jaccard)", "Weighted (Cosine similarity)"],
-                horizontal=True, key="ou_pct_stab",
-            )
-            stab_col_p = "jaccard_stability" if stab_type_p.startswith("Structural") else "cosine_stability"
-
-            _jac_p = compute_jaccard_stability(players, "overall_position")
-            _cs_p  = compute_cosine_stability(players, "overall_position")
-            _stab_p = _jac_p.merge(
-                _cs_p[["defender_name", "cosine_stability"]], on="defender_name", how="left"
-            )
-            pct_base = (
-                full_df[[INV_COL_P, CONT_COL_P, fifa_col_ou,
-                          "defender_name", "team", "overall_position"]]
-                .merge(_stab_p[["defender_name", stab_col_p]], on="defender_name", how="left")
-                .dropna()
-            )
-            if pos_filt_ou != "All":
-                pct_base = pct_base[pct_base["overall_position"] == pos_filt_ou]
-            net_metrics_p = [INV_COL_P, CONT_COL_P, stab_col_p]
-            net_label = "Composite (avg percentile)"
-        else:
-            metric_col_pct = c2.selectbox(
-                "Network metric", ALL_X_COLS, index=1, key="ou_pct_metric"
-            )
-            pct_base = full_df[[metric_col_pct, fifa_col_ou,
-                                 "defender_name", "team", "overall_position"]].dropna()
-            if pos_filt_ou != "All":
-                pct_base = pct_base[pct_base["overall_position"] == pos_filt_ou]
-            net_metrics_p = [metric_col_pct]
-            net_label = metric_col_pct
-
-        if len(pct_base) < 5:
-            st.warning("Too few players — loosen filters.")
-        else:
-            # Compute within-position percentiles
-            rows_p = []
-            for pos, grp in pct_base.groupby("overall_position"):
-                fifa_arr = grp[fifa_col_ou].values.astype(float)
-                # network: average percentile across selected metrics
-                net_pcts = np.column_stack([
-                    [_pct_score(grp[m].values.astype(float), v, kind="rank")
-                     for v in grp[m].values.astype(float)]
-                    for m in net_metrics_p
-                ])
-                avg_net_pct = net_pcts.mean(axis=1)
-                fifa_pcts   = np.array([
-                    _pct_score(fifa_arr, v, kind="rank") for v in fifa_arr
-                ])
-                for i, (_, row) in enumerate(grp.iterrows()):
-                    rows_p.append({
-                        "defender_name":    row["defender_name"],
-                        "team":             row["team"],
-                        "overall_position": pos,
-                        fifa_col_ou:        row[fifa_col_ou],
-                        "network_pct":      round(avg_net_pct[i], 1),
-                        "fifa_pct":         round(fifa_pcts[i], 1),
-                        "gap":              round(fifa_pcts[i] - avg_net_pct[i], 1),
-                    })
-
-            pct_df = pd.DataFrame(rows_p)
-
-            # Scatter: network_pct (x) vs fifa_pct (y), diagonal = perfect alignment
-            fig_pct = px.scatter(
-                pct_df, x="network_pct", y="fifa_pct",
-                color="gap", color_continuous_scale="RdYlGn_r",
-                color_continuous_midpoint=0,
-                hover_name="defender_name",
-                hover_data={"team": True, "overall_position": True,
-                            "network_pct": ":.1f", "fifa_pct": ":.1f", "gap": ":.1f"},
-                title=f"Percentile rank: {net_label}  vs  {fifa_col_ou}",
-                labels={"network_pct": f"Network percentile ({net_label})",
-                        "fifa_pct":    f"FIFA percentile ({fifa_col_ou})"},
-            )
-            fig_pct.add_trace(go.Scatter(
-                x=[0, 100], y=[0, 100],
-                mode="lines", line=dict(color="black", dash="dash"), name="perfect alignment",
-            ))
-            st.plotly_chart(fig_pct, use_container_width=True)
-            st.caption(
-                "Points **above** the diagonal: FIFA percentile > network percentile → overrated (red).  "
-                "Points **below**: network percentile > FIFA percentile → underrated (green)."
-            )
-
-            n_show_pct = st.slider("Top / bottom N", 3, 20, 5, key="ou_pct_n")
-            cols_pct   = ["defender_name", "team", "overall_position",
-                          fifa_col_ou, "network_pct", "fifa_pct", "gap"]
-            c1, c2 = st.columns(2)
-            c1.markdown("**Most underrated** (gap most negative)")
-            c1.dataframe(pct_df.nsmallest(n_show_pct, "gap")[cols_pct].reset_index(drop=True),
-                         use_container_width=True)
-            c2.markdown("**Most overrated** (gap most positive)")
-            c2.dataframe(pct_df.nlargest(n_show_pct, "gap")[cols_pct].reset_index(drop=True),
-                         use_container_width=True)
+        c1.markdown("**Most underrated** (gap most negative)")
+        c1.dataframe(pct_df.nsmallest(n_show_pct, "gap")[cols_pct].reset_index(drop=True),
+                     use_container_width=True)
+        c2.markdown("**Most overrated** (gap most positive)")
+        c2.dataframe(pct_df.nlargest(n_show_pct, "gap")[cols_pct].reset_index(drop=True),
+                     use_container_width=True)
