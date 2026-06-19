@@ -605,8 +605,9 @@ tabs = st.tabs([
     "Defensive Style", "Concentration", "Correlation vs FIFA",
     "ICC", "Network Depth",
     "Player Map", "Archetypes", "Over/Underrated",
+    "Volume × Quality",
 ])
-t_style, t_gini, t_corr, t_icc, t_depth, t_map, t_arch, t_ou = tabs
+t_style, t_gini, t_corr, t_icc, t_depth, t_map, t_arch, t_ou, t_vq = tabs
 
 
 # ── Tab 1: Defensive Style (Breadth + Stability) ──────────────────────────────
@@ -1368,3 +1369,148 @@ with t_ou:
         c2.markdown("**Most overrated** (gap most positive)")
         c2.dataframe(pct_df.nlargest(n_show_pct, "gap")[cols_pct].reset_index(drop=True),
                      use_container_width=True)
+
+# ── Tab 10: Volume × Quality ───────────────────────────────────────────────────
+with t_vq:
+    st.markdown(
+        "Single metrics conflate **how much** a defender is involved with **how well**. "
+        "Here the two are split:\n\n"
+        "- **x = involvement (volume)** — how much defensive action the player is drawn into.\n"
+        "- **y = contribution quality** — of that involvement, how much *helped* vs was *at fault*.\n\n"
+        "Because `involvement = contribution + fault`, the quality axis is a ratio that "
+        "**cancels the sidebar normalization** (per-90 / per-pass all give the same y), so it is a "
+        "pure quality signal independent of volume."
+    )
+
+    def _find_metric(prefix: str) -> str | None:
+        return next((m for m in ACTIVE_METRICS if m.startswith(prefix)), None)
+
+    inv_col = _find_metric("valued_involvement")
+    con_col = _find_metric("valued_contribution")
+    flt_col = _find_metric("valued_fault")
+
+    if not all([inv_col, con_col, flt_col]):
+        st.warning("Selected normalization is missing involvement/contribution/fault columns.")
+    else:
+        c1, c2, c3 = st.columns(3)
+        y_mode = c1.radio(
+            "Quality axis (y)",
+            ["Ratio  con/fault", "Contribution share  con/(con+fault)", "Net  con − fault"],
+            key="vq_ymode",
+        )
+        fifa_col_vq = c2.selectbox("Colour (FIFA rating)", FIFA_COLS, index=1, key="vq_fifa")
+        _vq_pos_opts = ["All"] + sorted(full_df["overall_position"].dropna().unique())
+        pos_filt_vq  = c3.selectbox("Filter by position", _vq_pos_opts, index=0, key="vq_pos")
+
+        vq = full_df[[inv_col, con_col, flt_col, fifa_col_vq,
+                      "defender_name", "team", "overall_position"]].dropna(subset=[inv_col, con_col, flt_col]).copy()
+        if pos_filt_vq != "All":
+            vq = vq[vq["overall_position"] == pos_filt_vq]
+
+        denom = vq[con_col] + vq[flt_col]
+        if y_mode.startswith("Contribution share"):
+            vq["quality"] = np.where(denom > 0, vq[con_col] / denom, np.nan)
+            y_label, log_y = "Contribution share  con / (con + fault)", False
+        elif y_mode.startswith("Net"):
+            vq["quality"] = vq[con_col] - vq[flt_col]
+            y_label, log_y = "Net  contribution − fault", False
+        else:
+            vq["quality"] = vq[con_col] / vq[flt_col]
+            y_label, log_y = "Ratio  contribution / fault", False
+
+        # drop edge cases (fault == 0 → inf, any NaN)
+        n_before = len(vq)
+        vq = vq[np.isfinite(vq["quality"].values)]
+        n_dropped = n_before - len(vq)
+        if n_dropped:
+            st.caption(f"Dropped {n_dropped} player(s) with undefined quality "
+                       "(e.g. fault = 0 → ratio is infinite).")
+        if len(vq) < 5:
+            st.warning("Too few players — loosen filters.")
+        else:
+            fig_vq = px.scatter(
+                vq, x=inv_col, y="quality",
+                color=fifa_col_vq, color_continuous_scale="RdYlGn",
+                symbol="overall_position" if pos_filt_vq == "All" else None,
+                hover_name="defender_name",
+                log_y=log_y,
+                hover_data={"team": True, "overall_position": True,
+                            inv_col: ":.3f", con_col: ":.3f", flt_col: ":.3f",
+                            "quality": ":.3f"},
+                title=f"Volume × Quality   (x = {inv_col})",
+                labels={inv_col: "Involvement (volume)", "quality": y_label},
+            )
+            xm = vq[inv_col].median()
+            ym = vq["quality"].median()
+            fig_vq.add_vline(x=xm, line_dash="dot", line_color="grey")
+            fig_vq.add_hline(y=ym, line_dash="dot", line_color="grey")
+            for label, qx, qy in [
+                ("Busy & effective",   0.97, 0.97),
+                ("Quiet & effective",  0.03, 0.97),
+                ("Busy & error-prone", 0.97, 0.03),
+                ("Quiet & error-prone",0.03, 0.03),
+            ]:
+                fig_vq.add_annotation(
+                    x=vq[inv_col].quantile(qx), y=vq["quality"].quantile(qy),
+                    text=label, showarrow=False, font=dict(size=10, color="grey"),
+                )
+            st.plotly_chart(fig_vq, use_container_width=True)
+            st.caption(
+                "Dotted lines = medians.  Top-right = high volume **and** high quality.  "
+                "The y axis isolates quality from volume; colour shows where FIFA agrees."
+            )
+
+            # Does the quality axis correlate with FIFA (within position if filtered)?
+            v = vq[["quality", inv_col, fifa_col_vq]].dropna()
+            if len(v) >= 5:
+                r_vq, p_vq = pearsonr(v["quality"].values.astype(float),
+                                      v[fifa_col_vq].values.astype(float))
+                r_iv, _    = pearsonr(v[inv_col].values.astype(float),
+                                      v[fifa_col_vq].values.astype(float))
+                st.caption(
+                    f"Correlation with **{fifa_col_vq}**:  quality axis r = {r_vq:.3f} (p={p_vq:.3f})  ·  "
+                    f"volume axis r = {r_iv:.3f}  — compare which carries more rating signal."
+                )
+
+            n_show_vq = st.slider("Top / bottom N (by quality)", 3, 20, 5, key="vq_n")
+            cols_vq = ["defender_name", "team", "overall_position",
+                       inv_col, con_col, flt_col, "quality", fifa_col_vq]
+            c1, c2 = st.columns(2)
+            c1.markdown("**Highest quality**")
+            c1.dataframe(vq.nlargest(n_show_vq, "quality")[cols_vq].reset_index(drop=True).round(3),
+                         use_container_width=True)
+            c2.markdown("**Lowest quality**")
+            c2.dataframe(vq.nsmallest(n_show_vq, "quality")[cols_vq].reset_index(drop=True).round(3),
+                         use_container_width=True)
+
+            # ── Quality vs FIFA rating ────────────────────────────────────────
+            st.divider()
+            st.markdown(f"**Quality vs {fifa_col_vq}**")
+            qr = vq[["quality", fifa_col_vq, "defender_name", "team", "overall_position"]].dropna()
+            if len(qr) < 5:
+                st.caption("Too few players with a FIFA rating to plot.")
+            else:
+                xq = qr["quality"].values.astype(float)
+                yq = qr[fifa_col_vq].values.astype(float)
+                r_qr, p_qr       = pearsonr(xq, yq)
+                sl_qr, ic_qr, *_ = linregress(xq, yq)
+                fig_qr = px.scatter(
+                    qr, x="quality", y=fifa_col_vq,
+                    color="overall_position" if pos_filt_vq == "All" else None,
+                    symbol="overall_position" if pos_filt_vq == "All" else None,
+                    hover_name="defender_name",
+                    hover_data={"team": True, "overall_position": True, "quality": ":.3f"},
+                    title=f"Quality ({y_label})  vs  {fifa_col_vq}   (r = {r_qr:.3f}, p = {p_qr:.3f})",
+                    labels={"quality": y_label},
+                )
+                _xl = np.linspace(xq.min(), xq.max(), 100)
+                fig_qr.add_trace(go.Scatter(
+                    x=_xl, y=sl_qr * _xl + ic_qr,
+                    mode="lines", line=dict(color="black", dash="dash"), name="regression",
+                ))
+                st.plotly_chart(fig_qr, use_container_width=True)
+                st.caption(
+                    "Quality is strongly position-structured (GK high → forward low), so the "
+                    "whole-pool line mostly reflects position. Use the **Filter by position** "
+                    "selector above to read the relationship within a single role."
+                )
