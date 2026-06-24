@@ -36,6 +36,18 @@ _reached_ko = outcomes.groupby("team_name")["competition_stage"].apply(
     lambda s: bool((s != "Group Stage").any()))
 outcomes["reached_knockout"] = outcomes["team_name"].map(_reached_ko)
 
+# Exogenous team-strength proxy: mean FIFA overall rating of the squad (player-level
+# ratings, deduped per team). Used as a control variable. Optional.
+try:
+    _fifa = pd.read_csv("scripts/2026-05-25_player_level_enriched_with_ratings.csv",
+                        usecols=["defending_team_name", "defender_id", "overall_rating"])
+    _fifa["overall_rating"] = pd.to_numeric(_fifa["overall_rating"], errors="coerce")
+    fifa_team_rating = (_fifa.dropna(subset=["overall_rating"])
+                        .drop_duplicates(["defending_team_name", "defender_id"])
+                        .groupby("defending_team_name")["overall_rating"].mean())
+except (FileNotFoundError, ValueError):
+    fifa_team_rating = None
+
 # Pitch-zone defensive metrics (produced by 2026-06-08_team_zone_metrics.py).
 # Optional: app still runs without it (the Zones tab shows a hint instead).
 try:
@@ -186,15 +198,18 @@ def build_conc_match(edge_df, metric, thr=1):
     p2 = edge_df[["match_team_id", "player_2", metric]].rename(columns={"player_2": "player"})
     player_str = pd.concat([p1, p2]).groupby(["match_team_id", "player"])[metric].sum()
     cent_w = player_str.groupby("match_team_id").apply(_cent_w).rename("centralization_w")
-    kcore_dict = {}
+    kcore_dict   = {}
+    density_dict = {}
     for mid, grp in edge_df.groupby("match_team_id"):
         e = grp[grp[ec_col] >= thr] if ec_col in edge_df.columns else grp
         G = nx.Graph()
         G.add_edges_from(zip(e["player_1"], e["player_2"]))
         if G.number_of_nodes() >= 2:
-            kcore_dict[mid] = max(nx.core_number(G).values())
-    kcore_s = pd.Series(kcore_dict, name="kcore_max")
-    df = (_join_outcomes(pd.concat([strength, cent_w, kcore_s], axis=1))
+            kcore_dict[mid]   = max(nx.core_number(G).values())
+            density_dict[mid] = nx.density(G)
+    kcore_s   = pd.Series(kcore_dict,   name="kcore_max")
+    density_s = pd.Series(density_dict, name="network_density")
+    df = (_join_outcomes(pd.concat([strength, cent_w, kcore_s, density_s], axis=1))
           .join(match_labels)
           .join(match_mins)
           .dropna(subset=["strength"]))
@@ -209,13 +224,13 @@ def build_conc_team(df):
     _pp_oc = [oc + "_per_pass" for oc in OUTCOME_COLS if oc + "_per_pass" in df.columns]
     agg = df.groupby("team_name")[
         ["strength", "strength_per90", "strength_per_pass",
-         "centralization_w", "kcore_max"] + OUTCOME_COLS + _pp_oc
+         "centralization_w", "kcore_max", "network_density"] + OUTCOME_COLS + _pp_oc
     ].mean().reset_index()
     return agg.merge(_furthest_stage(df), on="team_name")
 
 
-_Y_HIGH = {"centralization_w": "Centralized", "kcore_max": "Dense core"}
-_Y_LOW  = {"centralization_w": "Distributed", "kcore_max": "Sparse core"}
+_Y_HIGH = {"centralization_w": "Centralized", "kcore_max": "Dense core",    "network_density": "Dense"}
+_Y_LOW  = {"centralization_w": "Distributed", "kcore_max": "Sparse core", "network_density": "Sparse"}
 
 
 def plot_conc_match(df, outcome_col, strength_col="strength", x_label="Total Strength",
@@ -958,24 +973,33 @@ def build_zone_volume_diag(zone_df, scheme, outcomes_df, outcome, kind="raw"):
 def build_team_style(zone_df, scheme, outcomes_df, kind="raw"):
     """Team-level defensive-style profile + performance (pooled across a team's matches).
 
-    Zone proportions are of involvement; press_index = high_press_share − own_share
-    (mid is the neutral pivot). Joined with mean outcomes & knockout flag.
+    Zone proportions are computed for involvement, contribution AND fault (each = that
+    zone's sum ÷ the team's total of that metric across zones). Joined with mean outcomes
+    & knockout. Proportion columns: '{zone}_share' (inv), 'con_{zone}_share', 'fault_{zone}_share'.
     """
-    icol = f"{kind}_involvement_sum"
     d = zone_df[zone_df["scheme"] == scheme].merge(
         outcomes_df[["match_team_id", "team_name"]], on="match_team_id")
-    g = (d.groupby(["team_name", "zone"], observed=True)
-           .agg(inv=(icol, "sum")).reset_index())
-    inv = g.pivot(index="team_name", columns="zone", values="inv").fillna(0)
-    share = inv.div(inv.sum(axis=1).replace(0, np.nan), axis=0)
-    t = pd.DataFrame(index=inv.index)
+    t = None
+    for metric, pre in [("involvement", ""), ("contribution", "con_"), ("fault", "fault_")]:
+        col = f"{kind}_{metric}_sum"
+        m = (d.groupby(["team_name", "zone"], observed=True)[col].sum()
+               .unstack().fillna(0))
+        sh = m.div(m.sum(axis=1).replace(0, np.nan), axis=0)
+        if t is None:
+            t = pd.DataFrame(index=sh.index)
+        for z in ZONE_ORDER:
+            if z in sh.columns:
+                t[f"{pre}{z}_share"] = sh[z]
+    # team-level faced-pass totals per zone (control variable for zone-pass partial)
+    npz = (d.groupby(["team_name", "zone"], observed=True)["n_passes"].sum()
+             .unstack().fillna(0))
     for z in ZONE_ORDER:
-        if z in share.columns:
-            t[f"{z}_share"] = share[z]
-    t["press_index"] = share.get("high_press", 0) - share.get("own", 0)
+        if z in npz.columns:
+            t[f"npass_{z}"] = npz[z]
     perf = outcomes_df.groupby("team_name").agg(
         shots_against=("shots_against", "mean"), xg_against=("xg_against", "mean"),
         goals_against=("goals_against", "mean"),
+        passes_against=("passes_against", "mean"),
         reached_knockout=("reached_knockout", "first"))
     return t.join(perf)
 
@@ -1158,7 +1182,8 @@ with st.sidebar:
     metric_conc_inv   = st.selectbox("Involvement", INV_COLS, key="metric_conc_inv")
     metric_conc_fault = st.selectbox("Fault", FAULT_COLS, key="metric_conc_fault")
     metric_conc_cont  = st.selectbox("Contribution", CONTRIBUTION_COLS, key="metric_conc_cont")
-    _y_opts = {"centralization_w": "Centralization (weighted)", "kcore_max": "Max K-core"}
+    _y_opts = {"centralization_w": "Centralization (weighted)", "kcore_max": "Max K-core",
+               "network_density": "Network Density"}
     y_conc = st.selectbox("Y axis", list(_y_opts), format_func=_y_opts.__getitem__, key="y_conc")
     st.subheader("Self vs Shared")
     metric_self  = st.selectbox("Metric", WEIGHT_COLS, key="metric_self")
@@ -1352,7 +1377,7 @@ def _render_conc_group(match_df, team_df, group_label, y_conc, y_label_conc, out
 with tab_conc:
     @st.fragment
     def _frag_tab_conc():
-        _y_label_conc = {"centralization_w": "Centralization (weighted)", "kcore_max": "Max K-core"}[y_conc]
+        _y_label_conc = _y_opts[y_conc]
         if y_conc == "centralization_w":
             st.caption("Centralization (weighted) is scale-invariant — y axis values are identical across all normalisation sections; only quadrant *boundaries* shift as x changes.")
 
@@ -1798,73 +1823,137 @@ with tab_zone:
             if mw:
                 st.table(pd.DataFrame(mw).set_index("Zone"))
 
+            _present_zones = [z for z in ZONE_ORDER
+                              if z in set(zone_raw.loc[zone_raw["scheme"] == zone_scheme, "zone"])]
+
             # ── Defensive style map (team level) ──────────────────────────────────
             st.subheader("Defensive style map (team level)")
             st.caption(
-                "One point per team (pooled across its matches). **press index** = "
-                "high-press proportion − own-third proportion (right = proactive/high line; "
-                "left = forced/deep; midfield is the neutral pivot, not in this axis). Colour = "
-                "reached knockout. Lower y (shots/xG against) = better defence."
+                "One point per team (pooled across its matches). X = the chosen metric's "
+                "proportion in the chosen zone (zone sum ÷ the team's total of that metric); "
+                "Y = mean-per-match outcome (lower = better defence); colour = reached "
+                "knockout. OLS fit + r in title; dashed lines = medians."
             )
-            sm1, sm2, sm3 = st.columns(3)
-            _xopts = {"press_index": "Press index (high − own proportion)",
-                      "high_press_share": "High-press proportion", "own_share": "Own-third proportion",
-                      "mid_share": "Midfield proportion"}
-            sm_kind = sm1.selectbox("raw / valued", ["raw", "valued"], key="style_kind")
-            team_style = build_team_style(zone_raw, zone_scheme, outcomes, kind=sm_kind)
-            _xavail = [k for k in _xopts if k in team_style.columns]
-            sm_x = sm2.selectbox("X axis", _xavail, format_func=_xopts.__getitem__, key="style_x")
-            sm_y = sm3.selectbox("Y axis (outcome)", OUTCOME_COLS, index=1, key="style_y")
-            ts = team_style.reset_index().dropna(subset=[sm_x, sm_y])
-            ts["Stage"] = ts["reached_knockout"].map({True: "Reached knockout", False: "Group only"})
-            r_sm, p_sm = pearsonr(ts[sm_x], ts[sm_y])
-            fig_sm = px.scatter(ts, x=sm_x, y=sm_y, color="Stage", text="team_name",
-                                color_discrete_map={"Group only": "#bbbbbb",
-                                                    "Reached knockout": "#1f78b4"},
-                                trendline="ols", trendline_scope="overall",
-                                trendline_color_override="black",
-                                labels={sm_x: _xopts[sm_x], sm_y: sm_y.replace("_", " ")},
-                                title=f"{_xopts[sm_x]} vs {sm_y.replace('_',' ')}  "
-                                      f"(r={r_sm:+.2f}, p={p_sm:.3f}, N={len(ts)})")
-            fig_sm.update_traces(textposition="top center",
-                                 marker=dict(size=11, line=dict(width=1, color="white")),
-                                 selector=dict(mode="markers+text"))
-            fig_sm.add_vline(x=ts[sm_x].median(), line_dash="dash", line_color="grey", opacity=0.5)
-            fig_sm.add_hline(y=ts[sm_y].median(), line_dash="dash", line_color="grey", opacity=0.5)
-            fig_sm.update_layout(height=620)
-            st.plotly_chart(fig_sm, use_container_width=True)
+            _METRIC6 = {"raw inv": ("raw", ""), "valued inv": ("valued", ""),
+                        "raw con": ("raw", "con_"), "valued con": ("valued", "con_"),
+                        "raw fault": ("raw", "fault_"), "valued fault": ("valued", "fault_")}
+            sc1, sc2, sc3 = st.columns(3)
+            sc_metric = sc1.selectbox("Metric", list(_METRIC6), key="style_metric")
+            sc_zone = sc2.selectbox("Zone", _present_zones,
+                                    format_func=ZONE_SHORT.__getitem__, key="style_zone")
+            sc_y = sc3.selectbox("Y axis (outcome)", OUTCOME_COLS, index=1, key="style_y")
+            _sk, _spre = _METRIC6[sc_metric]
+            ts_sc = build_team_style(zone_raw, zone_scheme, outcomes, kind=_sk)
+            if fifa_team_rating is not None:
+                ts_sc["fifa_rating"] = ts_sc.index.map(fifa_team_rating)
+            _xcol = f"{_spre}{sc_zone}_share"
+            _xlab = f"{sc_metric} · {ZONE_SHORT[sc_zone]} proportion"
+            if _xcol in ts_sc.columns:
+                ts = ts_sc.reset_index().dropna(subset=[_xcol, sc_y])
+                ts["Stage"] = ts["reached_knockout"].map({True: "Reached knockout", False: "Group only"})
+                r_sm, p_sm = pearsonr(ts[_xcol], ts[sc_y])
+                fig_sm = px.scatter(ts, x=_xcol, y=sc_y, color="Stage", text="team_name",
+                                    color_discrete_map={"Group only": "#bbbbbb",
+                                                        "Reached knockout": "#1f78b4"},
+                                    trendline="ols", trendline_scope="overall",
+                                    trendline_color_override="black",
+                                    labels={_xcol: _xlab, sc_y: sc_y.replace("_", " ")},
+                                    title=f"{_xlab} vs {sc_y.replace('_',' ')}  "
+                                          f"(r={r_sm:+.2f}, p={p_sm:.3f}, N={len(ts)})")
+                fig_sm.update_traces(textposition="top center",
+                                     marker=dict(size=11, line=dict(width=1, color="white")),
+                                     selector=dict(mode="markers+text"))
+                fig_sm.add_vline(x=ts[_xcol].median(), line_dash="dash", line_color="grey", opacity=0.5)
+                fig_sm.add_hline(y=ts[sc_y].median(), line_dash="dash", line_color="grey", opacity=0.5)
+                fig_sm.update_layout(height=620)
+                st.plotly_chart(fig_sm, use_container_width=True)
+
+            # ── Merged correlation table: rows = metric × zone, cols = control × outcome ──
+            st.subheader("Style proportion × outcome correlation (team level)")
+            tbl_kind = st.selectbox("raw / valued", ["raw", "valued"], key="style_tbl_kind")
+            ts_t = build_team_style(zone_raw, zone_scheme, outcomes, kind=tbl_kind)
+            if fifa_team_rating is not None:
+                ts_t["fifa_rating"] = ts_t.index.map(fifa_team_rating)
+            _controls = [("raw", None), ("ctrl total-pass", "passes_against"),
+                         ("ctrl zone-pass", "zone")]
+            if fifa_team_rating is not None:
+                _controls.append(("ctrl FIFA", "fifa_rating"))
+            _rows_def = [(f"{pre}{z}_share", f"{ml} · {zl}", z)
+                         for pre, ml in [("", "inv"), ("con_", "con"), ("fault_", "fault")]
+                         for z, zl in [("high_press", "high"), ("mid", "mid"), ("own", "own")]]
+
+            def _fmt(rr, pp):
+                return "—" if np.isnan(rr) else \
+                    f"{rr:+.2f}{'**' if pp < 0.01 else '*' if pp < 0.05 else ''}"
+
+            data, data_num, rlabels = {}, {}, []
+            for key, lab, z in _rows_def:
+                if key not in ts_t.columns:
+                    continue
+                rlabels.append(lab)
+                for clab, ctrl in _controls:
+                    cc = f"npass_{z}" if ctrl == "zone" else ctrl
+                    for oc in OUTCOME_COLS:
+                        ocl = oc.replace("_against", " ag.")
+                        if ctrl is None:
+                            s = ts_t[[key, oc]].dropna()
+                            rr, pp = pearsonr(s[key], s[oc]) if len(s) > 3 else (np.nan, np.nan)
+                        else:
+                            s = ts_t[[key, oc, cc]].dropna()
+                            if len(s) > 3:
+                                a = _resid(s[key].values, s[cc].values)
+                                b = _resid(s[oc].values, s[cc].values)
+                                mk = ~(np.isnan(a) | np.isnan(b))
+                                rr, pp = pearsonr(a[mk], b[mk]) if mk.sum() > 3 else (np.nan, np.nan)
+                            else:
+                                rr, pp = np.nan, np.nan
+                        data.setdefault((clab, ocl), []).append(_fmt(rr, pp))
+                        data_num.setdefault((clab, ocl), []).append(rr)
+            txt = pd.DataFrame(data, index=rlabels)
+            num = pd.DataFrame(data_num, index=rlabels)
+            txt.columns = pd.MultiIndex.from_tuples(txt.columns)
+            num.columns = pd.MultiIndex.from_tuples(num.columns)
+
+            def _bg(v):  # diverging: 0 = lightest (white), + -> red, - -> blue
+                if pd.isna(v):
+                    return ""
+                tt = max(-1.0, min(1.0, v / 0.8))
+                if tt >= 0:
+                    r, g, b = 255, int(255 - 215 * tt), int(255 - 215 * tt)
+                else:
+                    r, g, b = int(255 + 215 * tt), int(255 + 165 * tt), 255
+                return f"background-color: rgb({r},{g},{b}); color: #000"
+
+            css = num.apply(lambda c: c.map(_bg))
             st.caption(
-                "Note: press index strongly tracks **defensive** quality (fewer shots/xG "
-                "against) but **not** knockout qualification — deep/forced teams can still "
-                "advance via attack & results, so colour (knockout) scatters across the plot."
+                f"N={len(ts_t)}, {tbl_kind}. Pearson r between each zone proportion (rows: "
+                "inv/con/fault × high/mid/own) and each outcome, under no control (raw) and "
+                "three partial controls (total opponent passes / that zone's passes / FIFA "
+                "rating). Colour: 0 = white, red = positive (concedes more), blue = negative. "
+                "`*` p<0.05, `**` p<0.01."
+            )
+            st.table(txt.style.apply(lambda _: css, axis=None))
+            st.caption(
+                "Robustness: controlling **FIFA rating** (exogenous strength) barely changes "
+                "the raw values (own-third +0.72→+0.67, high-press −0.62→−0.54) — the "
+                "style↔conceding link is not just 'stronger teams'. **Zone-pass** control "
+                "also barely moves it. **Total-pass** control shrinks it sharply, but that "
+                "over-corrects (passes_against is partly a consequence of a deep style)."
             )
 
-            # index × performance summary tables (team level)
-            _idx = [k for k in _xopts if k in team_style.columns]
-            st.markdown(f"**Style index × outcome correlation** (team level, N={len(team_style)}, "
-                        f"{sm_kind}). `*` p<0.05, `**` p<0.01.")
-            rowsA = []
-            for ix in _idx:
-                cell = {}
-                for oc in OUTCOME_COLS:
-                    s = team_style[[ix, oc]].dropna()
-                    r, p = pearsonr(s[ix], s[oc])
-                    cell[oc.replace("_against", " ag.")] = \
-                        f"{r:+.2f}{'**' if p < 0.01 else '*' if p < 0.05 else ''}"
-                rowsA.append(pd.Series(cell, name=_xopts[ix]))
-            st.table(pd.DataFrame(rowsA))
-
-            st.markdown("**Style index by stage** — median (knockout vs group-only) + "
+            st.markdown("**Style proportion by stage** — median (knockout vs group-only) + "
                         "Mann–Whitney U p.")
             rowsB = []
-            for ix in _idx:
-                a = team_style[team_style["reached_knockout"]][ix].dropna()
-                b = team_style[~team_style["reached_knockout"]][ix].dropna()
+            for key, lab, z in _rows_def:
+                if key not in ts_t.columns:
+                    continue
+                a = ts_t[ts_t["reached_knockout"]][key].dropna()
+                b = ts_t[~ts_t["reached_knockout"]][key].dropna()
                 if len(a) > 2 and len(b) > 2:
-                    _, p = mannwhitneyu(a, b)
-                    rowsB.append(dict(Index=_xopts[ix], knockout_med=round(a.median(), 3),
-                                      group_med=round(b.median(), 3), p=round(p, 3),
-                                      sig="*" if p < 0.05 else ""))
+                    _, pp = mannwhitneyu(a, b)
+                    rowsB.append(dict(Index=lab, knockout_med=round(a.median(), 3),
+                                      group_med=round(b.median(), 3), p=round(pp, 3),
+                                      sig="*" if pp < 0.05 else ""))
             if rowsB:
                 st.table(pd.DataFrame(rowsB).set_index("Index"))
     _frag_tab_zone()
