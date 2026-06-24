@@ -1228,9 +1228,9 @@ partnerships        = build_partnerships()
 df_corr             = process(edge_dfs[method], thr)
 
 (tab_conc, tab_self, tab_style, tab_codef, tab_zone, tab_ztopo,
- tab_corr, tab_icc, tab_reg, tab_data) = st.tabs([
+ tab_corr, tab_icc, tab_reg, tab_sens, tab_data) = st.tabs([
     "Concentrated vs Balanced", "Self vs Shared", "Defensive Style", "Co-Defenders", "Zones",
-    "Zone Topology", "Correlation", "Robustness (ICC)", "Regression", "Data",
+    "Zone Topology", "Correlation", "Robustness (ICC)", "Regression", "Sensitivity", "Data",
 ])
 
 _QUAD_EXPLAIN = {
@@ -2212,6 +2212,107 @@ with tab_reg:
                     fig_coef.update_layout(yaxis={"autorange": "reversed"}, height=40 * len(_coef_plot) + 120)
                     st.plotly_chart(fig_coef, use_container_width=True, key="reg_std_beta")
     _frag_tab_reg()
+
+# ── Edge-weight sensitivity ───────────────────────────────────────────────────
+# Headline KPI = corr(network metric, outcome), raw + passes_against-partial,
+# computed under all four edge-weight methods. Only the four weight-dependent
+# metric families can move; topology-only metrics are method-invariant by
+# construction (they use the method-independent edge-count threshold).
+_SENS_METHODS    = ["min", "average", "sum", "product"]
+_SENS_PRIMARY    = "min"
+_SENS_DEPENDENT  = {
+    "":                         "Total Strength",
+    "_gini":                    "Gini (strength inequality)",
+    "_cc_weighted":             "Clustering (weighted)",
+    "_centralization_weighted": "Freeman Centralization (weighted)",
+}
+
+
+def _sens_stars(p):
+    return "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else ""
+
+
+@st.cache_data
+def build_edge_weight_sensitivity(thr=1):
+    proc = {k: process(edge_dfs[k], thr) for k in _SENS_METHODS}
+    rows = []
+    for c in WEIGHT_COLS:
+        for suf, fam in _SENS_DEPENDENT.items():
+            col = c + suf
+            for t in OUTCOME_COLS:
+                for kind in ("raw", "partial"):
+                    rec = {"metric_family": fam, "node_metric": c,
+                           "outcome": t, "kind": kind}
+                    for k in _SENS_METHODS:
+                        d = proc[k]
+                        if kind == "raw":
+                            v = d[[col, t]].dropna()
+                            r, p = pearsonr(v[col], v[t])
+                        else:
+                            s = d[[col, t, "passes_against"]].dropna()
+                            a = _resid(s[col].values, s["passes_against"].values)
+                            b = _resid(s[t].values,   s["passes_against"].values)
+                            mk = ~(np.isnan(a) | np.isnan(b))
+                            r, p = pearsonr(a[mk], b[mk])
+                        rec[k] = r
+                        rec[k + "_sig"] = _sens_stars(p)
+                    rows.append(rec)
+    return pd.DataFrame(rows)
+
+
+with tab_sens:
+    @st.fragment
+    def _frag_tab_sens():
+        st.subheader("Edge-weight method sensitivity")
+        st.markdown(
+            "Each co-defensive event's two endpoint values are combined into an "
+            "edge weight by one of four operators: **sum**, **average** (=sum/2), "
+            "**min** (weakest-link / conjunctive — *primary*), **product**. "
+            "This re-runs every network metric under all four and compares the "
+            "headline KPI: each metric's correlation with defensive outcomes "
+            "(raw + partial, controlling `passes_against`).\n\n"
+            "Only the four **weight-dependent** families below can move — the "
+            "topology-only metrics (density, unweighted clustering / "
+            "centralization, assortativity, k-core, LCC) use the "
+            "method-independent edge-count threshold and are **identical across "
+            "methods by construction**.")
+
+        sens = build_edge_weight_sensitivity(thr)
+        other = st.selectbox("Compare primary (min) against",
+                             ["average", "sum", "product"], index=0)
+        dr_pair = (sens[_SENS_PRIMARY] - sens[other]).abs()
+        dr_all  = sens[_SENS_METHODS].max(axis=1) - sens[_SENS_METHODS].min(axis=1)
+        sig_flip = (sens[_SENS_PRIMARY + "_sig"].astype(bool)
+                    != sens[other + "_sig"].astype(bool))
+        n = len(sens)
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric(f"max |Δr|  min vs {other}", f"{dr_pair.max():.3f}")
+        c2.metric(f"mean |Δr|  min vs {other}", f"{dr_pair.mean():.3f}")
+        c3.metric("p<.05 verdict changes", f"{int(sig_flip.sum())} / {n}")
+        c4.metric("max |Δr| across all 4", f"{dr_all.max():.3f}")
+        st.caption(
+            "Small = robust: the primary choice (min) barely changes any "
+            "correlation. Sign flips at r≈0 are near-zero noise, not "
+            "substantive disagreement — read the significance-change count, "
+            "not raw sign flips.")
+
+        disp = sens.copy()
+        for k in _SENS_METHODS:
+            disp[k] = [f"{r:+.2f}{s}" for r, s in zip(sens[k], sens[k + "_sig"])]
+        disp[f"|Δr| min-{other}"] = dr_pair.round(3)
+        disp = disp[["metric_family", "node_metric", "outcome", "kind",
+                     *_SENS_METHODS, f"|Δr| min-{other}"]]
+        st.dataframe(
+            disp.style.background_gradient(
+                cmap="Reds", subset=[f"|Δr| min-{other}"], vmin=0, vmax=0.3),
+            use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download sensitivity table (CSV)",
+            sens.to_csv(index=False).encode(),
+            "edge_weight_sensitivity.csv", "text/csv")
+    _frag_tab_sens()
+
 
 with tab_data:
     @st.fragment
