@@ -6,10 +6,16 @@ Tabs:
   2. Self vs Shared
   3. Defensive Style
   4. Co-Defenders
-  5. Correlation
-  6. Robustness (ICC)
-  7. Data
+  5. Zones
+  6. Zone Topology
+  7. Zone Contrasts (ICC) — within-team zone differences/slopes, partial-pooled
+     (mixed-model) ICC + shrunk per-team fingerprints
+  8. Correlation
+  9. Robustness (ICC)
+ 10. Regression
+ 11. Data
 """
+import warnings
 from itertools import combinations
 
 import networkx as nx
@@ -18,6 +24,14 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from scipy.stats import pearsonr, spearmanr, kruskal, mannwhitneyu, t as t_dist, f as f_dist
+
+# statsmodels powers the partial-pooling (mixed-model) view in the Zone Contrasts tab.
+# Optional: the tab degrades to ANOVA-only ICC if it's missing.
+try:
+    import statsmodels.formula.api as _smf
+    _HAS_SM = True
+except Exception:
+    _HAS_SM = False
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 import os as _os
@@ -65,6 +79,15 @@ try:
         _d["match_team_id"] = _d["match_team_id"].astype(str)
 except FileNotFoundError:
     zone_topo_dfs = None
+
+# Per-zone spatial / spatially-embedded-network predictors (produced by
+# 2026-06-24_zone_spatial_metrics.py). Method-independent, one row per
+# (match_team_id, zone). Optional.
+try:
+    zone_spatial_df = pd.read_csv("scripts/2026-06-24_zone_spatial_metrics.csv")
+    zone_spatial_df["match_team_id"] = zone_spatial_df["match_team_id"].astype(str)
+except FileNotFoundError:
+    zone_spatial_df = None
 
 match_mins   = nodes.groupby("match_team_id")["mins_played"].max().rename("match_mins")
 squad_size   = nodes.groupby("match_team_id")["defender_id"].count().rename("n_players")
@@ -610,18 +633,47 @@ def corr_tbl(df, cols, partial=False):
     st.dataframe(disp.style.background_gradient(cmap="RdYlGn", gmap=rdf.values, axis=None, vmin=-1, vmax=1))
 
 
-def icc_tbl(df, cols):
+def _bh_qvalues(pvals):
+    """Benjamini-Hochberg FDR-adjusted q-values for a sequence of p-values (NaN-safe).
+    NaNs stay NaN and don't count toward the test family m."""
+    p = np.asarray(pvals, dtype=float)
+    q = np.full(p.shape, np.nan)
+    idx = np.where(~np.isnan(p))[0]
+    m = len(idx)
+    if m == 0:
+        return q
+    order = idx[np.argsort(p[idx])]                 # ascending p
+    adj = p[order] * m / np.arange(1, m + 1)        # BH step-up
+    adj = np.minimum.accumulate(adj[::-1])[::-1]     # enforce monotonicity
+    q[order] = np.minimum(adj, 1.0)
+    return q
+
+
+def compute_icc_rows(df, cols):
+    """ICC(1,1) per column — teams = subjects, match-team rows = replicate measurements.
+    Returns a list of dicts (one per usable column). Guards against the sparse,
+    NaN-heavy columns produced by zone contrasts (teams with no within-team
+    replication, zero within-team variance, degenerate denominators).
+    `q` = Benjamini-Hochberg FDR-adjusted p across the supplied `cols` (the family is
+    whatever the caller passes / displays); `sig` is based on `q`, not raw `p`."""
     rows = []
     for c in cols:
+        if c not in df.columns:
+            continue
         s = df[["team_name", c]].dropna()
         if s["team_name"].nunique() < 2:
             continue
         g   = s.groupby("team_name")[c]
         nt, ng, sz, mn = len(s), g.ngroups, g.count(), g.mean()
+        if nt - ng < 1:                       # need ≥1 within-team replicate overall
+            continue
         msb = (sz * (mn - s[c].mean()) ** 2).sum() / (ng - 1)
         msw = g.apply(lambda x: ((x - x.mean()) ** 2).sum()).sum() / (nt - ng)
         k0  = (nt - (sz ** 2).sum() / nt) / (ng - 1)
-        icc = (msb - msw) / (msb + (k0 - 1) * msw)
+        denom = msb + (k0 - 1) * msw
+        if denom == 0:
+            continue
+        icc = (msb - msw) / denom
         # F-test for H0: ICC = 0 (MSB/MSW ~ F(ng-1, nt-ng))
         f_stat = msb / msw if msw > 0 else float("nan")
         p_val  = f_dist.sf(f_stat, ng - 1, nt - ng) if not np.isnan(f_stat) else float("nan")
@@ -630,11 +682,26 @@ def icc_tbl(df, cols):
             "ICC": round(icc, 3),
             "F": round(f_stat, 2),
             "p": round(p_val, 4),
-            "sig": "***" if p_val < 0.001 else ("**" if p_val < 0.01 else ("*" if p_val < 0.05 else "")),
+            "q": np.nan,                      # filled below (BH over the family)
+            "sig": "",                        # set from q below
             "n_teams": ng,
             "n_obs": nt,
             "interpretation": "stable trait" if icc > 0.5 else "match-driven",
         })
+    if rows:
+        qs = _bh_qvalues([r["p"] for r in rows])
+        for r, q in zip(rows, qs):
+            r["q"] = round(float(q), 4) if not np.isnan(q) else np.nan
+            r["sig"] = ("***" if q < 0.001 else "**" if q < 0.01
+                        else "*" if q < 0.05 else "")
+    return rows
+
+
+def icc_tbl(df, cols):
+    rows = compute_icc_rows(df, cols)
+    if not rows:
+        st.caption("Not enough replicated data for ICC on this group.")
+        return
     st.dataframe(
         pd.DataFrame(rows).style.background_gradient(cmap="RdYlGn", subset=["ICC"], vmin=0, vmax=1),
         use_container_width=True,
@@ -1172,6 +1239,224 @@ def build_zone_topo_corr_all(topo_df, outcomes_df, outcome_cols, partial=False,
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
+def _icc_pval(df, col):
+    """ICC(1,1) + F-test p for one column (teams = subjects, matches = replicates).
+    Returns (icc, p, n_obs) or None if not estimable."""
+    s = df[["team_name", col]].dropna()
+    if s["team_name"].nunique() < 3:
+        return None
+    g = s.groupby("team_name")[col]
+    nt, ng, sz, mn = len(s), g.ngroups, g.count(), g.mean()
+    if nt - ng < 1:
+        return None
+    msb = (sz * (mn - s[col].mean()) ** 2).sum() / (ng - 1)
+    msw = g.apply(lambda x: ((x - x.mean()) ** 2).sum()).sum() / (nt - ng)
+    k0  = (nt - (sz ** 2).sum() / nt) / (ng - 1)
+    den = msb + (k0 - 1) * msw
+    if den == 0 or msw <= 0:
+        return None
+    icc = (msb - msw) / den
+    return icc, float(f_dist.sf(msb / msw, ng - 1, nt - ng)), nt
+
+
+def build_zone_topo_icc(topo_df):
+    """ICC(1,1) of every per-zone topology metric **level** across teams — the test of
+    whether a team's zonal co-defending *structure* is a repeatable trait or match-driven
+    noise. Long df: topo (label), metric (weight), zone, ICC, p, n. A Benjamini-Hochberg
+    `q` is added across the whole returned family (all metrics × all zones)."""
+    df = topo_df.copy()
+    df["team_name"] = team_names.reindex(df["match_team_id"]).values
+    rows = []
+    for z in ZONE_ORDER:
+        dz = df[df["zone"] == z]
+        if dz.empty:
+            continue
+        for label, suffix in TOPO_METRICS.items():
+            for w in WEIGHT_COLS:
+                col = w + suffix if suffix else w
+                if col not in dz.columns:
+                    continue
+                r = _icc_pval(dz, col)
+                if r is not None:
+                    rows.append({"topo": label, "metric": w, "zone": z,
+                                 "ICC": r[0], "p": r[1], "n": r[2]})
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out["q"] = _bh_qvalues(out["p"].values)
+    return out
+
+
+# ── Spatial / spatially-embedded-network predictors of zone defensive success ───
+# Each metric maps to a visual feature of the co-defending network drawn on the pitch.
+SPATIAL_VIS = {
+    "x_range":      "depth span (deepest→highest)",
+    "spread_x":     "vertical spread (depth)",
+    "spread_y":     "horizontal spread (width)",
+    "block_spread": "node-cloud size",
+    "hull_area":    "enclosing-polygon area",
+    "nn_dist":      "nearest-neighbour gap",
+    "aspect_xy":    "tall vs wide shape",
+    "lateral_off":  "shift to a flank",
+    "edge_cv":                     "edge unevenness — all co-defending",
+    "raw_involvement_edge_cv":     "edge unevenness — raw involvement",
+    "raw_fault_edge_cv":           "edge unevenness — raw fault",
+    "raw_contribution_edge_cv":    "edge unevenness — raw contribution",
+    "valued_involvement_edge_cv":  "edge unevenness — valued involvement",
+    "valued_contribution_edge_cv": "edge unevenness — valued contribution",
+    "valued_fault_edge_cv":        "edge unevenness — valued fault",
+}
+
+
+def build_zone_spatial_corr(sp_df, zone_raw_df):
+    """Pearson r of each spatial / edge predictor with per-zone defensive **success
+    rate** (n_success/n_actions), at match-team level, per zone. Success rate is the
+    confound-cleaner target (the zone already conditions on press height). BH-FDR q
+    across all (metric × zone) cells. Long df: metric, zone, r, p, n, q."""
+    zr = zone_raw_df[zone_raw_df["scheme"] == "thirds"].copy()
+    zr["succ_rate"] = zr["n_success"] / zr["n_actions"]
+    m = sp_df.merge(zr[["match_team_id", "zone", "succ_rate"]],
+                    on=["match_team_id", "zone"], how="left")
+    skip = {"match_team_id", "match_id", "defending_team", "zone"}
+    metrics = [c for c in sp_df.columns if c not in skip]
+    rows = []
+    for z in ZONE_ORDER:
+        dz = m[m["zone"] == z]
+        for v in metrics:
+            s = dz[[v, "succ_rate"]].dropna()
+            if len(s) >= 10 and s[v].std() > 0 and s["succ_rate"].std() > 0:
+                r, p = pearsonr(s[v], s["succ_rate"])
+                rows.append({"metric": v, "zone": z, "r": r, "p": p, "n": len(s)})
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out["q"] = _bh_qvalues(out["p"].values)
+    return out
+
+
+# ── Zone contrasts (within match-team differences across zones) ─────────────────
+# Press-height coding for the slope contrast: own third (deep) → high press.
+ZONE_DEPTH = {"own": -1.0, "mid": 0.0, "high_press": 1.0}
+# Pairwise simple deltas (value = hi_zone − lo_zone).
+ZONE_DELTAS = {
+    "Δ High press − Own": ("high_press", "own"),
+    "Δ Mid − Own":        ("mid", "own"),
+    "Δ High press − Mid": ("high_press", "mid"),
+}
+
+
+def _resid_series(y, x):
+    """Residualise Series y on Series x (linear fit), aligned on y's index; NaN-safe.
+    Returns NaN where either is missing or x has no spread."""
+    y = y.astype(float)
+    x = x.astype(float).reindex(y.index)
+    out = pd.Series(np.nan, index=y.index)
+    m = y.notna() & x.notna()
+    if m.sum() >= 4 and x[m].std() > 0:
+        out[m] = y[m].values - np.polyval(np.polyfit(x[m].values, y[m].values, 1), x[m].values)
+    return out
+
+
+def _zone_pivot(topo_df, col, correct, zone_npass):
+    """match_team_id × zone table of one metric, optionally residualised within each
+    zone on that zone's faced-pass count (so the contrast reflects structure, not how
+    much the ball sat in that zone)."""
+    piv = topo_df.pivot_table(index="match_team_id", columns="zone", values=col, aggfunc="first")
+    if correct and zone_npass is not None:
+        for z in list(piv.columns):
+            if z in zone_npass.columns:
+                piv[z] = _resid_series(piv[z], zone_npass[z])
+    return piv
+
+
+def _row_slope(row):
+    """OLS slope of metric over press depth, using whatever zones are present (≥2)."""
+    xs, ys = [], []
+    for z, d in ZONE_DEPTH.items():
+        if z in row.index and pd.notna(row[z]):
+            xs.append(d); ys.append(float(row[z]))
+    return float(np.polyfit(xs, ys, 1)[0]) if len(xs) >= 2 else np.nan
+
+
+def build_zone_contrasts(topo_df, contrast, correct=False, zone_npass=None):
+    """Wide df: one row per match-team, one column per (weight × topology) named exactly
+    like GROUPS (e.g. 'raw_involvement_centralization_weighted'), holding the requested
+    within-team zone contrast. Differencing within a match-team cancels squad size and
+    overall style, so the contrast isolates how structure *changes* across the pitch.
+    `contrast` is a ZONE_DELTAS key or 'slope'."""
+    data = {}
+    for suffix in TOPO_METRICS.values():
+        for w in WEIGHT_COLS:
+            col = w + suffix if suffix else w
+            if col not in topo_df.columns:
+                continue
+            piv = _zone_pivot(topo_df, col, correct, zone_npass)
+            if contrast == "slope":
+                data[col] = piv.apply(_row_slope, axis=1)
+            else:
+                hi, lo = ZONE_DELTAS[contrast]
+                if hi in piv.columns and lo in piv.columns:
+                    data[col] = piv[hi] - piv[lo]
+    cdf = pd.DataFrame(data)
+    cdf.insert(0, "team_name", team_names.reindex(cdf.index).values)
+    return cdf.reset_index()
+
+
+def _gate_sparse_zones(topo_df, zone_npass, min_pass):
+    """Drop (match_team_id, zone) rows whose zone faced fewer than `min_pass` passes,
+    so degenerate near-empty zone graphs don't enter the contrasts. No-op at min_pass=0
+    or without a faced-pass table."""
+    if min_pass <= 0 or zone_npass is None:
+        return topo_df
+    long = zone_npass.stack().rename("n_passes").reset_index()   # match_team_id, zone, n_passes
+    m = topo_df.merge(long, on=["match_team_id", "zone"], how="left")
+    return m[m["n_passes"].fillna(0) >= min_pass].drop(columns="n_passes")
+
+
+def lme_partial_pool(df, col):
+    """Partial-pool a per-match-team contrast across teams with a random-intercept mixed
+    model (`col ~ 1 + (1|team_name)`, REML). This is the (B) answer to "teams don't play
+    the same formation each match": match-to-match variation (formation, personnel,
+    opponent) is absorbed into the within-team residual, and each team's estimate is
+    shrunk toward the league mean in proportion to how noisy/few its matches are — no
+    node correspondence across matches required. Returns a dict or None.
+      icc_lme : σ²_team / (σ²_team + σ²_resid) — REML; handles the unbalanced 3–7
+                matches/team design more precisely than the ANOVA ICC(1,1)
+      fe_mean : fixed intercept = league-average contrast (the typical gradient)
+      blups   : team_name -> partial-pooled (shrunk) contrast = fe_mean + random effect
+    A singular RE covariance means no detectable between-team variance: icc_lme≈0 and
+    every team shrinks fully to fe_mean. Teams need ≥2 contrast observations to inform
+    the within-team variance."""
+    if not _HAS_SM:
+        return None
+    d = df[["team_name", col]].dropna().rename(columns={col: "y"})
+    cnt = d.groupby("team_name")["y"].count()
+    d = d[d["team_name"].isin(cnt[cnt >= 2].index)]
+    if d["team_name"].nunique() < 3 or len(d) < 6 or d["y"].std() == 0:
+        return None
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            res = _smf.mixedlm("y ~ 1", d, groups=d["team_name"]).fit(reml=True, method="lbfgs")
+    except Exception:
+        return None
+    s_b, s_e = float(res.cov_re.iloc[0, 0]), float(res.scale)
+    if s_b + s_e == 0:
+        return None
+    fe = float(res.fe_params["Intercept"])
+    try:
+        blups = {t: fe + float(v.iloc[0]) for t, v in res.random_effects.items()}
+    except Exception:                       # singular RE cov => full shrinkage to mean
+        blups = {t: fe for t in d["team_name"].unique()}
+    return {"icc_lme": s_b / (s_b + s_e), "fe_mean": fe, "blups": blups,
+            "n_obs": len(d), "n_teams": d["team_name"].nunique()}
+
+
+@st.cache_data(show_spinner="Fitting partial-pooling models…")
+def partial_pool_all(cdf, cols, key):
+    """All metrics' partial-pool fits, cached on (cdf, cols, key) so changing only the
+    inspected metric in the UI doesn't refit the whole set."""
+    return {c: lme_partial_pool(cdf, c) for c in cols}
+
+
 # ── UI ────────────────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide")
 st.title("Defensive Network Analysis — Team Level")
@@ -1227,10 +1512,10 @@ avg_co, avg_co_team = build_co_defender_data()
 partnerships        = build_partnerships()
 df_corr             = process(edge_dfs[method], thr)
 
-(tab_conc, tab_self, tab_style, tab_codef, tab_zone, tab_ztopo,
+(tab_conc, tab_self, tab_style, tab_codef, tab_zone, tab_ztopo, tab_zcon,
  tab_corr, tab_icc, tab_reg, tab_sens, tab_data) = st.tabs([
     "Concentrated vs Balanced", "Self vs Shared", "Defensive Style", "Co-Defenders", "Zones",
-    "Zone Topology", "Correlation", "Robustness (ICC)", "Regression", "Sensitivity", "Data",
+    "Zone Topology", "Zone Contrasts (ICC)", "Correlation", "Robustness (ICC)", "Regression", "Sensitivity", "Data",
 ])
 
 _QUAD_EXPLAIN = {
@@ -2058,6 +2343,70 @@ with tab_ztopo:
                                 .round({"r": 3, "p": 4}),
                         use_container_width=True, height=360)
 
+            # ── Level robustness: is the zonal topology a stable team trait? ───
+            st.subheader("Per-zone level robustness — ICC across a team's matches")
+            st.caption(
+                "ICC(1,1) of each topology metric's **level** within a zone — teams = "
+                "subjects, their 3–7 matches = replicates. Asks whether a team's zonal "
+                "co-defending *structure* is a repeatable trait or just match-to-match "
+                "noise. Since defending depends heavily on the opponent, most of it is "
+                "noise. Green = more team-stable (ICC>0.5 would be a usable trait). "
+                "`*` = raw p<0.05 · `†` = survives BH-FDR (q<0.05) across **all** cells "
+                "shown. One heatmap per zone.")
+            icc_long = build_zone_topo_icc(topo_df)
+            if icc_long.empty:
+                st.info("Not enough replicated data for level ICC.")
+            else:
+                n_raw = int((icc_long["p"] < 0.05).sum())
+                n_q   = int((icc_long["q"] < 0.05).sum())
+                n_hi  = int((icc_long["ICC"] > 0.5).sum())
+                tp = icc_long.sort_values("ICC", ascending=False).iloc[0]
+                st.markdown(
+                    f"**{n_raw}** / {len(icc_long)} cells sig at raw p<0.05 "
+                    f"(~{0.05 * len(icc_long):.0f} expected by chance) → **{n_q}** survive "
+                    f"BH-FDR · **{n_hi}** reach ICC>0.5 · strongest: "
+                    f"`{TOPO_SHORT.get(tp['topo'], tp['topo'])}` × {METRIC_LABEL[tp['metric']]} "
+                    f"in {ZONE_SHORT[tp['zone']]} (ICC={tp['ICC']:.3f}, p={tp['p']:.3f}"
+                    f"{', q<0.05' if tp['q'] < 0.05 else ''}).")
+                zones_i = [z for z in ZONE_ORDER if z in set(icc_long["zone"])]
+                wlabels = [METRIC_LABEL[m] for m in WEIGHT_COLS]
+                row_labels = [TOPO_SHORT[t] for t in TOPO_METRICS]
+                cols_ui = st.columns(len(zones_i))
+                for i, (col_ui, z) in enumerate(zip(cols_ui, zones_i)):
+                    col_ui.markdown(f"<div style='text-align:center;font-weight:600'>"
+                                    f"{ZONE_LABEL[z]}</div>", unsafe_allow_html=True)
+                    rmat, tmat = [], []
+                    for tl in TOPO_METRICS:
+                        rrow, trow = [], []
+                        for m in WEIGHT_COLS:
+                            sel = icc_long[(icc_long["topo"] == tl) & (icc_long["metric"] == m)
+                                           & (icc_long["zone"] == z)]
+                            if len(sel):
+                                v, p, q = sel["ICC"].iloc[0], sel["p"].iloc[0], sel["q"].iloc[0]
+                                mark = "†" if q < 0.05 else ("*" if p < 0.05 else "")
+                                rrow.append(v); trow.append(f"{v:.2f}{mark}")
+                            else:
+                                rrow.append(np.nan); trow.append("")
+                        rmat.append(rrow); tmat.append(trow)
+                    rmat = pd.DataFrame(rmat, index=row_labels, columns=wlabels)
+                    last = (i == len(zones_i) - 1)
+                    fig = px.imshow(rmat, color_continuous_scale="YlGn", zmin=0, zmax=0.5,
+                                    aspect="auto", labels=dict(color="ICC"))
+                    fig.update_traces(text=tmat, texttemplate="%{text}", textfont_size=11)
+                    fig.update_xaxes(side="top", tickangle=45, tickfont_size=10)
+                    fig.update_yaxes(showticklabels=(i == 0), tickfont_size=10)
+                    fig.update_layout(height=460, margin=dict(l=4, r=4, t=55, b=4),
+                                      coloraxis_showscale=last)
+                    col_ui.plotly_chart(fig, use_container_width=True, key=f"zt_icc_{z}")
+                with st.expander("Full level-ICC table (all metrics · ICC, p, q, n)"):
+                    st.dataframe(
+                        icc_long.assign(topo=icc_long["topo"].map(TOPO_SHORT),
+                                        metric=icc_long["metric"].map(METRIC_LABEL),
+                                        zone=icc_long["zone"].map(ZONE_LABEL))
+                                .sort_values("ICC", ascending=False)
+                                .round({"ICC": 3, "p": 4, "q": 3}),
+                        use_container_width=True, height=360)
+
             # ── Inspect a single metric's distribution across zones ────────────
             with st.expander("Inspect a single metric across zones"):
                 c1, c2 = st.columns(2)
@@ -2098,7 +2447,209 @@ with tab_ztopo:
                             mean_mat.style.background_gradient(cmap="Blues", axis=None).format("{:.3f}"),
                             use_container_width=True)
 
+            # ── Spatial / network-geometry predictors of zone success ──────────
+            if zone_spatial_df is not None and zone_raw is not None:
+                st.subheader("Spatial predictors of zone defensive success")
+                st.caption(
+                    "Pearson r between each **spatial / network-geometry** metric and that "
+                    "zone's **defensive success rate** (n_success/n_actions) — the "
+                    "confound-cleaner target, since the zone already conditions on press "
+                    "height. Each metric maps to a visual feature of the co-defending "
+                    "network drawn on the pitch (row labels name the feature). Red = higher "
+                    "metric ↔ more successful defending, blue = less. `*` p<0.05 · `†` "
+                    "survives BH-FDR (q<0.05). Edge unevenness is shown for every weight "
+                    "metric — each defines a different co-defending edge set. Built from "
+                    "`2026-06-24_zone_spatial_metrics.csv`.")
+                scorr = build_zone_spatial_corr(zone_spatial_df, zone_raw)
+                if scorr.empty:
+                    st.info("Not enough data to correlate spatial predictors with zone success.")
+                else:
+                    n_q = int((scorr["q"] < 0.05).sum())
+                    tp = scorr.loc[scorr["r"].abs().sort_values(ascending=False).index].iloc[0]
+                    st.markdown(
+                        f"**{n_q}** / {len(scorr)} predictor×zone cells survive BH-FDR · "
+                        f"strongest: *{SPATIAL_VIS.get(tp['metric'], tp['metric'])}* in "
+                        f"{ZONE_SHORT[tp['zone']]} (r={tp['r']:+.2f}, q={tp['q']:.3f})")
+                    zones_s = [z for z in ZONE_ORDER if z in set(scorr["zone"])]
+                    disp_rows = [m for m in SPATIAL_VIS if m in set(scorr["metric"])]
+                    rmat, tmat, ylab = [], [], []
+                    for mname in disp_rows:
+                        rrow, trow = [], []
+                        for z in zones_s:
+                            sel = scorr[(scorr["metric"] == mname) & (scorr["zone"] == z)]
+                            if len(sel):
+                                r, p, q = sel["r"].iloc[0], sel["p"].iloc[0], sel["q"].iloc[0]
+                                mark = "†" if q < 0.05 else ("*" if p < 0.05 else "")
+                                rrow.append(r); trow.append(f"{r:+.2f}{mark}")
+                            else:
+                                rrow.append(np.nan); trow.append("")
+                        rmat.append(rrow); tmat.append(trow); ylab.append(SPATIAL_VIS[mname])
+                    rmat = pd.DataFrame(rmat, index=ylab, columns=[ZONE_SHORT[z] for z in zones_s])
+                    fig_s = px.imshow(rmat, color_continuous_scale="RdBu_r", zmin=-0.6, zmax=0.6,
+                                      aspect="auto", labels=dict(color="r"))
+                    fig_s.update_traces(text=tmat, texttemplate="%{text}", textfont_size=11)
+                    fig_s.update_xaxes(side="top", tickfont_size=11)
+                    fig_s.update_yaxes(tickfont_size=10)
+                    fig_s.update_layout(height=26 * len(disp_rows) + 90,
+                                        margin=dict(l=4, r=4, t=40, b=4))
+                    st.plotly_chart(fig_s, use_container_width=True, key="zspatial_heat")
+                    with st.expander("Full spatial-predictor table (all metrics · r, p, q, n)"):
+                        st.dataframe(
+                            scorr.assign(visual=scorr["metric"].map(SPATIAL_VIS),
+                                         zone=scorr["zone"].map(ZONE_LABEL))
+                                 .sort_values(["zone", "p"])
+                                 .round({"r": 3, "p": 4, "q": 3}),
+                            use_container_width=True, height=360)
+
         _render_zone_topology(zone_topo_dfs[method])
+
+with tab_zcon:
+    st.caption(
+        "Within-team **zone contrasts**: how a team's co-defending structure *changes* "
+        "across the pitch (own third → midfield → high press) rather than its level in "
+        "any one zone. Each match-team gives one difference per metric, so squad size and "
+        "overall style **cancel out**. We then **partial-pool** across each team's matches "
+        "with a random-intercept mixed model — match-to-match formation/personnel changes "
+        "become within-team noise that gets shrunk away, so no node correspondence across "
+        "matches is needed — and ask whether the *gradient* is a stable team fingerprint. "
+        "**Δ** = simple zone difference; **slope** = OLS over press depth "
+        "(own −1 · mid 0 · high +1). Built from `2026-06-19_zone_topology(<method>).csv`."
+    )
+    if zone_topo_dfs is None:
+        st.warning(
+            "Zone topology files not found. Run `scripts/2026-06-19_zone_topology.py` to "
+            "generate `2026-06-19_zone_topology(<method>).csv` (one per edge-weight method)."
+        )
+    else:
+        @st.fragment
+        def _render_zone_contrasts(topo_df):
+            # faced-pass table (thirds) — used for both gating and the optional correction
+            znp = None
+            if zone_raw is not None:
+                _zr = zone_raw[zone_raw["scheme"] == "thirds"]
+                znp = _zr.pivot_table(index="match_team_id", columns="zone",
+                                      values="n_passes", aggfunc="sum")
+
+            c1, c2, c3 = st.columns([3, 1.5, 1.6])
+            contrast_opts = list(ZONE_DELTAS) + ["slope"]
+            _fmt = lambda k: "Slope (own→high press)" if k == "slope" else k
+            contrast = c1.radio("Contrast", contrast_opts, format_func=_fmt,
+                                horizontal=True, key="zcon_contrast")
+            zcon_correct = c2.checkbox(
+                "Correct for zone passes against", value=False, key="zcon_correct",
+                disabled=(zone_raw is None),
+                help="Residualise each zone's metric on that zone's own faced-pass count "
+                     "(n_passes) before differencing, so the contrast reflects defensive "
+                     "structure rather than how much the ball was in that zone.")
+            min_pass = c3.slider(
+                "Min zone passes faced", 0, 100, 0, step=5, key="zcon_minpass",
+                disabled=(zone_raw is None),
+                help="Exclude a team's zone observation when that zone faced fewer than "
+                     "this many passes, so degenerate near-empty zone graphs (where "
+                     "clustering/centralization are ill-defined) don't enter the contrasts.")
+
+            topo_g = _gate_sparse_zones(topo_df, znp, min_pass)
+            cdf = build_zone_contrasts(topo_g, contrast,
+                                       correct=zcon_correct,
+                                       zone_npass=(znp if zcon_correct else None))
+            metric_cols = [c for c in cdf.columns if c not in ("match_team_id", "team_name")]
+            lme_all = partial_pool_all(cdf, metric_cols,
+                                       key=(method, contrast, zcon_correct, min_pass))
+
+            # ── Ranked summary: which contrasts are stable team traits? ────────
+            st.subheader("Stable contrasts — ranked by partial-pooled ICC")
+            st.caption(
+                "**ICC_lme** = partial-pooling (REML mixed-model) reliability of the "
+                "contrast across each team's 3–7 matches — the headline fingerprint test, "
+                "robust to the unbalanced design. **ICC** = the simpler ANOVA ICC(1,1) for "
+                "reference. High ICC + low q ⇒ a repeatable team trait, not match noise. "
+                "**fe_mean** = league-average contrast (is there a *systematic* gradient "
+                "at all?). **p** = raw F-test · **q** = Benjamini-Hochberg FDR across all "
+                f"{len(metric_cols)} metrics in this view · **sig** from **q**. "
+                "🟢 stable (ICC>0.5). `n_obs` is small (a contrast needs the metric in "
+                "*both* zones; derived metrics drop out on sparse high-press graphs), so "
+                "read q as indicative."
+                + ("  \n*Correction on:* each zone residualised on its faced-pass count "
+                   "before differencing." if zcon_correct else "")
+                + (f"  \n*Gating on:* zone observations with <{min_pass} faced passes "
+                   "excluded." if min_pass > 0 else ""))
+            summary = pd.DataFrame(compute_icc_rows(cdf, metric_cols))
+            if summary.empty:
+                st.info("Not enough replicated data to compute contrast ICCs for this selection.")
+            else:
+                lme_rows = [{"metric": c, "ICC_lme": round(r["icc_lme"], 3),
+                             "fe_mean": round(r["fe_mean"], 3)}
+                            for c, r in lme_all.items() if r is not None]
+                if lme_rows:
+                    summary = summary.merge(pd.DataFrame(lme_rows), on="metric", how="left")
+                else:
+                    summary["ICC_lme"] = np.nan
+                    summary["fe_mean"] = np.nan
+                _sort = "ICC_lme" if summary["ICC_lme"].notna().any() else "ICC"
+                summary = summary.sort_values(_sort, ascending=False).reset_index(drop=True)
+                n_stable = int((summary["ICC_lme"] > 0.5).sum())
+                n_raw    = int((summary["p"] < 0.05).sum())
+                n_sig    = int((summary["q"] < 0.05).sum())
+                top = summary.iloc[0]
+                st.markdown(
+                    f"**{n_stable}** / {len(summary)} contrasts stable (ICC_lme>0.5) · "
+                    f"**{n_raw}** sig at raw p<0.05 → **{n_sig}** survive BH-FDR (q<0.05) · "
+                    f"strongest: `{top['metric']}` — ICC_lme={top['ICC_lme']} · ICC={top['ICC']} {top['sig']}")
+                _order = [c for c in ["metric", "ICC_lme", "ICC", "fe_mean", "p", "q", "sig",
+                                      "n_obs", "n_teams", "interpretation"] if c in summary.columns]
+                st.dataframe(
+                    summary[_order].style.background_gradient(
+                        cmap="RdYlGn",
+                        subset=[c for c in ["ICC_lme", "ICC"] if c in _order], vmin=0, vmax=1),
+                    use_container_width=True, height=380)
+
+            # ── Per-team fingerprint (partial-pooled / shrunk) ─────────────────
+            st.subheader("Per-team fingerprint (partial-pooled)")
+            if not _HAS_SM:
+                st.info("statsmodels not installed — partial-pooled per-team estimates unavailable.")
+            else:
+                fmetric = st.selectbox("Metric (weight × topology column)", metric_cols,
+                                       key="zcon_fmetric")
+                r = lme_all.get(fmetric)
+                if r is None:
+                    st.info("Not enough replicated data to partial-pool this metric.")
+                else:
+                    blups = pd.Series(r["blups"], name="contrast").sort_values()
+                    bdf = blups.reset_index().rename(columns={"index": "team_name"})
+                    # discrete above/below-mean colour (a continuous scale centred on the
+                    # mean paints near-mean bars white → invisible when ICC_lme≈0 collapses
+                    # every team onto the mean).
+                    bdf["vs_mean"] = np.where(bdf["contrast"] >= r["fe_mean"],
+                                              "above mean", "below mean")
+                    fig_bl = px.bar(
+                        bdf, x="contrast", y="team_name", orientation="h",
+                        color="vs_mean",
+                        color_discrete_map={"above mean": "#C62828", "below mean": "#1565C0"},
+                        category_orders={"team_name": bdf["team_name"].tolist()},
+                        labels={"contrast": f"{_fmt(contrast)}  ({fmetric})",
+                                "team_name": "", "vs_mean": ""},
+                        title=f"Shrunk per-team contrast — {fmetric}  "
+                              f"(ICC_lme={r['icc_lme']:.3f}, n={r['n_obs']} obs / {r['n_teams']} teams)")
+                    fig_bl.add_vline(x=r["fe_mean"], line_dash="dash", line_color="#555")
+                    fig_bl.update_layout(height=max(360, 20 * len(bdf) + 120),
+                                         legend_title_text="")
+                    st.plotly_chart(fig_bl, use_container_width=True, key="zcon_blup")
+                    st.caption(
+                        "Bars = **partial-pooled** (shrunk) contrast per team; teams with "
+                        "few/noisy matches are pulled toward the dashed league mean "
+                        f"(fe_mean={r['fe_mean']:.3f}). When ICC_lme≈0 the model finds no "
+                        "between-team signal and every bar collapses to the mean — i.e. no "
+                        "fingerprint in this metric. Red = above mean, blue = below.")
+
+            # ── Per topology-metric ICC tables (grouped like the Robustness tab) ──
+            with st.expander("ANOVA ICC tables grouped by topology metric"):
+                for name, cols in GROUPS.items():
+                    st.subheader(name)
+                    if name in GROUP_DESC:
+                        st.caption(GROUP_DESC[name])
+                    icc_tbl(cdf, cols)
+
+        _render_zone_contrasts(zone_topo_dfs[method])
 
 with tab_corr:
     @st.fragment
@@ -2119,7 +2670,9 @@ with tab_icc:
     def _frag_tab_icc():
         st.markdown(
             "**ICC(1,1)**: >0.75 stable trait · 0.5–0.75 moderate · <0.5 match-driven  \n"
-            "**sig** (F-test H₀: ICC = 0): \\* p<0.05 · \\*\\* p<0.01 · \\*\\*\\* p<0.001"
+            "**p** = raw F-test (H₀: ICC = 0) · **q** = Benjamini-Hochberg FDR-adjusted "
+            "across the 6 weight metrics in each table  \n"
+            "**sig** (based on **q**): \\* q<0.05 · \\*\\* q<0.01 · \\*\\*\\* q<0.001"
         )
         stage = st.selectbox("Competition stage",
                              ["All"] + sorted(df_corr["competition_stage"].dropna().unique().tolist()))
