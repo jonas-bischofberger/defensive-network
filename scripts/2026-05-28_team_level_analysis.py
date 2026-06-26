@@ -10,10 +10,14 @@ Tabs:
   6. Zone Topology
   7. Zone Contrasts (ICC) — within-team zone differences/slopes, partial-pooled
      (mixed-model) ICC + shrunk per-team fingerprints
-  8. Correlation
-  9. Robustness (ICC)
- 10. Regression
- 11. Data
+  8. Pressing Style — role-projected co-defending pattern as a team trait
+     (permutation-tested); the one geometry-free network signal, strongest in
+     the high press
+  9. Correlation
+ 10. Robustness (ICC)
+ 11. Regression
+ 12. Sensitivity
+ 13. Data
 """
 import warnings
 from itertools import combinations
@@ -89,6 +93,18 @@ try:
 except FileNotFoundError:
     zone_spatial_df = None
 
+# Pressing-style fingerprint inputs (zone co-defending edges + per-zone avg
+# positions). Powers the role-projected co-defending pattern — the one network
+# signal that is geometry-free AND a (faint) team trait, strongest in the high
+# press (validated by team-label permutation). Optional.
+try:
+    zone_edge_avg = pd.read_csv("scripts/2026-06-18_zone_network_edge(average).csv")
+    zone_pos_df   = pd.read_csv("scripts/2026-06-18_zone_network_positions.csv")
+    zone_edge_avg["mtid"] = (zone_edge_avg["match_id"].astype(str) + "_"
+                             + zone_edge_avg["defending_team"].astype(str))
+except FileNotFoundError:
+    zone_edge_avg = zone_pos_df = None
+
 match_mins   = nodes.groupby("match_team_id")["mins_played"].max().rename("match_mins")
 squad_size   = nodes.groupby("match_team_id")["defender_id"].count().rename("n_players")
 team_names   = nodes.groupby("match_team_id")["team_name"].first()
@@ -111,6 +127,136 @@ OUTCOME_COLS      = ["goals_against", "shots_against", "xg_against"]
 CONTRIBUTION_COLS = ["raw_contribution", "valued_contribution"]
 FAULT_COLS        = ["raw_fault", "valued_fault"]
 INV_COLS          = ["raw_involvement", "valued_involvement"]
+
+# ── Pressing-style fingerprint (role-projected co-defending pattern) ───────────
+PRESS_ZONES = ["own", "mid", "high_press"]
+# defending_team id -> team name (fingerprint row labels)
+_TEAM_BY_ID = (nodes.drop_duplicates("defending_team")
+               .set_index("defending_team")["team_name"].to_dict())
+
+
+def _build_press_role_map(pos_df):
+    """Assign each player a pitch role per (match, team, zone): line B/M/F ×
+    channel L/C/R, by within-block tertiles of avg x and y. Position-*relative*,
+    so the pattern is comparable across matches with different personnel and
+    press heights."""
+    p = pos_df.dropna(subset=["overall_avg_x", "overall_avg_y"]).copy()
+    gk = ["match_id", "defending_team", "zone"]
+    p = p[p.groupby(gk)["defender_name"].transform("count") >= 4].copy()
+
+    def _tert(s):
+        try:
+            return pd.qcut(s.rank(method="first"), 3, labels=False).astype(int)
+        except Exception:                       # <3 distinct -> all middle
+            return pd.Series(1, index=s.index)
+
+    g = p.groupby(gk)
+    p["_xl"] = g["overall_avg_x"].transform(_tert)
+    p["_yc"] = g["overall_avg_y"].transform(_tert)
+    p["role"] = (p["_xl"].map({0: "B", 1: "M", 2: "F"})
+                 + p["_yc"].map({0: "L", 1: "C", 2: "R"}))
+    return p.set_index(gk + ["defender_name"])["role"].to_dict()
+
+
+PRESS_ROLE_MAP = _build_press_role_map(zone_pos_df) if zone_pos_df is not None else None
+
+
+@st.cache_data(show_spinner="Building pressing-style patterns…")
+def pressing_role_patterns(weight, zone):
+    """Per match-team: row-normalised role-pair co-defending weight vector (a
+    *pattern*, not a volume). Returns (matrix, mtids, team_names, role_pairs)."""
+    ed = zone_edge_avg[(zone_edge_avg[weight] > 0)
+                       & (zone_edge_avg["zone"] == zone)].copy()
+    rm = PRESS_ROLE_MAP
+    r1 = [rm.get((r.match_id, r.defending_team, zone, r.player_1)) for r in ed.itertuples()]
+    r2 = [rm.get((r.match_id, r.defending_team, zone, r.player_2)) for r in ed.itertuples()]
+    ed["_rp"] = ["-".join(sorted([a, b])) if (a and b) else None
+                 for a, b in zip(r1, r2)]
+    ed = ed.dropna(subset=["_rp"])
+    piv = ed.groupby(["mtid", "_rp"])[weight].sum().unstack(fill_value=0.0)
+    piv = piv.div(piv.sum(axis=1), axis=0)              # row-normalise -> pattern
+    teams = [_TEAM_BY_ID.get(int(m.split("_")[1]), m.split("_")[1]) for m in piv.index]
+    return piv.values.astype(float), list(piv.index), teams, list(piv.columns)
+
+
+def _cos_sim_matrix(V):
+    n = np.linalg.norm(V, axis=1, keepdims=True)
+    n[n == 0] = 1.0
+    U = V / n
+    return U @ U.T
+
+
+def _within_between(C, teams):
+    wi, bw = [], []
+    for i, j in combinations(range(len(teams)), 2):
+        (wi if teams[i] == teams[j] else bw).append(C[i, j])
+    return float(np.mean(wi)), float(np.mean(bw)), len(wi), len(bw)
+
+
+def _press_icc11(vals, teams):
+    """ICC(1,1): team = subject, match = replicate."""
+    df = pd.DataFrame({"v": vals, "t": teams})
+    g = df.groupby("t")["v"]; k = g.count(); nt = df["t"].nunique()
+    if nt < 2 or len(df) == nt:
+        return np.nan
+    grand = df["v"].mean()
+    msb = ((g.mean() - grand) ** 2 * k).sum() / (nt - 1)
+    msw = ((df["v"] - df["t"].map(g.mean())) ** 2).sum() / (len(df) - nt)
+    den = msb + (k.mean() - 1) * msw
+    return float((msb - msw) / den) if den else np.nan
+
+
+def _perm_delta(C, teams, nperm, rng):
+    """Permutation p-value for within−between cosine gap."""
+    wi, bw, _, _ = _within_between(C, teams)
+    obs = wi - bw
+    ge = 0
+    for _ in range(nperm):
+        p = rng.permutation(teams)
+        w2, b2, _, _ = _within_between(C, p)
+        if (w2 - b2) >= obs:
+            ge += 1
+    return obs, wi, bw, (ge + 1) / (nperm + 1)
+
+
+@st.cache_data(show_spinner="Permuting team labels…")
+def pressing_style_stats(weight, zone, nperm=2000, seed=20260625):
+    """Within- vs between-team cosine similarity of the role-pair pattern, with a
+    team-label permutation null (correct for non-independent match-team pairs).
+    Also runs a formation-confound check: binary presence/absence vs continuous
+    weight, and a common-pairs-only (>=80% presence) re-test."""
+    V, mtids, teams, cols = pressing_role_patterns(weight, zone)
+    teams = np.array(teams)
+    rng = np.random.default_rng(seed)
+
+    C = _cos_sim_matrix(V)
+    obs, wi, bw, perm_p = _perm_delta(C, teams, nperm, rng)
+
+    # --- formation-confound checks ---
+    V_bin = (V > 0).astype(float)
+    C_bin = _cos_sim_matrix(V_bin)
+    obs_bin, _, _, p_bin = _perm_delta(C_bin, teams, nperm, rng)
+
+    presence = (V > 0).sum(axis=0)
+    common_mask = presence >= len(V) * 0.8
+    n_common = int(common_mask.sum())
+    obs_com, p_com = np.nan, np.nan
+    if n_common >= 3:
+        V_com = V[:, common_mask]
+        V_com = V_com / V_com.sum(axis=1, keepdims=True)
+        C_com = _cos_sim_matrix(V_com)
+        obs_com, _, _, p_com = _perm_delta(C_com, teams, nperm, rng)
+
+    icc = (pd.DataFrame([(c, _press_icc11(V[:, i], teams)) for i, c in enumerate(cols)],
+                        columns=["role_pair", "icc"])
+           .dropna().sort_values("icc", ascending=False).reset_index(drop=True))
+    fingerprint = pd.DataFrame(V, columns=cols, index=teams).groupby(level=0).mean()
+    return {"within": wi, "between": bw, "delta": obs, "perm_p": perm_p,
+            "n_mt": len(teams), "n_teams": int(pd.Series(teams).nunique()),
+            "icc": icc, "fingerprint": fingerprint,
+            "bin_delta": obs_bin, "bin_p": p_bin,
+            "com_delta": obs_com, "com_p": p_com, "n_common": n_common,
+            "n_total_pairs": len(cols)}
 
 GROUPS = {
     "Total Network Strength":              WEIGHT_COLS,
@@ -1512,10 +1658,11 @@ avg_co, avg_co_team = build_co_defender_data()
 partnerships        = build_partnerships()
 df_corr             = process(edge_dfs[method], thr)
 
-(tab_conc, tab_self, tab_style, tab_codef, tab_zone, tab_ztopo, tab_zcon,
+(tab_conc, tab_self, tab_style, tab_codef, tab_zone, tab_ztopo, tab_zcon, tab_pstyle,
  tab_corr, tab_icc, tab_reg, tab_sens, tab_data) = st.tabs([
     "Concentrated vs Balanced", "Self vs Shared", "Defensive Style", "Co-Defenders", "Zones",
-    "Zone Topology", "Zone Contrasts (ICC)", "Correlation", "Robustness (ICC)", "Regression", "Sensitivity", "Data",
+    "Zone Topology", "Zone Contrasts (ICC)", "Pressing Style",
+    "Correlation", "Robustness (ICC)", "Regression", "Sensitivity", "Data",
 ])
 
 _QUAD_EXPLAIN = {
@@ -2865,6 +3012,108 @@ with tab_sens:
             sens.to_csv(index=False).encode(),
             "edge_weight_sensitivity.csv", "text/csv")
     _frag_tab_sens()
+
+
+with tab_pstyle:
+    @st.fragment
+    def _frag_tab_pstyle():
+        st.subheader("Pressing-style fingerprint — role-pair co-defending pattern")
+        if zone_edge_avg is None or PRESS_ROLE_MAP is None:
+            st.info("Needs `scripts/2026-06-18_zone_network_edge(average).csv` and "
+                    "`scripts/2026-06-18_zone_network_positions.csv`.")
+            return
+        st.markdown(
+            "Projects the co-defending network onto **pitch roles** (line "
+            "B/M/F × channel L/C/R, by within-block tertiles) instead of player "
+            "identities, so a team's *pattern* of who-presses-with-whom is "
+            "comparable across matches with different line-ups. Each match-team's "
+            "role-pair weight vector is row-normalised — a **pattern**, not a "
+            "volume.\n\n"
+            "**Question:** is this pattern a *team trait* — are a team's matches "
+            "more similar to **each other** than to other teams? Measured by cosine "
+            "similarity, tested against a **team-label permutation** null (the "
+            "correct test for non-independent match-team pairs). This is the one "
+            "network signal that is **geometry-free** *and* survives as a "
+            "faint-but-real team trait — strongest in the **high press**. It is a "
+            "**style descriptor** (scouting), not a predictor of defensive success.")
+
+        c1, c2, c3 = st.columns(3)
+        weight = c1.selectbox("Edge weight", WEIGHT_COLS,
+                              index=WEIGHT_COLS.index("valued_involvement"))
+        zone = c2.selectbox("Zone", PRESS_ZONES,
+                            index=PRESS_ZONES.index("high_press"))
+        nperm = c3.select_slider("Permutations", [500, 1000, 2000, 5000], value=2000)
+
+        s = pressing_style_stats(weight, zone, nperm)
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("within-team cos", f"{s['within']:.3f}")
+        m2.metric("between-team cos", f"{s['between']:.3f}")
+        m3.metric("Δ (within − between)", f"{s['delta']:+.3f}")
+        sig = s["perm_p"] < 0.05
+        m4.metric("permutation p", f"{s['perm_p']:.4f}",
+                  delta="team trait" if sig else "n.s.",
+                  delta_color="normal" if sig else "off")
+        st.caption(
+            f"{s['n_mt']} match-teams across {s['n_teams']} teams. A team's matches "
+            f"are {'**significantly** ' if sig else ''}more self-similar than under "
+            "random team labels. Read the effect as **small by design** (Δcos≈0.03 "
+            "in the high press): a *detectable* identity, not a strong fingerprint — "
+            "it wants club-season data to aggregate. Own-third / midfield patterns "
+            "are reactive (opponent-driven) and typically **not** significant.")
+
+        with st.expander("Formation-confound check"):
+            st.markdown(
+                "Not every role pair exists in every match-team (e.g. BC-BC needs ≥2 "
+                "central back-line players in the zone). Is the team-trait signal "
+                "driven by **which pairs exist** (= formation structure) or by **how "
+                "weight is distributed** across pairs (= pressing style)?")
+            f1, f2, f3 = st.columns(3)
+            sig_bin = s["bin_p"] < 0.05
+            f1.metric("binary (presence/absence)", f"Δ={s['bin_delta']:+.4f}",
+                      delta=f"p={s['bin_p']:.3f} — {'formation signal' if sig_bin else 'null'}",
+                      delta_color="normal" if sig_bin else "off")
+            f2.metric("full pattern (original)", f"Δ={s['delta']:+.4f}",
+                      delta=f"p={s['perm_p']:.4f}",
+                      delta_color="normal" if sig else "off")
+            sig_com = s["com_p"] < 0.05 if pd.notna(s["com_p"]) else False
+            f3.metric(f"common pairs only ({s['n_common']}/{s['n_total_pairs']})",
+                      f"Δ={s['com_delta']:+.4f}" if pd.notna(s["com_delta"]) else "n/a",
+                      delta=f"p={s['com_p']:.4f} — ≥80% presence" if pd.notna(s["com_p"]) else "too few pairs",
+                      delta_color="normal" if sig_com else "off")
+            st.caption(
+                "**Binary** tests whether which role pairs *exist* is team-consistent "
+                "(formation artifact). **Common pairs only** restricts to role pairs "
+                "present in ≥80% of match-teams and re-normalises — removes the "
+                "presence/absence layer entirely. If the signal survives in common "
+                "pairs but binary is null, it is **pressing style, not formation**.")
+
+        st.markdown("**Which role partnerships are most team-distinctive?** "
+                    "ICC across a team's matches — higher = more of a signature.")
+        icc = s["icc"].head(12)
+        if not icc.empty:
+            fig = px.bar(icc, x="icc", y="role_pair", orientation="h",
+                         labels={"icc": "ICC (team trait)", "role_pair": "role pair"})
+            fig.update_layout(yaxis=dict(autorange="reversed"), height=380,
+                              margin=dict(l=0, r=0, t=10, b=0))
+            st.plotly_chart(fig, use_container_width=True)
+        st.caption("Roles: line **B**ack/**M**id/**F**ront × channel **L**eft/"
+                   "**C**entre/**R**ight, e.g. **BC-BC** = two central back-line "
+                   "pressers; **FR-MR** = right-side forward + midfielder pressing "
+                   "together.")
+
+        st.markdown("**Team fingerprints** — mean role-pair share per team "
+                    "(rows = teams, columns = role pairs, ordered by prevalence).")
+        fp = s["fingerprint"]
+        fp = fp[fp.mean().sort_values(ascending=False).index]
+        fig2 = px.imshow(fp, aspect="auto", color_continuous_scale="Blues",
+                         labels=dict(color="share", x="role pair", y="team"))
+        fig2.update_layout(height=max(360, 18 * len(fp)),
+                           margin=dict(l=0, r=0, t=10, b=0))
+        st.plotly_chart(fig2, use_container_width=True)
+        st.download_button("Download fingerprints (CSV)", fp.to_csv().encode(),
+                           f"pressing_fingerprint_{weight}_{zone}.csv", "text/csv")
+    _frag_tab_pstyle()
 
 
 with tab_data:
