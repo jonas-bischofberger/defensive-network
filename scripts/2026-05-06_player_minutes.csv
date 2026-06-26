@@ -1,0 +1,1987 @@
+match_id,defending_team,team_name,home_away,defender_id,defender_name,mins_played
+3812,366,Netherlands,away,11094,Cody Gakpo,93
+3812,366,Netherlands,away,11241,Andries Noppert,100
+3812,366,Netherlands,away,1522,Frenkie de Jong,100
+3812,366,Netherlands,away,284,Nathan Aké,100
+3812,366,Netherlands,away,3315,Vincent Janssen,61
+3812,366,Netherlands,away,37,Virgil van Dijk,100
+3812,366,Netherlands,away,8026,Daley Blind,100
+3812,366,Netherlands,away,8033,Davy Klaassen,22
+3812,366,Netherlands,away,8034,Steven Berghuis,78
+3812,366,Netherlands,away,8045,Matthijs De Ligt,100
+3812,366,Netherlands,away,8134,Denzel Dumfries,100
+3812,366,Netherlands,away,8326,Teun Koopmeiners,22
+3812,366,Netherlands,away,8327,Marten De Roon,7
+3812,366,Netherlands,away,8342,Memphis Depay,39
+3812,366,Netherlands,away,84,Steven Bergwijn,78
+3812,372,Senegal,home,13055,Nicolas Jackson,27
+3812,372,Senegal,home,13228,Youssouf Sabaly,100
+3812,372,Senegal,home,13901,Pape Abou Cissé,100
+3812,372,Senegal,home,2059,Edouard Mendy,100
+3812,372,Senegal,home,214,Nampalys Mendy,100
+3812,372,Senegal,home,3848,Abdou Diallo,61
+3812,372,Senegal,home,3858,Idrissa Gueye,100
+3812,372,Senegal,home,3895,Ismail Jakobs,39
+3812,372,Senegal,home,3903,Krépin Diatta,73
+3812,372,Senegal,home,3978,Pape Gueye,27
+3812,372,Senegal,home,3996,Bamba Dieng,32
+3812,372,Senegal,home,428,Ismaïla Sarr,100
+3812,372,Senegal,home,474,Cheikhou Kouyaté,73
+3812,372,Senegal,home,7988,Boulaye Dia,68
+3812,372,Senegal,home,9993,Kalidou Koulibaly,100
+3813,50,England,home,1,Harry Kane,75
+3813,50,England,home,10,John Stones,103
+3813,50,England,home,105,Mason Mount,70
+3813,50,England,home,118,Harry Maguire,70
+3813,50,England,home,123,Luke Shaw,103
+3813,50,England,home,136,Marcus Rashford,33
+3813,50,England,home,1377,Kieran Trippier,103
+3813,50,England,home,163,Bukayo Saka,70
+3813,50,England,home,169,Jordan Pickford,103
+3813,50,England,home,21,Phil Foden,33
+3813,50,England,home,25,Raheem Sterling,70
+3813,50,England,home,265,Declan Rice,103
+3813,50,England,home,311,Callum Wilson,28
+3813,50,England,home,371,Jack Grealish,33
+3813,50,England,home,4677,Jude Bellingham,103
+3813,50,England,home,74,Eric Dier,33
+3813,373,Iran,away,12222,Majid Hosseini,103
+3813,373,Iran,away,12235,Ali Karimi,45
+3813,373,Iran,away,13968,Alireza Beiranvand,19
+3813,373,Iran,away,13969,Hossein Hosseini,84
+3813,373,Iran,away,13970,Roozbeh Cheshmi,45
+3813,373,Iran,away,13971,Ehsan Hajsafi,103
+3813,373,Iran,away,13973,Hossein Kanaani,58
+3813,373,Iran,away,13975,Milad Mohammadi,62
+3813,373,Iran,away,13976,Sadegh Moharrami,103
+3813,373,Iran,away,13977,Morteza Pouraliganji,103
+3813,373,Iran,away,13980,Saeid Ezatolahi,58
+3813,373,Iran,away,13981,Ali Gholizadeh,58
+3813,373,Iran,away,13982,Ahmad Nourollahi,76
+3813,373,Iran,away,13983,Mehdi Torabi,41
+3813,373,Iran,away,457,Alireza Jahanbakhsh,45
+3813,373,Iran,away,7441,Sardar Azmoun,27
+3813,373,Iran,away,8561,Mehdi Taremi,103
+3814,360,Qatar,home,13941,Saad Al-Sheeb,95
+3814,360,Qatar,home,13944,Abdelkarim Hassan,95
+3814,360,Qatar,home,13945,Boualem Khoukhi,95
+3814,360,Qatar,home,13946,Pedro Miguel,95
+3814,360,Qatar,home,13948,Bassam Al-Rawi,95
+3814,360,Qatar,home,13951,Homam Ahmed,95
+3814,360,Qatar,home,13953,Karim Boudiaf,95
+3814,360,Qatar,home,13954,Abdulaziz Hatem,95
+3814,360,Qatar,home,13958,Mohammed Waad,24
+3814,360,Qatar,home,13960,Hasan Al-Haydos,71
+3814,360,Qatar,home,13961,Akram Afif,95
+3814,360,Qatar,home,13962,Almoez Ali,71
+3814,360,Qatar,home,13963,Mohammed Muntari,24
+3814,381,Ecuador,away,1034,Jhegson Méndez,95
+3814,381,Ecuador,away,11960,Enner Valencia,75
+3814,381,Ecuador,away,1287,José Cifuentes,20
+3814,381,Ecuador,away,13049,Gonzalo Plata,95
+3814,381,Ecuador,away,13935,Hernan Galindez,95
+3814,381,Ecuador,away,13937,Angelo Preciado,95
+3814,381,Ecuador,away,13940,Kevin Rodriguez,6
+3814,381,Ecuador,away,1406,Pervis Estupinan,95
+3814,381,Ecuador,away,2134,Moises Caicedo,89
+3814,381,Ecuador,away,3460,Romario Ibarra,67
+3814,381,Ecuador,away,3519,Michael Estrada,89
+3814,381,Ecuador,away,3734,Félix Torres,95
+3814,381,Ecuador,away,5195,Piero Hincapie,95
+3814,381,Ecuador,away,6596,Jeremy Sarmiento,28
+3814,381,Ecuador,away,7571,Alan Franco,6
+3815,51,United States,home,1067,Brenden Aaronson,35
+3815,51,United States,home,107,Christian Pulisic,100
+3815,51,United States,home,1184,Jordan Morris,13
+3815,51,United States,home,12183,Haji Wright,27
+3815,51,United States,home,13121,Yunus Musah,74
+3815,51,United States,home,1334,Weston McKennie,65
+3815,51,United States,home,1336,Timothy Weah,87
+3815,51,United States,home,1339,Tyler Adams,100
+3815,51,United States,home,1971,Tim Ream,100
+3815,51,United States,home,1973,Antonee Robinson,100
+3815,51,United States,home,328,DeAndre Yedlin,26
+3815,51,United States,home,5135,Josh Sargent,73
+3815,51,United States,home,687,Kellyn Acosta,26
+3815,51,United States,home,8343,Sergiño Dest,74
+3815,51,United States,home,916,Walker Zimmerman,100
+3815,51,United States,home,940,Matt Turner,100
+3815,384,Wales,away,10039,Joe Morrell,6
+3815,384,Wales,away,137,Daniel James,45
+3815,384,Wales,away,1698,Gareth Bale,100
+3815,384,Wales,away,1931,Ethan Ampadu,94
+3815,384,Wales,away,2083,Joe Rodon,100
+3815,384,Wales,away,286,Chris Mepham,100
+3815,384,Wales,away,308,Harry Wilson,92
+3815,384,Wales,away,462,Wayne Hennessey,100
+3815,384,Wales,away,589,Neco Williams,78
+3815,384,Wales,away,6018,Connor Roberts,100
+3815,384,Wales,away,7008,Brennan Johnson,22
+3815,384,Wales,away,71,Ben Davies,100
+3815,384,Wales,away,7175,Sorba Thomas,8
+3815,384,Wales,away,7966,Kieffer Moore,55
+3815,384,Wales,away,8062,Aaron Ramsey,100
+3816,364,Argentina,home,10715,Julian Alvarez,45
+3816,364,Argentina,home,11,Nicolás Otamendi,103
+3816,364,Argentina,home,11856,Enzo Fernandez,45
+3816,364,Argentina,home,13222,Nahuel Molina,103
+3816,364,Argentina,home,144,Emiliano Martínez,103
+3816,364,Argentina,home,1531,Lionel Messi,103
+3816,364,Argentina,home,3856,Leandro Paredes,58
+3816,364,Argentina,home,3868,Ángel Di María,103
+3816,364,Argentina,home,5116,Cristian Romero,58
+3816,364,Argentina,home,6895,Rodrigo de Paul,103
+3816,364,Argentina,home,8023,Lisandro Martinez,45
+3816,364,Argentina,home,8025,Nicolas Tagliafico,70
+3816,364,Argentina,home,8138,Lautaro Martinez,103
+3816,364,Argentina,home,8420,Papu Gómez,58
+3816,364,Argentina,home,9178,Marcos Acuña,33
+3816,382,Saudi Arabia,away,13987,Mohammed Al-Owais,103
+3816,382,Saudi Arabia,away,13990,Yasser Al-Shahrani,98
+3816,382,Saudi Arabia,away,13991,Mohammed Al-Burayk,5
+3816,382,Saudi Arabia,away,13992,Ali Al-Bulayhi,103
+3816,382,Saudi Arabia,away,13993,Sultan Al-Ghannam,26
+3816,382,Saudi Arabia,away,13994,Saud Abdulhamid,103
+3816,382,Saudi Arabia,away,13995,Abdulelah Al-Amri,16
+3816,382,Saudi Arabia,away,13996,Hassan Tambakti,103
+3816,382,Saudi Arabia,away,13998,Salem Al-Dawsari,103
+3816,382,Saudi Arabia,away,13999,Salman Al-Faraj,47
+3816,382,Saudi Arabia,away,14000,Nawaf Al-Abed,40
+3816,382,Saudi Arabia,away,14003,Mohamed Kanno,103
+3816,382,Saudi Arabia,away,14004,Abdulelah Al-Malki,103
+3816,382,Saudi Arabia,away,14010,Firas Al-Buraikan,88
+3816,382,Saudi Arabia,away,14011,Saleh Al-Shehri,77
+3816,382,Saudi Arabia,away,14012,Haitham Asiri,15
+3817,367,Denmark,home,12022,Andreas Cornelius,33
+3817,367,Denmark,home,12779,Mikkel Damsgaard,52
+3817,367,Denmark,home,200,Kasper Schmeichel,97
+3817,367,Denmark,home,2073,Joachim Andersen,97
+3817,367,Denmark,home,395,Pierre-Emile Höjbjerg,97
+3817,367,Denmark,home,4053,Kasper Dolberg,64
+3817,367,Denmark,home,4673,Thomas Delaney,45
+3817,367,Denmark,home,4737,Jesper Lindström,33
+3817,367,Denmark,home,5063,Mathias Jensen,34
+3817,367,Denmark,home,7443,Christian Eriksen,97
+3817,367,Denmark,home,8099,Rasmus Kristensen,97
+3817,367,Denmark,home,8324,Joakim Maehle,97
+3817,367,Denmark,home,8578,Simon Kjaer,63
+3817,367,Denmark,home,9089,Andreas Skov Olsen,64
+3817,367,Denmark,home,92,Andreas Christensen,97
+3817,378,Tunisia,away,12862,Wajdi Kechrida,10
+3817,378,Tunisia,away,14013,Aymen Dahmen,97
+3817,378,Tunisia,away,14019,Yassine Meriah,97
+3817,378,Tunisia,away,14022,Aissa Laidouni,87
+3817,378,Tunisia,away,14024,Ferjani Sassi,10
+3817,378,Tunisia,away,14025,Youssef Msakni,79
+3817,378,Tunisia,away,14027,Naim Sliti,31
+3817,378,Tunisia,away,14028,Issam Jebali,80
+3817,378,Tunisia,away,14029,Taha Yassine Khenissi,17
+3817,378,Tunisia,away,14030,Anis Slimane,66
+3817,378,Tunisia,away,3263,Hannibal Mejbri,18
+3817,378,Tunisia,away,4142,Dylan Bronn,97
+3817,378,Tunisia,away,4758,Ellyes Skhiri,97
+3817,378,Tunisia,away,7649,Mohamed Drager,87
+3817,378,Tunisia,away,9598,Ali Abdi,97
+3817,378,Tunisia,away,9824,Montassar Talbi,97
+3818,58,Mexico,home,1384,Hector Herrera,97
+3818,58,Mexico,home,2106,Edson Alvarez,97
+3818,58,Mexico,home,2108,Uriel Antuna,14
+3818,58,Mexico,home,2111,Hirving Lozano,97
+3818,58,Mexico,home,252,Raúl Jiménez,27
+3818,58,Mexico,home,3299,César Montes,97
+3818,58,Mexico,home,3301,Héctor Moreno,97
+3818,58,Mexico,home,3303,Jesús Gallardo,97
+3818,58,Mexico,home,3309,Carlos Rodríguez,27
+3818,58,Mexico,home,3343,Guillermo Ochoa,97
+3818,58,Mexico,home,3352,Jorge Sánchez,97
+3818,58,Mexico,home,3367,Henry Martín,70
+3818,58,Mexico,home,3414,Alexis Vega,83
+3818,58,Mexico,home,3455,Luis Chávez,97
+3818,376,Poland,away,11113,Sebastian Szymanski,71
+3818,376,Poland,away,12514,Piotr Zielinski,87
+3818,376,Poland,away,12537,Nicola Zalewski,45
+3818,376,Poland,away,12766,Bartosz Bereszynski,97
+3818,376,Poland,away,12820,Jakub Kiwior,97
+3818,376,Poland,away,13848,Kamil Glik,97
+3818,376,Poland,away,13850,Grzegorz Krychowiak,97
+3818,376,Poland,away,1896,Matty Cash,97
+3818,376,Poland,away,3994,Arkadiusz Milik,10
+3818,376,Poland,away,4625,Robert Lewandowski,97
+3818,376,Poland,away,668,Przemyslaw Frankowski,26
+3818,376,Poland,away,7419,Krystian Bielik,52
+3818,376,Poland,away,8042,Wojciech Szczesny,97
+3818,376,Poland,away,9939,Jakub Kaminski,97
+3819,363,France,home,113,Olivier Giroud,88
+3819,363,France,home,1532,Ousmane Dembele,76
+3819,363,France,home,1534,Antoine Griezmann,97
+3819,363,France,home,1789,Jules Kounde,9
+3819,363,France,home,3870,Kylian Mbappé,97
+3819,363,France,home,3888,Aurélien Tchouaméni,76
+3819,363,France,home,3890,Youssouf Fofana,21
+3819,363,France,home,4606,Dayot Upamecano,97
+3819,363,France,home,4607,Lucas Hernández,97
+3819,363,France,home,4613,Benjamin Pavard,88
+3819,363,France,home,4622,Kingsley Coman,21
+3819,363,France,home,4712,Marcus Thuram,9
+3819,363,France,home,5097,Ibrahima Konaté,97
+3819,363,France,home,61,Hugo Lloris,97
+3819,363,France,home,8054,Adrien Rabiot,97
+3819,363,France,home,8583,Theo Hernandez,85
+3819,386,Australia,away,13109,Awer Mabil,25
+3819,386,Australia,away,13811,Nathaniel Atkinson,84
+3819,386,Australia,away,13815,Mathew Leckie,97
+3819,386,Australia,away,13819,Mitchell Duke,55
+3819,386,Australia,away,13820,Aziz Behich,97
+3819,386,Australia,away,13821,Keanu Baccus,13
+3819,386,Australia,away,13822,Jason Cummings,42
+3819,386,Australia,away,13823,Craig Goodwin,72
+3819,386,Australia,away,13824,Kye Rowles,97
+3819,386,Australia,away,13825,Garang Kuol,25
+3819,386,Australia,away,435,Mathew Ryan,97
+3819,386,Australia,away,449,Aaron Mooy,97
+3819,386,Australia,away,6967,Riley McGree,72
+3819,386,Australia,away,7478,Milos Degenek,13
+3819,386,Australia,away,8257,Harry Souttar,97
+3819,386,Australia,away,8854,Jackson Irvine,84
+3820,371,Croatia,away,100,Mateo Kovacic,78
+3820,371,Croatia,away,13854,Dominik Livakovic,96
+3820,371,Croatia,away,13858,Josip Juranovic,96
+3820,371,Croatia,away,13859,Mislav Orsic,7
+3820,371,Croatia,away,13860,Marko Livaja,27
+3820,371,Croatia,away,1687,Luka Modric,96
+3820,371,Croatia,away,40,Dejan Lovren,96
+3820,371,Croatia,away,4883,Andrej Kramaric,69
+3820,371,Croatia,away,4892,Josko Gvardiol,96
+3820,371,Croatia,away,4926,Borna Sosa,96
+3820,371,Croatia,away,5968,Lovro Majer,18
+3820,371,Croatia,away,6019,Nikola Vlasic,45
+3820,371,Croatia,away,8129,Marcelo Brozovic,96
+3820,371,Croatia,away,8136,Ivan Perisic,89
+3820,371,Croatia,away,8330,Mario Pasalic,51
+3820,374,Morocco,home,12586,Sofyan Amrabat,96
+3820,374,Morocco,home,12777,Abdelhamid Sabiri,15
+3820,374,Morocco,home,13021,Abde Ezzalzouli,32
+3820,374,Morocco,home,13864,Yahia Attiat-Allah,37
+3820,374,Morocco,home,13866,Selim Amallah,96
+3820,374,Morocco,home,13870,Abderrazak Hamdallah,16
+3820,374,Morocco,home,1681,Achraf Hakimi,96
+3820,374,Morocco,home,1785,Bono,96
+3820,374,Morocco,home,1810,Youssef En-Nesyri,80
+3820,374,Morocco,home,1938,Hakim Ziyech,96
+3820,374,Morocco,home,233,Romain Saïss,96
+3820,374,Morocco,home,4002,Nayef Aguerd,96
+3820,374,Morocco,home,401,Sofiane Boufal,64
+3820,374,Morocco,home,4324,Azzedine Ounahi,81
+3820,374,Morocco,home,8027,Noussair Mazraoui,59
+3821,57,Japan,away,10704,Kaoru Mitoma,42
+3821,57,Japan,away,13798,Yuto Nagatomo,56
+3821,57,Japan,away,13799,Shuichi Gonda,98
+3821,57,Japan,away,13802,Daizen Maeda,56
+3821,57,Japan,away,1860,Takefusa Kubo,45
+3821,57,Japan,away,2087,Takehiro Tomiyasu,53
+3821,57,Japan,away,2088,Maya Yoshida,98
+3821,57,Japan,away,2090,Hiroki Sakai,73
+3821,57,Japan,away,2094,Junya Ito,98
+3821,57,Japan,away,2095,Daichi Kamada,98
+3821,57,Japan,away,2099,Takuma Asano,42
+3821,57,Japan,away,4928,Wataru Endo,98
+3821,57,Japan,away,5098,Ko Itakura,98
+3821,57,Japan,away,55,Takumi Minamino,25
+3821,57,Japan,away,8927,Ao Tanaka,70
+3821,57,Japan,away,9981,Ritsu Doan,28
+3821,368,Germany,home,1937,Kai Havertz,78
+3821,368,Germany,home,20,Ilkay Gündogan,67
+3821,368,Germany,home,4602,Manuel Neuer,98
+3821,368,Germany,home,4608,Niklas Süle,98
+3821,368,Germany,home,4616,Joshua Kimmich,98
+3821,368,Germany,home,4618,Leon Goretzka,31
+3821,368,Germany,home,4621,Jamal Musiala,78
+3821,368,Germany,home,4623,Serge Gnabry,89
+3821,368,Germany,home,4624,Thomas Müller,66
+3821,368,Germany,home,4689,Youssoufa Moukoko,9
+3821,368,Germany,home,4713,Jonas Hofmann,32
+3821,368,Germany,home,4779,Nico Schlotterbeck,98
+3821,368,Germany,home,4868,David Raum,98
+3821,368,Germany,home,90,Antonio Rüdiger,98
+3821,368,Germany,home,9918,Mario Götze,20
+3821,368,Germany,home,9963,Niclas Fullkrug,20
+3822,52,Spain,home,13178,Nico Williams,30
+3822,52,Spain,home,1341,Unai Simon,98
+3822,52,Spain,home,1383,Koke,35
+3822,52,Spain,home,1394,Alvaro Morata,42
+3822,52,Spain,home,1513,Jordi Alba,63
+3822,52,Spain,home,1519,Sergio Busquets,63
+3822,52,Spain,home,1530,Pedri,56
+3822,52,Spain,home,1696,Marco Asensio,68
+3822,52,Spain,home,18,Rodri,98
+3822,52,Spain,home,1829,Carlos Soler,42
+3822,52,Spain,home,1950,Ferran Torres,56
+3822,52,Spain,home,4908,Dani Olmo,98
+3822,52,Spain,home,8341,Gavi,98
+3822,52,Spain,home,8344,Alex Balde,35
+3822,52,Spain,home,9,Aymeric Laporte,98
+3822,52,Spain,home,96,César Azpilicueta,98
+3822,385,Costa Rica,away,13371,Bryan Oviedo,81
+3822,385,Costa Rica,away,13563,Jewison Bennette,60
+3822,385,Costa Rica,away,13780,Keysher Fuller,98
+3822,385,Costa Rica,away,13781,Celso Borges,71
+3822,385,Costa Rica,away,13782,Anthony Contreras,60
+3822,385,Costa Rica,away,13783,Bryan Ruiz,38
+3822,385,Costa Rica,away,13786,Carlos Martinez,45
+3822,385,Costa Rica,away,13788,Yeltsin Tejeda,98
+3822,385,Costa Rica,away,13790,Brandon Aguilera,27
+3822,385,Costa Rica,away,13795,Alvaro Zamora,38
+3822,385,Costa Rica,away,1593,Óscar Duarte,98
+3822,385,Costa Rica,away,3316,Joel Campbell,98
+3822,385,Costa Rica,away,3841,Keylor Navas,98
+3822,385,Costa Rica,away,649,Francisco Calvo,98
+3822,385,Costa Rica,away,754,Kendall Waston,53
+3822,385,Costa Rica,away,975,Ronald Matarrita,17
+3823,362,Belgium,home,112,Michy Batshuayi,77
+3823,362,Belgium,home,1387,Yannick Carrasco,45
+3823,362,Belgium,home,1672,Thibaut Courtois,95
+3823,362,Belgium,home,1694,Eden Hazard,61
+3823,362,Belgium,home,1960,Timothy Castagne,95
+3823,362,Belgium,home,215,Youri Tielemans,45
+3823,362,Belgium,home,22,Kevin De Bruyne,95
+3823,362,Belgium,home,241,Leander Dendoncker,95
+3823,362,Belgium,home,4498,Amadou Onana,50
+3823,362,Belgium,home,455,Leandro Trossard,34
+3823,362,Belgium,home,4669,Thomas Meunier,50
+3823,362,Belgium,home,4674,Axel Witsel,95
+3823,362,Belgium,home,66,Toby Alderweireld,95
+3823,362,Belgium,home,67,Jan Vertonghen,95
+3823,362,Belgium,home,9806,Lois Openda,18
+3823,380,Canada,away,1025,Kamal Miller,95
+3823,380,Canada,away,11790,Steven Vitoria,95
+3823,380,Canada,away,1225,Richie Laryea,73
+3823,380,Canada,away,1228,Jonathan Osorio,15
+3823,380,Canada,away,12315,Sam Adekugbe,22
+3823,380,Canada,away,14031,Milan Borjan,95
+3823,380,Canada,away,14033,Liam Millar,15
+3823,380,Canada,away,3965,Jonathan David,95
+3823,380,Canada,away,4611,Alphonso Davies,95
+3823,380,Canada,away,5173,Ismael Kone,38
+3823,380,Canada,away,6916,Junior Hoilett,57
+3823,380,Canada,away,8551,Stephen Eustaquio,80
+3823,380,Canada,away,8627,Atiba Hutchinson,57
+3823,380,Canada,away,9094,Cyle Larin,38
+3823,380,Canada,away,926,Alistair Johnston,95
+3823,380,Canada,away,963,Tajon Buchanan,80
+3824,370,Switzerland,home,12960,Ricardo Rodriguez,89
+3824,370,Switzerland,home,13118,Eray Comert,7
+3824,370,Switzerland,home,13880,Fabian Frei,26
+3824,370,Switzerland,home,157,Granit Xhaka,96
+3824,370,Switzerland,home,4566,Rubén Vargas,80
+3824,370,Switzerland,home,4661,Manuel Akanji,96
+3824,370,Switzerland,home,4691,Yann Sommer,96
+3824,370,Switzerland,home,4695,Nico Elvedi,96
+3824,370,Switzerland,home,4717,Breel Embolo,71
+3824,370,Switzerland,home,4732,Djibril Sow,70
+3824,370,Switzerland,home,5029,Silvan Widmer,96
+3824,370,Switzerland,home,57,Xherdan Shaqiri,71
+3824,370,Switzerland,home,8011,Haris Seferovic,25
+3824,370,Switzerland,home,8113,Noah Okafor,25
+3824,370,Switzerland,home,8328,Remo Freuler,96
+3824,370,Switzerland,home,8397,Fabian Rieder,16
+3824,379,Cameroon,away,1168,Nouhou Tolo,96
+3824,379,Cameroon,away,12640,Martin Hongla,67
+3824,379,Cameroon,away,13872,Collins Fai,96
+3824,379,Cameroon,away,13874,Samuel Oum Gouet,96
+3824,379,Cameroon,away,13875,Vincent Aboubakar,23
+3824,379,Cameroon,away,1977,André Zambo Anguissa,96
+3824,379,Cameroon,away,3934,Karl Toko Ekambi,73
+3824,379,Cameroon,away,4174,Jean-Charles Castelletto,96
+3824,379,Cameroon,away,4626,Eric Maxim Choupo-Moting,73
+3824,379,Cameroon,away,5074,Bryan Mbeumo,80
+3824,379,Cameroon,away,6655,Nicolas N'Koulou,96
+3824,379,Cameroon,away,8018,Andre Onana,96
+3824,379,Cameroon,away,8402,Nicolas Ngamaleu,16
+3824,379,Cameroon,away,8631,Georges-Kevin N'Koudou,23
+3824,379,Cameroon,away,8741,Gael Ondoua,29
+3825,369,Uruguay,home,12529,Matias Vina,19
+3825,369,Uruguay,home,13462,Martín Cáceres,97
+3825,369,Uruguay,home,1368,Jose Gimenez,97
+3825,369,Uruguay,home,13924,Sergio Rochet,97
+3825,369,Uruguay,home,13926,Diego Godin,97
+3825,369,Uruguay,home,13927,Guillermo Varela,10
+3825,369,Uruguay,home,13929,Nicolas De La Cruz,20
+3825,369,Uruguay,home,1535,Luis Suarez,63
+3825,369,Uruguay,home,1545,Mathí­as Olivera,78
+3825,369,Uruguay,home,1684,Federico Valverde,97
+3825,369,Uruguay,home,2075,Facundo Pellistri,87
+3825,369,Uruguay,home,2077,Edinson Cavani,34
+3825,369,Uruguay,home,7584,Rodrigo Bentancur,97
+3825,369,Uruguay,home,8009,Darwin Nunez,97
+3825,369,Uruguay,home,8133,Matias Vecino,77
+3825,377,South Korea,away,12502,Min Jae Kim,97
+3825,377,South Korea,away,1257,In-beom Hwang,97
+3825,377,South Korea,away,13907,Seun-gyu Kim,97
+3825,377,South Korea,away,13911,Young-gwon Kim,97
+3825,377,South Korea,away,13912,Jin-su Kim,97
+3825,377,South Korea,away,13918,Sang-ho Na,74
+3825,377,South Korea,away,13920,Jun-ho Son,24
+3825,377,South Korea,away,13922,Woo-young Jung,97
+3825,377,South Korea,away,13923,Gue-sung Cho,24
+3825,377,South Korea,away,1830,Kang-in Lee,23
+3825,377,South Korea,away,2443,Moon-hwan Kim,97
+3825,377,South Korea,away,4280,Ui-jo Hwang,73
+3825,377,South Korea,away,5038,Jae-sung Lee,73
+3825,377,South Korea,away,83,Heung-min Son,97
+3826,365,Portugal,home,133,Bruno Fernandes,100
+3826,365,Portugal,home,1393,Joao Felix,87
+3826,365,Portugal,home,17,João Cancelo,100
+3826,365,Portugal,home,1876,William Carvalho,45
+3826,365,Portugal,home,2066,Ruben Dias,100
+3826,365,Portugal,home,240,Rúben Neves,76
+3826,365,Portugal,home,27,Bernardo Silva,87
+3826,365,Portugal,home,3857,Danilo Pereira,100
+3826,365,Portugal,home,4666,Raphaël Guerreiro,100
+3826,365,Portugal,home,6020,Cristiano Ronaldo,87
+3826,365,Portugal,home,8000,Joao Mario,13
+3826,365,Portugal,home,8008,Goncalo Ramos,13
+3826,365,Portugal,home,8077,Joao Palhinha,13
+3826,365,Portugal,home,8538,Diogo Costa,100
+3826,365,Portugal,home,8555,Otavio,55
+3826,365,Portugal,home,8593,Rafael Leao,24
+3826,383,Ghana,away,1363,Inaki Williams,100
+3826,383,Ghana,away,1380,Thomas Partey,100
+3826,383,Ghana,away,14034,Lawrence Ati Zigi,100
+3826,383,Ghana,away,14040,Andre Ayew,76
+3826,383,Ghana,away,1910,Mohammed Salisu,100
+3826,383,Ghana,away,213,Daniel Amartey,100
+3826,383,Ghana,away,4231,Alexander Djiku,91
+3826,383,Ghana,away,4404,Alidu Seidu,65
+3826,383,Ghana,away,4408,Salis Abdul Samed,92
+3826,383,Ghana,away,444,Tariq Lamptey,35
+3826,383,Ghana,away,483,Jordan Ayew,24
+3826,383,Ghana,away,5085,Abdul Rahman Baba,100
+3826,383,Ghana,away,5178,Osman Bukari,25
+3826,383,Ghana,away,7192,Antoine Semenyo,9
+3826,383,Ghana,away,8031,Mohammed Kudus,75
+3826,383,Ghana,away,9980,Daniel-Kofi Kyereh,8
+3827,361,Brazil,home,132,Fred,23
+3827,361,Brazil,home,162,Gabriel Martinelli,11
+3827,361,Brazil,home,1683,Casemiro,97
+3827,361,Brazil,home,1695,Vinícius Junior,75
+3827,361,Brazil,home,1697,Rodrygo,22
+3827,361,Brazil,home,1926,Thiago Silva,97
+3827,361,Brazil,home,195,Richarlison,78
+3827,361,Brazil,home,2074,Raphinha,86
+3827,361,Brazil,home,30,Gabriel Jesus,19
+3827,361,Brazil,home,32,Alisson,97
+3827,361,Brazil,home,3846,Marquinhos,97
+3827,361,Brazil,home,3865,Neymar,79
+3827,361,Brazil,home,3930,Lucas Paquetá,74
+3827,361,Brazil,home,8039,Antony,18
+3827,361,Brazil,home,8050,Alex Sandro,97
+3827,361,Brazil,home,8061,Danilo,97
+3827,375,Serbia,away,12561,Sergej Milinković-Savić,97
+3827,375,Serbia,away,12576,Nikola Milenkovic,97
+3827,375,Serbia,away,12642,Ivan Ilić,41
+3827,375,Serbia,away,12643,Darko Lazović,32
+3827,375,Serbia,away,12653,Vanja Milinković-Savić,97
+3827,375,Serbia,away,12664,Saša Lukić,65
+3827,375,Serbia,away,13904,Filip Mladenovic,65
+3827,375,Serbia,away,13906,Andrija Zivkovic,56
+3827,375,Serbia,away,1550,Nemanja Maksimovic,15
+3827,375,Serbia,away,1799,Nemanja Gudelj,56
+3827,375,Serbia,away,1991,Aleksandar Mitrovic,82
+3827,375,Serbia,away,3880,Strahinja Pavlovic,97
+3827,375,Serbia,away,3989,Nemanja Radonjic,41
+3827,375,Serbia,away,8037,Dusan Tadić,97
+3827,375,Serbia,away,8059,Dušan Vlahović,32
+3827,375,Serbia,away,9947,Milos Veljkovic,97
+3828,373,Iran,away,12222,Majid Hosseini,102
+3828,373,Iran,away,12235,Ali Karimi,20
+3828,373,Iran,away,13969,Hossein Hosseini,102
+3828,373,Iran,away,13970,Roozbeh Cheshmi,25
+3828,373,Iran,away,13971,Ehsan Hajsafi,75
+3828,373,Iran,away,13975,Milad Mohammadi,102
+3828,373,Iran,away,13977,Morteza Pouraliganji,102
+3828,373,Iran,away,13978,Ramin Rezaeian,102
+3828,373,Iran,away,13980,Saeid Ezatolahi,82
+3828,373,Iran,away,13981,Ali Gholizadeh,75
+3828,373,Iran,away,13982,Ahmad Nourollahi,77
+3828,373,Iran,away,13983,Mehdi Torabi,27
+3828,373,Iran,away,13984,Karim Ansarifard,35
+3828,373,Iran,away,457,Alireza Jahanbakhsh,27
+3828,373,Iran,away,7441,Sardar Azmoun,67
+3828,373,Iran,away,8561,Mehdi Taremi,102
+3828,384,Wales,home,137,Daniel James,46
+3828,384,Wales,home,1698,Gareth Bale,102
+3828,384,Wales,home,1931,Ethan Ampadu,76
+3828,384,Wales,home,201,Danny Ward,16
+3828,384,Wales,home,2083,Joe Rodon,102
+3828,384,Wales,home,286,Chris Mepham,102
+3828,384,Wales,home,308,Harry Wilson,56
+3828,384,Wales,home,462,Wayne Hennessey,102
+3828,384,Wales,home,589,Neco Williams,102
+3828,384,Wales,home,6018,Connor Roberts,56
+3828,384,Wales,home,6935,Joe Allen,26
+3828,384,Wales,home,7008,Brennan Johnson,46
+3828,384,Wales,home,71,Ben Davies,102
+3828,384,Wales,home,7966,Kieffer Moore,102
+3828,384,Wales,home,8062,Aaron Ramsey,86
+3829,360,Qatar,home,13942,Meshaal Barsham,96
+3829,360,Qatar,home,13944,Abdelkarim Hassan,96
+3829,360,Qatar,home,13945,Boualem Khoukhi,96
+3829,360,Qatar,home,13946,Pedro Miguel,82
+3829,360,Qatar,home,13947,Ismaeel Mohammed,96
+3829,360,Qatar,home,13949,Tarek Salman,14
+3829,360,Qatar,home,13951,Homam Ahmed,82
+3829,360,Qatar,home,13953,Karim Boudiaf,68
+3829,360,Qatar,home,13954,Abdulaziz Hatem,28
+3829,360,Qatar,home,13956,Assim Madibo,96
+3829,360,Qatar,home,13958,Mohammed Waad,14
+3829,360,Qatar,home,13960,Hasan Al-Haydos,74
+3829,360,Qatar,home,13961,Akram Afif,96
+3829,360,Qatar,home,13962,Almoez Ali,96
+3829,360,Qatar,home,13963,Mohammed Muntari,22
+3829,372,Senegal,away,12154,Famara Diedhiou,73
+3829,372,Senegal,away,13032,Pathe Ciss,33
+3829,372,Senegal,away,13228,Youssouf Sabaly,96
+3829,372,Senegal,away,13901,Pape Abou Cissé,20
+3829,372,Senegal,away,2059,Edouard Mendy,96
+3829,372,Senegal,away,214,Nampalys Mendy,76
+3829,372,Senegal,away,2144,Iliman Ndiaye,23
+3829,372,Senegal,away,3848,Abdou Diallo,96
+3829,372,Senegal,away,3858,Idrissa Gueye,96
+3829,372,Senegal,away,3895,Ismail Jakobs,76
+3829,372,Senegal,away,3903,Krépin Diatta,63
+3829,372,Senegal,away,3996,Bamba Dieng,23
+3829,372,Senegal,away,4152,Pape Sarr,20
+3829,372,Senegal,away,428,Ismaïla Sarr,73
+3829,372,Senegal,away,7988,Boulaye Dia,96
+3829,372,Senegal,away,9993,Kalidou Koulibaly,96
+3830,366,Netherlands,home,11094,Cody Gakpo,78
+3830,366,Netherlands,home,11241,Andries Noppert,96
+3830,366,Netherlands,home,1522,Frenkie de Jong,96
+3830,366,Netherlands,home,284,Nathan Aké,96
+3830,366,Netherlands,home,37,Virgil van Dijk,96
+3830,366,Netherlands,home,5009,Wout Weghorst,18
+3830,366,Netherlands,home,8022,Jurrien Timber,96
+3830,366,Netherlands,home,8026,Daley Blind,96
+3830,366,Netherlands,home,8033,Davy Klaassen,68
+3830,366,Netherlands,home,8034,Steven Berghuis,28
+3830,366,Netherlands,home,8134,Denzel Dumfries,96
+3830,366,Netherlands,home,8326,Teun Koopmeiners,79
+3830,366,Netherlands,home,8327,Marten De Roon,17
+3830,366,Netherlands,home,8342,Memphis Depay,51
+3830,366,Netherlands,home,84,Steven Bergwijn,45
+3830,381,Ecuador,away,1034,Jhegson Méndez,96
+3830,381,Ecuador,away,11960,Enner Valencia,89
+3830,381,Ecuador,away,13049,Gonzalo Plata,89
+3830,381,Ecuador,away,13935,Hernan Galindez,96
+3830,381,Ecuador,away,13937,Angelo Preciado,96
+3830,381,Ecuador,away,13940,Kevin Rodriguez,7
+3830,381,Ecuador,away,1406,Pervis Estupinan,96
+3830,381,Ecuador,away,2134,Moises Caicedo,96
+3830,381,Ecuador,away,3460,Romario Ibarra,7
+3830,381,Ecuador,away,3519,Michael Estrada,73
+3830,381,Ecuador,away,3734,Félix Torres,96
+3830,381,Ecuador,away,5195,Piero Hincapie,96
+3830,381,Ecuador,away,6596,Jeremy Sarmiento,23
+3830,381,Ecuador,away,9837,Jackson Porozo,96
+3831,50,England,home,1,Harry Kane,94
+3831,50,England,home,10,John Stones,94
+3831,50,England,home,105,Mason Mount,94
+3831,50,England,home,118,Harry Maguire,94
+3831,50,England,home,123,Luke Shaw,94
+3831,50,England,home,136,Marcus Rashford,17
+3831,50,England,home,1377,Kieran Trippier,94
+3831,50,England,home,163,Bukayo Saka,77
+3831,50,England,home,169,Jordan Pickford,94
+3831,50,England,home,25,Raheem Sterling,67
+3831,50,England,home,265,Declan Rice,94
+3831,50,England,home,371,Jack Grealish,27
+3831,50,England,home,4677,Jude Bellingham,68
+3831,50,England,home,47,Jordan Henderson,26
+3831,51,United States,away,1067,Brenden Aaronson,18
+3831,51,United States,away,107,Christian Pulisic,94
+3831,51,United States,away,12183,Haji Wright,82
+3831,51,United States,away,13121,Yunus Musah,94
+3831,51,United States,away,1334,Weston McKennie,76
+3831,51,United States,away,1336,Timothy Weah,82
+3831,51,United States,away,1339,Tyler Adams,94
+3831,51,United States,away,1340,Shaq Moore,17
+3831,51,United States,away,1971,Tim Ream,94
+3831,51,United States,away,1973,Antonee Robinson,94
+3831,51,United States,away,4681,Giovanni Reyna,12
+3831,51,United States,away,5135,Josh Sargent,12
+3831,51,United States,away,8343,Sergiño Dest,77
+3831,51,United States,away,916,Walker Zimmerman,94
+3831,51,United States,away,940,Matt Turner,94
+3832,378,Tunisia,home,12862,Wajdi Kechrida,24
+3832,378,Tunisia,home,14013,Aymen Dahmen,96
+3832,378,Tunisia,home,14019,Yassine Meriah,96
+3832,378,Tunisia,home,14022,Aissa Laidouni,66
+3832,378,Tunisia,home,14024,Ferjani Sassi,51
+3832,378,Tunisia,home,14025,Youssef Msakni,96
+3832,378,Tunisia,home,14027,Naim Sliti,96
+3832,378,Tunisia,home,14028,Issam Jebali,72
+3832,378,Tunisia,home,14029,Taha Yassine Khenissi,24
+3832,378,Tunisia,home,4105,Wahbi Khazri,30
+3832,378,Tunisia,home,4142,Dylan Bronn,72
+3832,378,Tunisia,home,4758,Ellyes Skhiri,96
+3832,378,Tunisia,home,7649,Mohamed Drager,45
+3832,378,Tunisia,home,9598,Ali Abdi,96
+3832,378,Tunisia,home,9824,Montassar Talbi,96
+3832,386,Australia,away,13109,Awer Mabil,12
+3832,386,Australia,away,13813,Fran Karacic,74
+3832,386,Australia,away,13815,Mathew Leckie,84
+3832,386,Australia,away,13817,Jamie Maclaren,33
+3832,386,Australia,away,13819,Mitchell Duke,63
+3832,386,Australia,away,13820,Aziz Behich,96
+3832,386,Australia,away,13821,Keanu Baccus,12
+3832,386,Australia,away,13823,Craig Goodwin,84
+3832,386,Australia,away,13824,Kye Rowles,96
+3832,386,Australia,away,435,Mathew Ryan,96
+3832,386,Australia,away,449,Aaron Mooy,96
+3832,386,Australia,away,4739,Ajdin Hrustic,33
+3832,386,Australia,away,6967,Riley McGree,63
+3832,386,Australia,away,7478,Milos Degenek,22
+3832,386,Australia,away,8257,Harry Souttar,96
+3832,386,Australia,away,8854,Jackson Irvine,96
+3833,376,Poland,home,12514,Piotr Zielinski,62
+3833,376,Poland,home,12766,Bartosz Bereszynski,97
+3833,376,Poland,home,12820,Jakub Kiwior,97
+3833,376,Poland,home,13848,Kamil Glik,97
+3833,376,Poland,home,13850,Grzegorz Krychowiak,97
+3833,376,Poland,home,1896,Matty Cash,97
+3833,376,Poland,home,3994,Arkadiusz Milik,70
+3833,376,Poland,home,4625,Robert Lewandowski,97
+3833,376,Poland,home,4851,Krzysztof Piatek,27
+3833,376,Poland,home,668,Przemyslaw Frankowski,97
+3833,376,Poland,home,7419,Krystian Bielik,97
+3833,376,Poland,home,8042,Wojciech Szczesny,97
+3833,376,Poland,home,9939,Jakub Kaminski,35
+3833,382,Saudi Arabia,away,13987,Mohammed Al-Owais,97
+3833,382,Saudi Arabia,away,13991,Mohammed Al-Burayk,64
+3833,382,Saudi Arabia,away,13992,Ali Al-Bulayhi,97
+3833,382,Saudi Arabia,away,13993,Sultan Al-Ghannam,33
+3833,382,Saudi Arabia,away,13994,Saud Abdulhamid,97
+3833,382,Saudi Arabia,away,13995,Abdulelah Al-Amri,97
+3833,382,Saudi Arabia,away,13998,Salem Al-Dawsari,97
+3833,382,Saudi Arabia,away,14000,Nawaf Al-Abed,49
+3833,382,Saudi Arabia,away,14002,Hattan Bahebri,3
+3833,382,Saudi Arabia,away,14003,Mohamed Kanno,97
+3833,382,Saudi Arabia,away,14004,Abdulelah Al-Malki,84
+3833,382,Saudi Arabia,away,14005,Sami Al-Najei,45
+3833,382,Saudi Arabia,away,14007,Nasser Al-Dawsari,12
+3833,382,Saudi Arabia,away,14009,Abdulrahman Al-Oboud,13
+3833,382,Saudi Arabia,away,14010,Firas Al-Buraikan,97
+3833,382,Saudi Arabia,away,14011,Saleh Al-Shehri,85
+3834,363,France,home,113,Olivier Giroud,61
+3834,363,France,home,1532,Ousmane Dembele,74
+3834,363,France,home,1534,Antoine Griezmann,92
+3834,363,France,home,1675,Raphael Varane,73
+3834,363,France,home,1789,Jules Kounde,97
+3834,363,France,home,3870,Kylian Mbappé,97
+3834,363,France,home,3888,Aurélien Tchouaméni,97
+3834,363,France,home,3890,Youssouf Fofana,5
+3834,363,France,home,4606,Dayot Upamecano,97
+3834,363,France,home,4622,Kingsley Coman,23
+3834,363,France,home,4712,Marcus Thuram,36
+3834,363,France,home,5097,Ibrahima Konaté,24
+3834,363,France,home,61,Hugo Lloris,97
+3834,363,France,home,8054,Adrien Rabiot,97
+3834,363,France,home,8583,Theo Hernandez,97
+3834,367,Denmark,away,11854,Alexander Bah,6
+3834,367,Denmark,away,11967,Victor Nelsson,97
+3834,367,Denmark,away,12022,Andreas Cornelius,45
+3834,367,Denmark,away,12779,Mikkel Damsgaard,72
+3834,367,Denmark,away,1536,Martin Braithwaite,52
+3834,367,Denmark,away,200,Kasper Schmeichel,97
+3834,367,Denmark,away,2073,Joachim Andersen,97
+3834,367,Denmark,away,395,Pierre-Emile Höjbjerg,97
+3834,367,Denmark,away,4053,Kasper Dolberg,25
+3834,367,Denmark,away,4737,Jesper Lindström,84
+3834,367,Denmark,away,5065,Christian Nörgaard,13
+3834,367,Denmark,away,7443,Christian Eriksen,97
+3834,367,Denmark,away,8099,Rasmus Kristensen,91
+3834,367,Denmark,away,8324,Joakim Maehle,97
+3834,367,Denmark,away,92,Andreas Christensen,97
+3835,58,Mexico,away,11090,Erick Gutierrez,56
+3835,58,Mexico,away,1384,Hector Herrera,96
+3835,58,Mexico,away,1452,Nestor Araujo,96
+3835,58,Mexico,away,1880,Andres Guardado,40
+3835,58,Mexico,away,2108,Uriel Antuna,31
+3835,58,Mexico,away,2110,Roberto Alvarado,24
+3835,58,Mexico,away,2111,Hirving Lozano,72
+3835,58,Mexico,away,252,Raúl Jiménez,31
+3835,58,Mexico,away,3299,César Montes,96
+3835,58,Mexico,away,3301,Héctor Moreno,96
+3835,58,Mexico,away,3303,Jesús Gallardo,96
+3835,58,Mexico,away,3343,Guillermo Ochoa,96
+3835,58,Mexico,away,3414,Alexis Vega,65
+3835,58,Mexico,away,3452,Kevin Álvarez,65
+3835,58,Mexico,away,3455,Luis Chávez,96
+3835,364,Argentina,home,10715,Julian Alvarez,34
+3835,364,Argentina,home,11,Nicolás Otamendi,96
+3835,364,Argentina,home,11856,Enzo Fernandez,40
+3835,364,Argentina,home,13222,Nahuel Molina,34
+3835,364,Argentina,home,144,Emiliano Martínez,96
+3835,364,Argentina,home,1531,Lionel Messi,96
+3835,364,Argentina,home,1877,Guido Rodríguez,56
+3835,364,Argentina,home,3868,Ángel Di María,68
+3835,364,Argentina,home,453,Alexis Mac Allister,68
+3835,364,Argentina,home,4590,Exequiel Palacios,28
+3835,364,Argentina,home,5116,Cristian Romero,28
+3835,364,Argentina,home,6895,Rodrigo de Paul,96
+3835,364,Argentina,home,8023,Lisandro Martinez,96
+3835,364,Argentina,home,8138,Lautaro Martinez,62
+3835,364,Argentina,home,8419,Gonzalo Montiel,62
+3835,364,Argentina,home,9178,Marcos Acuña,96
+3836,57,Japan,home,10704,Kaoru Mitoma,35
+3836,57,Japan,home,11841,Hidemasa Morita,96
+3836,57,Japan,home,13796,Miki Yamane,61
+3836,57,Japan,home,13798,Yuto Nagatomo,45
+3836,57,Japan,home,13799,Shuichi Gonda,96
+3836,57,Japan,home,13800,Ayase Ueda,45
+3836,57,Japan,home,13801,Yuki Soma,81
+3836,57,Japan,home,2088,Maya Yoshida,96
+3836,57,Japan,home,2094,Junya Ito,30
+3836,57,Japan,home,2095,Daichi Kamada,96
+3836,57,Japan,home,2099,Takuma Asano,51
+3836,57,Japan,home,4925,Hiroki Ito,51
+3836,57,Japan,home,4928,Wataru Endo,96
+3836,57,Japan,home,5098,Ko Itakura,96
+3836,57,Japan,home,55,Takumi Minamino,15
+3836,57,Japan,home,9981,Ritsu Doan,66
+3836,385,Costa Rica,away,13371,Bryan Oviedo,96
+3836,385,Costa Rica,away,13563,Jewison Bennette,32
+3836,385,Costa Rica,away,13778,Daniel Chacon,2
+3836,385,Costa Rica,away,13780,Keysher Fuller,96
+3836,385,Costa Rica,away,13781,Celso Borges,88
+3836,385,Costa Rica,away,13782,Anthony Contreras,64
+3836,385,Costa Rica,away,13785,Gerson Torres,64
+3836,385,Costa Rica,away,13787,Youstin Salas,8
+3836,385,Costa Rica,away,13788,Yeltsin Tejeda,96
+3836,385,Costa Rica,away,13790,Brandon Aguilera,32
+3836,385,Costa Rica,away,1593,Óscar Duarte,96
+3836,385,Costa Rica,away,3316,Joel Campbell,94
+3836,385,Costa Rica,away,3841,Keylor Navas,96
+3836,385,Costa Rica,away,649,Francisco Calvo,96
+3836,385,Costa Rica,away,754,Kendall Waston,96
+3837,362,Belgium,home,112,Michy Batshuayi,74
+3837,362,Belgium,home,11994,Dries Mertens,36
+3837,362,Belgium,home,1672,Thibaut Courtois,95
+3837,362,Belgium,home,1694,Eden Hazard,59
+3837,362,Belgium,home,1960,Timothy Castagne,95
+3837,362,Belgium,home,215,Youri Tielemans,36
+3837,362,Belgium,home,22,Kevin De Bruyne,95
+3837,362,Belgium,home,4498,Amadou Onana,59
+3837,362,Belgium,home,455,Leandro Trossard,21
+3837,362,Belgium,home,4669,Thomas Meunier,80
+3837,362,Belgium,home,4674,Axel Witsel,95
+3837,362,Belgium,home,4684,Thorgan Hazard,74
+3837,362,Belgium,home,5139,Romelu Lukaku,15
+3837,362,Belgium,home,66,Toby Alderweireld,95
+3837,362,Belgium,home,67,Jan Vertonghen,95
+3837,362,Belgium,home,9090,Charles De Ketelaere,21
+3837,374,Morocco,away,12586,Sofyan Amrabat,95
+3837,374,Morocco,away,12777,Abdelhamid Sabiri,29
+3837,374,Morocco,away,13044,Jawad El Yamiq,18
+3837,374,Morocco,away,13862,Munir,95
+3837,374,Morocco,away,13864,Yahia Attiat-Allah,29
+3837,374,Morocco,away,13866,Selim Amallah,66
+3837,374,Morocco,away,13870,Abderrazak Hamdallah,24
+3837,374,Morocco,away,1681,Achraf Hakimi,66
+3837,374,Morocco,away,1810,Youssef En-Nesyri,71
+3837,374,Morocco,away,1938,Hakim Ziyech,95
+3837,374,Morocco,away,233,Romain Saïss,95
+3837,374,Morocco,away,4002,Nayef Aguerd,95
+3837,374,Morocco,away,401,Sofiane Boufal,71
+3837,374,Morocco,away,4324,Azzedine Ounahi,77
+3837,374,Morocco,away,8027,Noussair Mazraoui,95
+3837,374,Morocco,away,9865,Zakaria Aboukhlal,24
+3838,371,Croatia,home,100,Mateo Kovacic,85
+3838,371,Croatia,home,13854,Dominik Livakovic,96
+3838,371,Croatia,home,13858,Josip Juranovic,96
+3838,371,Croatia,home,13859,Mislav Orsic,11
+3838,371,Croatia,home,13860,Marko Livaja,59
+3838,371,Croatia,home,13861,Bruno Petkovic,37
+3838,371,Croatia,home,1687,Luka Modric,85
+3838,371,Croatia,home,40,Dejan Lovren,96
+3838,371,Croatia,home,4883,Andrej Kramaric,72
+3838,371,Croatia,home,4892,Josko Gvardiol,96
+3838,371,Croatia,home,4926,Borna Sosa,96
+3838,371,Croatia,home,5968,Lovro Majer,11
+3838,371,Croatia,home,6019,Nikola Vlasic,24
+3838,371,Croatia,home,8129,Marcelo Brozovic,96
+3838,371,Croatia,home,8136,Ivan Perisic,85
+3838,371,Croatia,home,8330,Mario Pasalic,11
+3838,380,Canada,away,1025,Kamal Miller,96
+3838,380,Canada,away,11790,Steven Vitoria,96
+3838,380,Canada,away,1225,Richie Laryea,61
+3838,380,Canada,away,1228,Jonathan Osorio,51
+3838,380,Canada,away,12315,Sam Adekugbe,24
+3838,380,Canada,away,1267,Lucas Cavallini,24
+3838,380,Canada,away,14031,Milan Borjan,96
+3838,380,Canada,away,3965,Jonathan David,72
+3838,380,Canada,away,4611,Alphonso Davies,96
+3838,380,Canada,away,5173,Ismael Kone,51
+3838,380,Canada,away,6916,Junior Hoilett,35
+3838,380,Canada,away,8551,Stephen Eustaquio,45
+3838,380,Canada,away,8627,Atiba Hutchinson,72
+3838,380,Canada,away,9094,Cyle Larin,45
+3838,380,Canada,away,926,Alistair Johnston,96
+3838,380,Canada,away,963,Tajon Buchanan,96
+3839,52,Spain,home,13178,Nico Williams,30
+3839,52,Spain,home,1341,Unai Simon,95
+3839,52,Spain,home,1383,Koke,30
+3839,52,Spain,home,1394,Alvaro Morata,42
+3839,52,Spain,home,1513,Jordi Alba,81
+3839,52,Spain,home,1519,Sergio Busquets,95
+3839,52,Spain,home,1530,Pedri,95
+3839,52,Spain,home,1682,Daniel Carvajal,95
+3839,52,Spain,home,1696,Marco Asensio,65
+3839,52,Spain,home,18,Rodri,95
+3839,52,Spain,home,1950,Ferran Torres,53
+3839,52,Spain,home,4908,Dani Olmo,95
+3839,52,Spain,home,8341,Gavi,65
+3839,52,Spain,home,8344,Alex Balde,14
+3839,52,Spain,home,9,Aymeric Laporte,95
+3839,368,Germany,away,20,Ilkay Gündogan,69
+3839,368,Germany,away,26,Leroy Sané,26
+3839,368,Germany,away,3849,Thilo Kehrer,69
+3839,368,Germany,away,4602,Manuel Neuer,95
+3839,368,Germany,away,4608,Niklas Süle,95
+3839,368,Germany,away,4616,Joshua Kimmich,95
+3839,368,Germany,away,4618,Leon Goretzka,95
+3839,368,Germany,away,4621,Jamal Musiala,95
+3839,368,Germany,away,4623,Serge Gnabry,84
+3839,368,Germany,away,4624,Thomas Müller,69
+3839,368,Germany,away,4713,Jonas Hofmann,11
+3839,368,Germany,away,4779,Nico Schlotterbeck,9
+3839,368,Germany,away,4868,David Raum,86
+3839,368,Germany,away,4897,Lukas Klostermann,26
+3839,368,Germany,away,90,Antonio Rüdiger,95
+3839,368,Germany,away,9963,Niclas Fullkrug,26
+3840,375,Serbia,away,12561,Sergej Milinković-Savić,78
+3840,375,Serbia,away,12576,Nikola Milenkovic,96
+3840,375,Serbia,away,12653,Vanja Milinković-Savić,96
+3840,375,Serbia,away,12664,Saša Lukić,96
+3840,375,Serbia,away,12776,Filip Djuricic,6
+3840,375,Serbia,away,13151,Srdjan Babic,19
+3840,375,Serbia,away,13216,Stefan Mitrović,41
+3840,375,Serbia,away,13906,Andrija Zivkovic,77
+3840,375,Serbia,away,1550,Nemanja Maksimovic,96
+3840,375,Serbia,away,1957,Marko Grujic,18
+3840,375,Serbia,away,1991,Aleksandar Mitrovic,96
+3840,375,Serbia,away,3880,Strahinja Pavlovic,55
+3840,375,Serbia,away,3989,Nemanja Radonjic,19
+3840,375,Serbia,away,4734,Filip Kostic,90
+3840,375,Serbia,away,8037,Dusan Tadić,96
+3840,375,Serbia,away,9947,Milos Veljkovic,77
+3840,379,Cameroon,home,1168,Nouhou Tolo,96
+3840,379,Cameroon,home,12640,Martin Hongla,54
+3840,379,Cameroon,home,13871,Devis Epassy,96
+3840,379,Cameroon,home,13872,Collins Fai,96
+3840,379,Cameroon,home,13873,Pierre Kunde,67
+3840,379,Cameroon,home,13874,Samuel Oum Gouet,16
+3840,379,Cameroon,home,13875,Vincent Aboubakar,42
+3840,379,Cameroon,home,13876,Christian Bassogog,30
+3840,379,Cameroon,home,1977,André Zambo Anguissa,80
+3840,379,Cameroon,home,3934,Karl Toko Ekambi,66
+3840,379,Cameroon,home,4174,Jean-Charles Castelletto,96
+3840,379,Cameroon,home,4626,Eric Maxim Choupo-Moting,96
+3840,379,Cameroon,home,5074,Bryan Mbeumo,80
+3840,379,Cameroon,home,6655,Nicolas N'Koulou,96
+3840,379,Cameroon,home,8631,Georges-Kevin N'Koudou,16
+3840,379,Cameroon,home,8741,Gael Ondoua,29
+3841,377,South Korea,home,12502,Min Jae Kim,91
+3841,377,South Korea,home,1257,In-beom Hwang,100
+3841,377,South Korea,home,13907,Seun-gyu Kim,100
+3841,377,South Korea,home,13910,Kyung-won Kwon,9
+3841,377,South Korea,home,13911,Young-gwon Kim,100
+3841,377,South Korea,home,13912,Jin-su Kim,100
+3841,377,South Korea,home,13917,Chang-hoon Kwon,56
+3841,377,South Korea,home,13918,Sang-ho Na,55
+3841,377,South Korea,home,13922,Woo-young Jung,78
+3841,377,South Korea,home,13923,Gue-sung Cho,100
+3841,377,South Korea,home,1830,Kang-in Lee,44
+3841,377,South Korea,home,2443,Moon-hwan Kim,100
+3841,377,South Korea,home,4280,Ui-jo Hwang,22
+3841,377,South Korea,home,4795,Woo-yeong Jeong,45
+3841,377,South Korea,home,83,Heung-min Son,100
+3841,383,Ghana,away,1363,Inaki Williams,100
+3841,383,Ghana,away,1380,Thomas Partey,100
+3841,383,Ghana,away,14034,Lawrence Ati Zigi,100
+3841,383,Ghana,away,14040,Andre Ayew,77
+3841,383,Ghana,away,1910,Mohammed Salisu,100
+3841,383,Ghana,away,1975,Denis Odoi,23
+3841,383,Ghana,away,213,Daniel Amartey,100
+3841,383,Ghana,away,4020,Kamaldeen Sulemana,23
+3841,383,Ghana,away,4231,Alexander Djiku,18
+3841,383,Ghana,away,4265,Gideon Mensah,87
+3841,383,Ghana,away,4408,Salis Abdul Samed,100
+3841,383,Ghana,away,444,Tariq Lamptey,77
+3841,383,Ghana,away,483,Jordan Ayew,77
+3841,383,Ghana,away,5085,Abdul Rahman Baba,13
+3841,383,Ghana,away,8031,Mohammed Kudus,82
+3841,383,Ghana,away,9980,Daniel-Kofi Kyereh,23
+3842,361,Brazil,home,132,Fred,57
+3842,361,Brazil,home,1676,Eder Militao,95
+3842,361,Brazil,home,1683,Casemiro,95
+3842,361,Brazil,home,1695,Vinícius Junior,95
+3842,361,Brazil,home,1697,Rodrygo,50
+3842,361,Brazil,home,1926,Thiago Silva,95
+3842,361,Brazil,home,195,Richarlison,72
+3842,361,Brazil,home,2071,Alex Telles,10
+3842,361,Brazil,home,2074,Raphinha,72
+3842,361,Brazil,home,30,Gabriel Jesus,23
+3842,361,Brazil,home,32,Alisson,95
+3842,361,Brazil,home,3846,Marquinhos,95
+3842,361,Brazil,home,3924,Bruno Guimarães,38
+3842,361,Brazil,home,3930,Lucas Paquetá,45
+3842,361,Brazil,home,8039,Antony,23
+3842,361,Brazil,home,8050,Alex Sandro,85
+3842,370,Switzerland,away,12960,Ricardo Rodriguez,95
+3842,370,Switzerland,away,13880,Fabian Frei,10
+3842,370,Switzerland,away,157,Granit Xhaka,95
+3842,370,Switzerland,away,4566,Rubén Vargas,57
+3842,370,Switzerland,away,4661,Manuel Akanji,95
+3842,370,Switzerland,away,4691,Yann Sommer,95
+3842,370,Switzerland,away,4695,Nico Elvedi,95
+3842,370,Switzerland,away,4717,Breel Embolo,74
+3842,370,Switzerland,away,4732,Djibril Sow,74
+3842,370,Switzerland,away,5006,Renato Steffen,37
+3842,370,Switzerland,away,5029,Silvan Widmer,85
+3842,370,Switzerland,away,5035,Edimilson Fernandes,38
+3842,370,Switzerland,away,8011,Haris Seferovic,21
+3842,370,Switzerland,away,8328,Remo Freuler,95
+3842,370,Switzerland,away,8397,Fabian Rieder,58
+3842,370,Switzerland,away,8416,Michel Aebischer,21
+3843,365,Portugal,home,133,Bruno Fernandes,100
+3843,365,Portugal,home,1393,Joao Felix,82
+3843,365,Portugal,home,17,João Cancelo,100
+3843,365,Portugal,home,1876,William Carvalho,82
+3843,365,Portugal,home,2066,Ruben Dias,100
+3843,365,Portugal,home,240,Rúben Neves,68
+3843,365,Portugal,home,27,Bernardo Silva,100
+3843,365,Portugal,home,4666,Raphaël Guerreiro,59
+3843,365,Portugal,home,6020,Cristiano Ronaldo,82
+3843,365,Portugal,home,6038,Nuno Mendes,41
+3843,365,Portugal,home,8008,Goncalo Ramos,18
+3843,365,Portugal,home,8077,Joao Palhinha,18
+3843,365,Portugal,home,8079,Matheus Nunes,18
+3843,365,Portugal,home,8538,Diogo Costa,100
+3843,365,Portugal,home,8564,Pepe,100
+3843,365,Portugal,home,8593,Rafael Leao,32
+3843,369,Uruguay,away,12529,Matias Vina,15
+3843,369,Uruguay,away,1368,Jose Gimenez,100
+3843,369,Uruguay,away,13924,Sergio Rochet,100
+3843,369,Uruguay,away,13926,Diego Godin,61
+3843,369,Uruguay,away,13927,Guillermo Varela,100
+3843,369,Uruguay,away,13930,Giorgian De Arrascaeta,39
+3843,369,Uruguay,away,1535,Luis Suarez,28
+3843,369,Uruguay,away,1545,Mathí­as Olivera,85
+3843,369,Uruguay,away,1684,Federico Valverde,100
+3843,369,Uruguay,away,1836,Maxi Gomez,29
+3843,369,Uruguay,away,2075,Facundo Pellistri,39
+3843,369,Uruguay,away,2077,Edinson Cavani,72
+3843,369,Uruguay,away,7584,Rodrigo Bentancur,100
+3843,369,Uruguay,away,8009,Darwin Nunez,71
+3843,369,Uruguay,away,8071,Sebastian Coates,100
+3843,369,Uruguay,away,8133,Matias Vecino,61
+3844,372,Senegal,away,13032,Pathe Ciss,73
+3844,372,Senegal,away,13228,Youssouf Sabaly,96
+3844,372,Senegal,away,13901,Pape Abou Cissé,2
+3844,372,Senegal,away,2059,Edouard Mendy,96
+3844,372,Senegal,away,214,Nampalys Mendy,23
+3844,372,Senegal,away,2144,Iliman Ndiaye,74
+3844,372,Senegal,away,3848,Abdou Diallo,96
+3844,372,Senegal,away,3858,Idrissa Gueye,96
+3844,372,Senegal,away,3895,Ismail Jakobs,96
+3844,372,Senegal,away,3978,Pape Gueye,96
+3844,372,Senegal,away,3996,Bamba Dieng,22
+3844,372,Senegal,away,428,Ismaïla Sarr,96
+3844,372,Senegal,away,7988,Boulaye Dia,94
+3844,372,Senegal,away,9993,Kalidou Koulibaly,96
+3844,381,Ecuador,home,11960,Enner Valencia,96
+3844,381,Ecuador,home,1287,José Cifuentes,51
+3844,381,Ecuador,home,13049,Gonzalo Plata,96
+3844,381,Ecuador,home,13935,Hernan Galindez,96
+3844,381,Ecuador,home,13937,Angelo Preciado,84
+3844,381,Ecuador,home,13939,Djorkaeff Reasco,33
+3844,381,Ecuador,home,1406,Pervis Estupinan,96
+3844,381,Ecuador,home,2134,Moises Caicedo,96
+3844,381,Ecuador,home,3519,Michael Estrada,63
+3844,381,Ecuador,home,3734,Félix Torres,96
+3844,381,Ecuador,home,4560,Carlos Gruezo,45
+3844,381,Ecuador,home,5195,Piero Hincapie,96
+3844,381,Ecuador,home,6596,Jeremy Sarmiento,51
+3844,381,Ecuador,home,7571,Alan Franco,45
+3844,381,Ecuador,home,9837,Jackson Porozo,12
+3845,360,Qatar,away,13942,Meshaal Barsham,96
+3845,360,Qatar,away,13944,Abdelkarim Hassan,96
+3845,360,Qatar,away,13945,Boualem Khoukhi,96
+3845,360,Qatar,away,13946,Pedro Miguel,96
+3845,360,Qatar,away,13947,Ismaeel Mohammed,84
+3845,360,Qatar,away,13950,Musab Khoder,12
+3845,360,Qatar,away,13951,Homam Ahmed,96
+3845,360,Qatar,away,13953,Karim Boudiaf,33
+3845,360,Qatar,away,13954,Abdulaziz Hatem,84
+3845,360,Qatar,away,13955,Ali Asad,33
+3845,360,Qatar,away,13956,Assim Madibo,63
+3845,360,Qatar,away,13960,Hasan Al-Haydos,63
+3845,360,Qatar,away,13961,Akram Afif,96
+3845,360,Qatar,away,13962,Almoez Ali,64
+3845,360,Qatar,away,13963,Mohammed Muntari,32
+3845,360,Qatar,away,13964,Ahmed Alaaeldin,12
+3845,366,Netherlands,home,11094,Cody Gakpo,82
+3845,366,Netherlands,home,11241,Andries Noppert,96
+3845,366,Netherlands,home,1522,Frenkie de Jong,85
+3845,366,Netherlands,home,284,Nathan Aké,96
+3845,366,Netherlands,home,3315,Vincent Janssen,31
+3845,366,Netherlands,home,37,Virgil van Dijk,96
+3845,366,Netherlands,home,5009,Wout Weghorst,14
+3845,366,Netherlands,home,8022,Jurrien Timber,96
+3845,366,Netherlands,home,8026,Daley Blind,96
+3845,366,Netherlands,home,8032,Kenneth Taylor,11
+3845,366,Netherlands,home,8033,Davy Klaassen,65
+3845,366,Netherlands,home,8034,Steven Berghuis,31
+3845,366,Netherlands,home,8134,Denzel Dumfries,96
+3845,366,Netherlands,home,8326,Teun Koopmeiners,14
+3845,366,Netherlands,home,8327,Marten De Roon,82
+3845,366,Netherlands,home,8342,Memphis Depay,65
+3846,50,England,away,1,Harry Kane,57
+3846,50,England,away,10,John Stones,94
+3846,50,England,away,118,Harry Maguire,94
+3846,50,England,away,123,Luke Shaw,64
+3846,50,England,away,136,Marcus Rashford,75
+3846,50,England,away,1377,Kieran Trippier,30
+3846,50,England,away,16,Kyle Walker,56
+3846,50,England,away,169,Jordan Pickford,94
+3846,50,England,away,2005,Kalvin Phillips,37
+3846,50,England,away,21,Phil Foden,94
+3846,50,England,away,265,Declan Rice,57
+3846,50,England,away,311,Callum Wilson,37
+3846,50,England,away,371,Jack Grealish,19
+3846,50,England,away,42,Trent Alexander-Arnold,38
+3846,50,England,away,4677,Jude Bellingham,94
+3846,50,England,away,47,Jordan Henderson,94
+3846,384,Wales,home,10039,Joe Morrell,36
+3846,384,Wales,home,137,Daniel James,76
+3846,384,Wales,home,1698,Gareth Bale,45
+3846,384,Wales,home,1931,Ethan Ampadu,94
+3846,384,Wales,home,201,Danny Ward,94
+3846,384,Wales,home,2083,Joe Rodon,94
+3846,384,Wales,home,286,Chris Mepham,94
+3846,384,Wales,home,308,Harry Wilson,18
+3846,384,Wales,home,589,Neco Williams,35
+3846,384,Wales,home,6018,Connor Roberts,59
+3846,384,Wales,home,6935,Joe Allen,80
+3846,384,Wales,home,7008,Brennan Johnson,49
+3846,384,Wales,home,71,Ben Davies,58
+3846,384,Wales,home,7955,Rubin Colwill,14
+3846,384,Wales,home,7966,Kieffer Moore,94
+3846,384,Wales,home,8062,Aaron Ramsey,94
+3847,51,United States,away,1067,Brenden Aaronson,54
+3847,51,United States,away,107,Christian Pulisic,45
+3847,51,United States,away,12183,Haji Wright,23
+3847,51,United States,away,13121,Yunus Musah,99
+3847,51,United States,away,1334,Weston McKennie,64
+3847,51,United States,away,1336,Timothy Weah,81
+3847,51,United States,away,1339,Tyler Adams,99
+3847,51,United States,away,1340,Shaq Moore,18
+3847,51,United States,away,1971,Tim Ream,99
+3847,51,United States,away,1973,Antonee Robinson,99
+3847,51,United States,away,5135,Josh Sargent,76
+3847,51,United States,away,687,Kellyn Acosta,35
+3847,51,United States,away,70,Cameron Carter-Vickers,99
+3847,51,United States,away,8343,Sergiño Dest,81
+3847,51,United States,away,916,Walker Zimmerman,18
+3847,51,United States,away,940,Matt Turner,99
+3847,373,Iran,home,12222,Majid Hosseini,99
+3847,373,Iran,home,12235,Ali Karimi,54
+3847,373,Iran,home,13968,Alireza Beiranvand,99
+3847,373,Iran,home,13971,Ehsan Hajsafi,71
+3847,373,Iran,home,13972,Abolfazl Jalali,28
+3847,373,Iran,home,13975,Milad Mohammadi,47
+3847,373,Iran,home,13977,Morteza Pouraliganji,99
+3847,373,Iran,home,13978,Ramin Rezaeian,99
+3847,373,Iran,home,13980,Saeid Ezatolahi,99
+3847,373,Iran,home,13981,Ali Gholizadeh,76
+3847,373,Iran,home,13982,Ahmad Nourollahi,70
+3847,373,Iran,home,13983,Mehdi Torabi,29
+3847,373,Iran,home,13984,Karim Ansarifard,23
+3847,373,Iran,home,5070,Saman Ghoddos,54
+3847,373,Iran,home,7441,Sardar Azmoun,99
+3847,373,Iran,home,8561,Mehdi Taremi,99
+3848,367,Denmark,away,11854,Alexander Bah,51
+3848,367,Denmark,away,12022,Andreas Cornelius,27
+3848,367,Denmark,away,12779,Mikkel Damsgaard,38
+3848,367,Denmark,away,1536,Martin Braithwaite,58
+3848,367,Denmark,away,200,Kasper Schmeichel,96
+3848,367,Denmark,away,2073,Joachim Andersen,96
+3848,367,Denmark,away,395,Pierre-Emile Höjbjerg,96
+3848,367,Denmark,away,4053,Kasper Dolberg,38
+3848,367,Denmark,away,4737,Jesper Lindström,96
+3848,367,Denmark,away,4882,Robert Skov,28
+3848,367,Denmark,away,5063,Mathias Jensen,58
+3848,367,Denmark,away,7443,Christian Eriksen,96
+3848,367,Denmark,away,8099,Rasmus Kristensen,45
+3848,367,Denmark,away,8324,Joakim Maehle,69
+3848,367,Denmark,away,9089,Andreas Skov Olsen,68
+3848,367,Denmark,away,92,Andreas Christensen,96
+3848,386,Australia,home,13815,Mathew Leckie,88
+3848,386,Australia,home,13817,Jamie Maclaren,15
+3848,386,Australia,home,13819,Mitchell Duke,81
+3848,386,Australia,home,13820,Aziz Behich,96
+3848,386,Australia,home,13821,Keanu Baccus,51
+3848,386,Australia,home,13823,Craig Goodwin,45
+3848,386,Australia,home,13824,Kye Rowles,96
+3848,386,Australia,home,435,Mathew Ryan,96
+3848,386,Australia,home,449,Aaron Mooy,96
+3848,386,Australia,home,4739,Ajdin Hrustic,8
+3848,386,Australia,home,6967,Riley McGree,73
+3848,386,Australia,home,7478,Milos Degenek,96
+3848,386,Australia,home,8257,Harry Souttar,96
+3848,386,Australia,home,8854,Jackson Irvine,96
+3848,386,Australia,home,9290,Bailey Wright,23
+3849,363,France,away,10756,Jordan Veretout,62
+3849,363,France,away,1532,Ousmane Dembele,24
+3849,363,France,away,1534,Antoine Griezmann,30
+3849,363,France,away,158,Mattéo Guendouzi,78
+3849,363,France,away,1675,Raphael Varane,62
+3849,363,France,away,1895,William Saliba,40
+3849,363,France,away,3870,Kylian Mbappé,40
+3849,363,France,away,3878,Axel Disasi,102
+3849,363,France,away,3888,Aurélien Tchouaméni,102
+3849,363,France,away,3890,Youssouf Fofana,72
+3849,363,France,away,3968,Steve Mandanda,102
+3849,363,France,away,4012,Eduardo Camavinga,102
+3849,363,France,away,4194,Randal Kolo Muani,102
+3849,363,France,away,4622,Kingsley Coman,62
+3849,363,France,away,5097,Ibrahima Konaté,102
+3849,363,France,away,8054,Adrien Rabiot,40
+3849,378,Tunisia,home,12862,Wajdi Kechrida,102
+3849,378,Tunisia,home,14013,Aymen Dahmen,102
+3849,378,Tunisia,home,14017,Ali Maaloul,102
+3849,378,Tunisia,home,14018,Nader Ghandri,102
+3849,378,Tunisia,home,14019,Yassine Meriah,102
+3849,378,Tunisia,home,14021,Ghaylen Chaaleli,29
+3849,378,Tunisia,home,14022,Aissa Laidouni,102
+3849,378,Tunisia,home,14023,Mohamed Ali Ben Romdhane,73
+3849,378,Tunisia,home,14028,Issam Jebali,43
+3849,378,Tunisia,home,14030,Anis Slimane,82
+3849,378,Tunisia,home,4105,Wahbi Khazri,59
+3849,378,Tunisia,home,4758,Ellyes Skhiri,102
+3849,378,Tunisia,home,9598,Ali Abdi,20
+3849,378,Tunisia,home,9824,Montassar Talbi,102
+3850,364,Argentina,away,10715,Julian Alvarez,78
+3850,364,Argentina,away,11,Nicolás Otamendi,96
+3850,364,Argentina,away,11856,Enzo Fernandez,78
+3850,364,Argentina,away,13222,Nahuel Molina,96
+3850,364,Argentina,away,13226,German Pezzella,18
+3850,364,Argentina,away,144,Emiliano Martínez,96
+3850,364,Argentina,away,1531,Lionel Messi,96
+3850,364,Argentina,away,3856,Leandro Paredes,38
+3850,364,Argentina,away,3868,Ángel Di María,58
+3850,364,Argentina,away,453,Alexis Mac Allister,82
+3850,364,Argentina,away,5116,Cristian Romero,96
+3850,364,Argentina,away,6895,Rodrigo de Paul,96
+3850,364,Argentina,away,7757,Thiago Almada,14
+3850,364,Argentina,away,8025,Nicolas Tagliafico,38
+3850,364,Argentina,away,8138,Lautaro Martinez,18
+3850,364,Argentina,away,9178,Marcos Acuña,58
+3850,376,Poland,home,12514,Piotr Zielinski,96
+3850,376,Poland,home,12766,Bartosz Bereszynski,72
+3850,376,Poland,home,12820,Jakub Kiwior,96
+3850,376,Poland,home,13848,Kamil Glik,96
+3850,376,Poland,home,13849,Artur Jedrzejczyk,24
+3850,376,Poland,home,13850,Grzegorz Krychowiak,82
+3850,376,Poland,home,13851,Michal Skoras,51
+3850,376,Poland,home,13852,Damian Szymanski,35
+3850,376,Poland,home,1896,Matty Cash,96
+3850,376,Poland,home,4625,Robert Lewandowski,96
+3850,376,Poland,home,4851,Krzysztof Piatek,14
+3850,376,Poland,home,668,Przemyslaw Frankowski,45
+3850,376,Poland,home,7419,Krystian Bielik,61
+3850,376,Poland,home,7535,Karol Swiderski,45
+3850,376,Poland,home,8042,Wojciech Szczesny,96
+3850,376,Poland,home,9939,Jakub Kaminski,51
+3851,58,Mexico,away,2106,Edson Alvarez,85
+3851,58,Mexico,away,2108,Uriel Antuna,52
+3851,58,Mexico,away,2111,Hirving Lozano,97
+3851,58,Mexico,away,252,Raúl Jiménez,21
+3851,58,Mexico,away,3299,César Montes,97
+3851,58,Mexico,away,3301,Héctor Moreno,97
+3851,58,Mexico,away,3303,Jesús Gallardo,97
+3851,58,Mexico,away,3309,Carlos Rodríguez,21
+3851,58,Mexico,away,3314,Rogelio Funes Mori,12
+3851,58,Mexico,away,3343,Guillermo Ochoa,97
+3851,58,Mexico,away,3352,Jorge Sánchez,85
+3851,58,Mexico,away,3367,Henry Martín,76
+3851,58,Mexico,away,3387,Orbelín Pineda,76
+3851,58,Mexico,away,3414,Alexis Vega,45
+3851,58,Mexico,away,3452,Kevin Álvarez,12
+3851,58,Mexico,away,3455,Luis Chávez,97
+3851,382,Saudi Arabia,home,13987,Mohammed Al-Owais,97
+3851,382,Saudi Arabia,home,13992,Ali Al-Bulayhi,36
+3851,382,Saudi Arabia,home,13993,Sultan Al-Ghannam,87
+3851,382,Saudi Arabia,home,13994,Saud Abdulhamid,97
+3851,382,Saudi Arabia,home,13995,Abdulelah Al-Amri,97
+3851,382,Saudi Arabia,home,13996,Hassan Tambakti,97
+3851,382,Saudi Arabia,home,13997,Abdullah Madu,52
+3851,382,Saudi Arabia,home,13998,Salem Al-Dawsari,97
+3851,382,Saudi Arabia,home,14002,Hattan Bahebri,10
+3851,382,Saudi Arabia,home,14003,Mohamed Kanno,97
+3851,382,Saudi Arabia,home,14006,Ali Al-Hassan,45
+3851,382,Saudi Arabia,home,14008,Riad Sharahili,61
+3851,382,Saudi Arabia,home,14009,Abdulrahman Al-Oboud,36
+3851,382,Saudi Arabia,home,14010,Firas Al-Buraikan,97
+3851,382,Saudi Arabia,home,14011,Saleh Al-Shehri,61
+3852,362,Belgium,away,11994,Dries Mertens,45
+3852,362,Belgium,away,1387,Yannick Carrasco,71
+3852,362,Belgium,away,1672,Thibaut Courtois,93
+3852,362,Belgium,away,1694,Eden Hazard,7
+3852,362,Belgium,away,1960,Timothy Castagne,93
+3852,362,Belgium,away,215,Youri Tielemans,22
+3852,362,Belgium,away,22,Kevin De Bruyne,93
+3852,362,Belgium,away,241,Leander Dendoncker,71
+3852,362,Belgium,away,4021,Jérémy Doku,22
+3852,362,Belgium,away,455,Leandro Trossard,58
+3852,362,Belgium,away,4669,Thomas Meunier,86
+3852,362,Belgium,away,4674,Axel Witsel,93
+3852,362,Belgium,away,4684,Thorgan Hazard,35
+3852,362,Belgium,away,5139,Romelu Lukaku,48
+3852,362,Belgium,away,66,Toby Alderweireld,93
+3852,362,Belgium,away,67,Jan Vertonghen,93
+3852,371,Croatia,home,100,Mateo Kovacic,90
+3852,371,Croatia,home,13854,Dominik Livakovic,93
+3852,371,Croatia,home,13858,Josip Juranovic,93
+3852,371,Croatia,home,13860,Marko Livaja,63
+3852,371,Croatia,home,13861,Bruno Petkovic,30
+3852,371,Croatia,home,1687,Luka Modric,93
+3852,371,Croatia,home,40,Dejan Lovren,93
+3852,371,Croatia,home,4883,Andrej Kramaric,63
+3852,371,Croatia,home,4892,Josko Gvardiol,93
+3852,371,Croatia,home,4926,Borna Sosa,93
+3852,371,Croatia,home,5968,Lovro Majer,3
+3852,371,Croatia,home,8129,Marcelo Brozovic,93
+3852,371,Croatia,home,8136,Ivan Perisic,93
+3852,371,Croatia,home,8330,Mario Pasalic,30
+3853,374,Morocco,away,12586,Sofyan Amrabat,93
+3853,374,Morocco,away,12777,Abdelhamid Sabiri,64
+3853,374,Morocco,away,13044,Jawad El Yamiq,18
+3853,374,Morocco,away,13866,Selim Amallah,29
+3853,374,Morocco,away,13868,Yahya Jabrane,9
+3853,374,Morocco,away,13870,Abderrazak Hamdallah,18
+3853,374,Morocco,away,1681,Achraf Hakimi,84
+3853,374,Morocco,away,1785,Bono,93
+3853,374,Morocco,away,1810,Youssef En-Nesyri,93
+3853,374,Morocco,away,1938,Hakim Ziyech,75
+3853,374,Morocco,away,233,Romain Saïss,93
+3853,374,Morocco,away,4002,Nayef Aguerd,93
+3853,374,Morocco,away,401,Sofiane Boufal,64
+3853,374,Morocco,away,4324,Azzedine Ounahi,75
+3853,374,Morocco,away,8027,Noussair Mazraoui,93
+3853,374,Morocco,away,9865,Zakaria Aboukhlal,29
+3853,380,Canada,home,1025,Kamal Miller,93
+3853,380,Canada,home,11790,Steven Vitoria,93
+3853,380,Canada,home,1225,Richie Laryea,28
+3853,380,Canada,home,1228,Jonathan Osorio,65
+3853,380,Canada,home,12315,Sam Adekugbe,60
+3853,380,Canada,home,1289,Mark-Anthony Kaye,59
+3853,380,Canada,home,14031,Milan Borjan,93
+3853,380,Canada,home,14032,David Wotherspoon,18
+3853,380,Canada,home,3965,Jonathan David,34
+3853,380,Canada,home,4611,Alphonso Davies,93
+3853,380,Canada,home,5173,Ismael Kone,33
+3853,380,Canada,home,6916,Junior Hoilett,75
+3853,380,Canada,home,8627,Atiba Hutchinson,34
+3853,380,Canada,home,9094,Cyle Larin,59
+3853,380,Canada,home,926,Alistair Johnston,93
+3853,380,Canada,home,963,Tajon Buchanan,93
+3854,52,Spain,away,13178,Nico Williams,56
+3854,52,Spain,away,1341,Unai Simon,97
+3854,52,Spain,away,1394,Alvaro Morata,56
+3854,52,Spain,away,1513,Jordi Alba,29
+3854,52,Spain,away,1519,Sergio Busquets,97
+3854,52,Spain,away,1529,Ansu Fati,30
+3854,52,Spain,away,1530,Pedri,97
+3854,52,Spain,away,1682,Daniel Carvajal,52
+3854,52,Spain,away,1696,Marco Asensio,41
+3854,52,Spain,away,18,Rodri,97
+3854,52,Spain,away,1841,Pau Torres,97
+3854,52,Spain,away,1950,Ferran Torres,41
+3854,52,Spain,away,4908,Dani Olmo,97
+3854,52,Spain,away,8341,Gavi,67
+3854,52,Spain,away,8344,Alex Balde,68
+3854,52,Spain,away,96,César Azpilicueta,45
+3854,57,Japan,home,10704,Kaoru Mitoma,52
+3854,57,Japan,home,11841,Hidemasa Morita,97
+3854,57,Japan,home,13797,Shogo Taniguchi,97
+3854,57,Japan,home,13798,Yuto Nagatomo,45
+3854,57,Japan,home,13799,Shuichi Gonda,97
+3854,57,Japan,home,13802,Daizen Maeda,61
+3854,57,Japan,home,1860,Takefusa Kubo,45
+3854,57,Japan,home,2087,Takehiro Tomiyasu,29
+3854,57,Japan,home,2088,Maya Yoshida,97
+3854,57,Japan,home,2094,Junya Ito,97
+3854,57,Japan,home,2095,Daichi Kamada,68
+3854,57,Japan,home,2099,Takuma Asano,36
+3854,57,Japan,home,4928,Wataru Endo,11
+3854,57,Japan,home,5098,Ko Itakura,97
+3854,57,Japan,home,8927,Ao Tanaka,86
+3854,57,Japan,home,9981,Ritsu Doan,52
+3855,368,Germany,away,1937,Kai Havertz,35
+3855,368,Germany,away,20,Ilkay Gündogan,53
+3855,368,Germany,away,26,Leroy Sané,100
+3855,368,Germany,away,4602,Manuel Neuer,100
+3855,368,Germany,away,4608,Niklas Süle,93
+3855,368,Germany,away,4616,Joshua Kimmich,100
+3855,368,Germany,away,4618,Leon Goretzka,45
+3855,368,Germany,away,4621,Jamal Musiala,100
+3855,368,Germany,away,4623,Serge Gnabry,100
+3855,368,Germany,away,4624,Thomas Müller,65
+3855,368,Germany,away,4694,Matthias Ginter,7
+3855,368,Germany,away,4868,David Raum,65
+3855,368,Germany,away,4897,Lukas Klostermann,55
+3855,368,Germany,away,90,Antonio Rüdiger,100
+3855,368,Germany,away,9918,Mario Götze,35
+3855,368,Germany,away,9963,Niclas Fullkrug,47
+3855,385,Costa Rica,home,13371,Bryan Oviedo,92
+3855,385,Costa Rica,home,13563,Jewison Bennette,27
+3855,385,Costa Rica,home,13779,Juan Pablo Vargas,100
+3855,385,Costa Rica,home,13780,Keysher Fuller,73
+3855,385,Costa Rica,home,13781,Celso Borges,100
+3855,385,Costa Rica,home,13782,Anthony Contreras,8
+3855,385,Costa Rica,home,13784,Johan Venegas,73
+3855,385,Costa Rica,home,13787,Youstin Salas,55
+3855,385,Costa Rica,home,13788,Yeltsin Tejeda,92
+3855,385,Costa Rica,home,13790,Brandon Aguilera,45
+3855,385,Costa Rica,home,13791,Roan Wilson,8
+3855,385,Costa Rica,home,1593,Óscar Duarte,100
+3855,385,Costa Rica,home,3316,Joel Campbell,100
+3855,385,Costa Rica,home,3841,Keylor Navas,100
+3855,385,Costa Rica,home,754,Kendall Waston,100
+3855,385,Costa Rica,home,975,Ronald Matarrita,27
+3856,369,Uruguay,away,1368,Jose Gimenez,100
+3856,369,Uruguay,away,13924,Sergio Rochet,100
+3856,369,Uruguay,away,13927,Guillermo Varela,100
+3856,369,Uruguay,away,13928,Agustin Canobbio,21
+3856,369,Uruguay,away,13929,Nicolas De La Cruz,35
+3856,369,Uruguay,away,13930,Giorgian De Arrascaeta,79
+3856,369,Uruguay,away,1535,Luis Suarez,65
+3856,369,Uruguay,away,1545,Mathí­as Olivera,100
+3856,369,Uruguay,away,1684,Federico Valverde,100
+3856,369,Uruguay,away,1836,Maxi Gomez,21
+3856,369,Uruguay,away,2075,Facundo Pellistri,65
+3856,369,Uruguay,away,2077,Edinson Cavani,35
+3856,369,Uruguay,away,7584,Rodrigo Bentancur,33
+3856,369,Uruguay,away,8009,Darwin Nunez,79
+3856,369,Uruguay,away,8071,Sebastian Coates,100
+3856,369,Uruguay,away,8133,Matias Vecino,67
+3856,383,Ghana,home,11843,Issahaku Fatawu,3
+3856,383,Ghana,home,1363,Inaki Williams,71
+3856,383,Ghana,home,1380,Thomas Partey,100
+3856,383,Ghana,home,14034,Lawrence Ati Zigi,100
+3856,383,Ghana,home,14040,Andre Ayew,45
+3856,383,Ghana,home,1910,Mohammed Salisu,100
+3856,383,Ghana,home,213,Daniel Amartey,100
+3856,383,Ghana,home,4020,Kamaldeen Sulemana,55
+3856,383,Ghana,home,4404,Alidu Seidu,100
+3856,383,Ghana,home,4408,Salis Abdul Samed,71
+3856,383,Ghana,home,483,Jordan Ayew,45
+3856,383,Ghana,home,5085,Abdul Rahman Baba,100
+3856,383,Ghana,home,5178,Osman Bukari,55
+3856,383,Ghana,home,7192,Antoine Semenyo,29
+3856,383,Ghana,home,8031,Mohammed Kudus,97
+3856,383,Ghana,home,9980,Daniel-Kofi Kyereh,29
+3857,365,Portugal,away,11488,Ricardo Horta,96
+3857,365,Portugal,away,11853,Antonio Silva,96
+3857,365,Portugal,away,127,Diogo Dalot,96
+3857,365,Portugal,away,17,João Cancelo,96
+3857,365,Portugal,away,1876,William Carvalho,15
+3857,365,Portugal,away,1907,Vitinha,81
+3857,365,Portugal,away,240,Rúben Neves,64
+3857,365,Portugal,away,27,Bernardo Silva,15
+3857,365,Portugal,away,4912,André Silva,32
+3857,365,Portugal,away,6020,Cristiano Ronaldo,64
+3857,365,Portugal,away,8000,Joao Mario,81
+3857,365,Portugal,away,8077,Joao Palhinha,32
+3857,365,Portugal,away,8079,Matheus Nunes,64
+3857,365,Portugal,away,8538,Diogo Costa,96
+3857,365,Portugal,away,8564,Pepe,96
+3857,365,Portugal,away,8593,Rafael Leao,32
+3857,377,South Korea,home,1257,In-beom Hwang,96
+3857,377,South Korea,home,13907,Seun-gyu Kim,96
+3857,377,South Korea,home,13910,Kyung-won Kwon,96
+3857,377,South Korea,home,13911,Young-gwon Kim,80
+3857,377,South Korea,home,13912,Jin-su Kim,96
+3857,377,South Korea,home,13915,Yu-min Cho,4
+3857,377,South Korea,home,13920,Jun-ho Son,16
+3857,377,South Korea,home,13922,Woo-young Jung,96
+3857,377,South Korea,home,13923,Gue-sung Cho,92
+3857,377,South Korea,home,1830,Kang-in Lee,81
+3857,377,South Korea,home,2443,Moon-hwan Kim,96
+3857,377,South Korea,home,4280,Ui-jo Hwang,15
+3857,377,South Korea,home,4915,Hee-chan Hwang,31
+3857,377,South Korea,home,5038,Jae-sung Lee,65
+3857,377,South Korea,home,83,Heung-min Son,96
+3858,370,Switzerland,away,12960,Ricardo Rodriguez,100
+3858,370,Switzerland,away,157,Granit Xhaka,100
+3858,370,Switzerland,away,320,Fabian Schär,100
+3858,370,Switzerland,away,4566,Rubén Vargas,82
+3858,370,Switzerland,away,4656,Gregor Kobel,100
+3858,370,Switzerland,away,4661,Manuel Akanji,100
+3858,370,Switzerland,away,4703,Denis Zakaria,32
+3858,370,Switzerland,away,4717,Breel Embolo,95
+3858,370,Switzerland,away,4732,Djibril Sow,67
+3858,370,Switzerland,away,5029,Silvan Widmer,100
+3858,370,Switzerland,away,5035,Edimilson Fernandes,33
+3858,370,Switzerland,away,57,Xherdan Shaqiri,68
+3858,370,Switzerland,away,8113,Noah Okafor,5
+3858,370,Switzerland,away,8328,Remo Freuler,100
+3858,370,Switzerland,away,8400,Christian Fassnacht,18
+3858,375,Serbia,home,12561,Sergej Milinković-Savić,66
+3858,375,Serbia,home,12576,Nikola Milenkovic,100
+3858,375,Serbia,home,12653,Vanja Milinković-Savić,100
+3858,375,Serbia,home,12664,Saša Lukić,100
+3858,375,Serbia,home,12776,Filip Djuricic,23
+3858,375,Serbia,home,13906,Andrija Zivkovic,77
+3858,375,Serbia,home,1550,Nemanja Maksimovic,34
+3858,375,Serbia,home,1702,Luka Jovic,46
+3858,375,Serbia,home,1799,Nemanja Gudelj,46
+3858,375,Serbia,home,1991,Aleksandar Mitrovic,100
+3858,375,Serbia,home,3880,Strahinja Pavlovic,100
+3858,375,Serbia,home,3989,Nemanja Radonjic,23
+3858,375,Serbia,home,4734,Filip Kostic,100
+3858,375,Serbia,home,8037,Dusan Tadić,77
+3858,375,Serbia,home,8059,Dušan Vlahović,54
+3858,375,Serbia,home,9947,Milos Veljkovic,54
+3859,361,Brazil,away,12945,Bremer,100
+3859,361,Brazil,away,132,Fred,54
+3859,361,Brazil,away,13830,Pedro,37
+3859,361,Brazil,away,13831,Everton Ribeiro,46
+3859,361,Brazil,away,162,Gabriel Martinelli,100
+3859,361,Brazil,away,1676,Eder Militao,100
+3859,361,Brazil,away,1697,Rodrygo,54
+3859,361,Brazil,away,2071,Alex Telles,54
+3859,361,Brazil,away,2074,Raphinha,22
+3859,361,Brazil,away,30,Gabriel Jesus,63
+3859,361,Brazil,away,3846,Marquinhos,46
+3859,361,Brazil,away,3924,Bruno Guimarães,46
+3859,361,Brazil,away,44,Fabinho,100
+3859,361,Brazil,away,6,Ederson,100
+3859,361,Brazil,away,8039,Antony,78
+3859,361,Brazil,away,9330,Dani Alves,100
+3859,379,Cameroon,home,1168,Nouhou Tolo,100
+3859,379,Cameroon,home,13871,Devis Epassy,100
+3859,379,Cameroon,home,13872,Collins Fai,100
+3859,379,Cameroon,home,13873,Pierre Kunde,67
+3859,379,Cameroon,home,13875,Vincent Aboubakar,100
+3859,379,Cameroon,home,13878,Jerome Mbekeli,16
+3859,379,Cameroon,home,1977,André Zambo Anguissa,100
+3859,379,Cameroon,home,3934,Karl Toko Ekambi,37
+3859,379,Cameroon,home,4207,Christopher Wooh,100
+3859,379,Cameroon,home,4316,Enzo Ebosse,100
+3859,379,Cameroon,home,4626,Eric Maxim Choupo-Moting,100
+3859,379,Cameroon,home,5074,Bryan Mbeumo,63
+3859,379,Cameroon,home,7605,Olivier Ntcham,33
+3859,379,Cameroon,home,8402,Nicolas Ngamaleu,84
+10502,51,United States,away,1067,Brenden Aaronson,30
+10502,51,United States,away,107,Christian Pulisic,96
+10502,51,United States,away,1184,Jordan Morris,5
+10502,51,United States,away,12183,Haji Wright,30
+10502,51,United States,away,13121,Yunus Musah,96
+10502,51,United States,away,1334,Weston McKennie,66
+10502,51,United States,away,1336,Timothy Weah,66
+10502,51,United States,away,1339,Tyler Adams,96
+10502,51,United States,away,1971,Tim Ream,96
+10502,51,United States,away,1973,Antonee Robinson,91
+10502,51,United States,away,328,DeAndre Yedlin,22
+10502,51,United States,away,4681,Giovanni Reyna,51
+10502,51,United States,away,802,Jesús Ferreira,45
+10502,51,United States,away,8343,Sergiño Dest,74
+10502,51,United States,away,916,Walker Zimmerman,96
+10502,51,United States,away,940,Matt Turner,96
+10502,366,Netherlands,home,11094,Cody Gakpo,92
+10502,366,Netherlands,home,11241,Andries Noppert,96
+10502,366,Netherlands,home,1522,Frenkie de Jong,96
+10502,366,Netherlands,home,284,Nathan Aké,92
+10502,366,Netherlands,home,37,Virgil van Dijk,96
+10502,366,Netherlands,home,3861,Xavi Simons,14
+10502,366,Netherlands,home,5009,Wout Weghorst,4
+10502,366,Netherlands,home,8022,Jurrien Timber,96
+10502,366,Netherlands,home,8026,Daley Blind,96
+10502,366,Netherlands,home,8033,Davy Klaassen,45
+10502,366,Netherlands,home,8045,Matthijs De Ligt,4
+10502,366,Netherlands,home,8134,Denzel Dumfries,96
+10502,366,Netherlands,home,8326,Teun Koopmeiners,51
+10502,366,Netherlands,home,8327,Marten De Roon,45
+10502,366,Netherlands,home,8342,Memphis Depay,82
+10502,366,Netherlands,home,84,Steven Bergwijn,51
+10503,364,Argentina,home,10715,Julian Alvarez,71
+10503,364,Argentina,home,11,Nicolás Otamendi,97
+10503,364,Argentina,home,11856,Enzo Fernandez,97
+10503,364,Argentina,home,13222,Nahuel Molina,79
+10503,364,Argentina,home,144,Emiliano Martínez,97
+10503,364,Argentina,home,1531,Lionel Messi,97
+10503,364,Argentina,home,453,Alexis Mac Allister,79
+10503,364,Argentina,home,4590,Exequiel Palacios,18
+10503,364,Argentina,home,5116,Cristian Romero,97
+10503,364,Argentina,home,6895,Rodrigo de Paul,97
+10503,364,Argentina,home,8023,Lisandro Martinez,48
+10503,364,Argentina,home,8025,Nicolas Tagliafico,26
+10503,364,Argentina,home,8138,Lautaro Martinez,26
+10503,364,Argentina,home,8419,Gonzalo Montiel,18
+10503,364,Argentina,home,8420,Papu Gómez,49
+10503,364,Argentina,home,9178,Marcos Acuña,71
+10503,386,Australia,away,13813,Fran Karacic,26
+10503,386,Australia,away,13815,Mathew Leckie,71
+10503,386,Australia,away,13817,Jamie Maclaren,26
+10503,386,Australia,away,13819,Mitchell Duke,71
+10503,386,Australia,away,13820,Aziz Behich,97
+10503,386,Australia,away,13821,Keanu Baccus,57
+10503,386,Australia,away,13823,Craig Goodwin,40
+10503,386,Australia,away,13824,Kye Rowles,97
+10503,386,Australia,away,13825,Garang Kuol,26
+10503,386,Australia,away,435,Mathew Ryan,97
+10503,386,Australia,away,449,Aaron Mooy,97
+10503,386,Australia,away,4739,Ajdin Hrustic,40
+10503,386,Australia,away,6967,Riley McGree,57
+10503,386,Australia,away,7478,Milos Degenek,71
+10503,386,Australia,away,8257,Harry Souttar,97
+10503,386,Australia,away,8854,Jackson Irvine,97
+10504,363,France,home,113,Olivier Giroud,75
+10504,363,France,home,1532,Ousmane Dembele,75
+10504,363,France,home,1534,Antoine Griezmann,99
+10504,363,France,home,1675,Raphael Varane,99
+10504,363,France,home,1789,Jules Kounde,91
+10504,363,France,home,3870,Kylian Mbappé,99
+10504,363,France,home,3878,Axel Disasi,8
+10504,363,France,home,3888,Aurélien Tchouaméni,65
+10504,363,France,home,3890,Youssouf Fofana,34
+10504,363,France,home,4606,Dayot Upamecano,99
+10504,363,France,home,4622,Kingsley Coman,24
+10504,363,France,home,4712,Marcus Thuram,24
+10504,363,France,home,61,Hugo Lloris,99
+10504,363,France,home,8054,Adrien Rabiot,99
+10504,363,France,home,8583,Theo Hernandez,99
+10504,376,Poland,away,11113,Sebastian Szymanski,63
+10504,376,Poland,away,12514,Piotr Zielinski,99
+10504,376,Poland,away,12537,Nicola Zalewski,29
+10504,376,Poland,away,12766,Bartosz Bereszynski,99
+10504,376,Poland,away,12820,Jakub Kiwior,86
+10504,376,Poland,away,13848,Kamil Glik,99
+10504,376,Poland,away,13850,Grzegorz Krychowiak,70
+10504,376,Poland,away,1896,Matty Cash,99
+10504,376,Poland,away,2042,Kamil Grosicki,13
+10504,376,Poland,away,385,Jan Bednarek,13
+10504,376,Poland,away,3994,Arkadiusz Milik,36
+10504,376,Poland,away,4625,Robert Lewandowski,99
+10504,376,Poland,away,668,Przemyslaw Frankowski,86
+10504,376,Poland,away,7419,Krystian Bielik,29
+10504,376,Poland,away,8042,Wojciech Szczesny,99
+10504,376,Poland,away,9939,Jakub Kaminski,70
+10505,50,England,home,1,Harry Kane,94
+10505,50,England,home,10,John Stones,76
+10505,50,England,home,105,Mason Mount,19
+10505,50,England,home,118,Harry Maguire,94
+10505,50,England,home,123,Luke Shaw,94
+10505,50,England,home,136,Marcus Rashford,30
+10505,50,England,home,16,Kyle Walker,94
+10505,50,England,home,163,Bukayo Saka,64
+10505,50,England,home,169,Jordan Pickford,94
+10505,50,England,home,2005,Kalvin Phillips,13
+10505,50,England,home,21,Phil Foden,64
+10505,50,England,home,265,Declan Rice,94
+10505,50,England,home,371,Jack Grealish,30
+10505,50,England,home,4677,Jude Bellingham,75
+10505,50,England,home,47,Jordan Henderson,81
+10505,50,England,home,74,Eric Dier,18
+10505,372,Senegal,away,12154,Famara Diedhiou,23
+10505,372,Senegal,away,13032,Pathe Ciss,45
+10505,372,Senegal,away,13228,Youssouf Sabaly,94
+10505,372,Senegal,away,2059,Edouard Mendy,94
+10505,372,Senegal,away,214,Nampalys Mendy,94
+10505,372,Senegal,away,2144,Iliman Ndiaye,45
+10505,372,Senegal,away,3848,Abdou Diallo,94
+10505,372,Senegal,away,3895,Ismail Jakobs,83
+10505,372,Senegal,away,3903,Krépin Diatta,45
+10505,372,Senegal,away,3978,Pape Gueye,49
+10505,372,Senegal,away,3996,Bamba Dieng,49
+10505,372,Senegal,away,4152,Pape Sarr,49
+10505,372,Senegal,away,428,Ismaïla Sarr,94
+10505,372,Senegal,away,7988,Boulaye Dia,71
+10505,372,Senegal,away,8584,Fode Ballo-Toure,11
+10505,372,Senegal,away,9993,Kalidou Koulibaly,94
+10506,57,Japan,home,10704,Kaoru Mitoma,61
+10506,57,Japan,home,11841,Hidemasa Morita,124
+10506,57,Japan,home,13797,Shogo Taniguchi,124
+10506,57,Japan,home,13798,Yuto Nagatomo,63
+10506,57,Japan,home,13799,Shuichi Gonda,124
+10506,57,Japan,home,13802,Daizen Maeda,63
+10506,57,Japan,home,2087,Takehiro Tomiyasu,124
+10506,57,Japan,home,2088,Maya Yoshida,124
+10506,57,Japan,home,2090,Hiroki Sakai,51
+10506,57,Japan,home,2094,Junya Ito,124
+10506,57,Japan,home,2095,Daichi Kamada,73
+10506,57,Japan,home,2099,Takuma Asano,61
+10506,57,Japan,home,4928,Wataru Endo,124
+10506,57,Japan,home,55,Takumi Minamino,38
+10506,57,Japan,home,8927,Ao Tanaka,19
+10506,57,Japan,home,9981,Ritsu Doan,86
+10506,371,Croatia,away,100,Mateo Kovacic,98
+10506,371,Croatia,away,13854,Dominik Livakovic,124
+10506,371,Croatia,away,13857,Borna Barisic,124
+10506,371,Croatia,away,13858,Josip Juranovic,124
+10506,371,Croatia,away,13859,Mislav Orsic,19
+10506,371,Croatia,away,13860,Marko Livaja,19
+10506,371,Croatia,away,13861,Bruno Petkovic,61
+10506,371,Croatia,away,1665,Ante Budimir,63
+10506,371,Croatia,away,1687,Luka Modric,98
+10506,371,Croatia,away,40,Dejan Lovren,124
+10506,371,Croatia,away,4883,Andrej Kramaric,67
+10506,371,Croatia,away,4892,Josko Gvardiol,124
+10506,371,Croatia,away,5968,Lovro Majer,26
+10506,371,Croatia,away,6019,Nikola Vlasic,26
+10506,371,Croatia,away,8129,Marcelo Brozovic,124
+10506,371,Croatia,away,8136,Ivan Perisic,124
+10506,371,Croatia,away,8330,Mario Pasalic,57
+10507,361,Brazil,home,12945,Bremer,22
+10507,361,Brazil,home,13829,Weverton,14
+10507,361,Brazil,home,162,Gabriel Martinelli,22
+10507,361,Brazil,home,1676,Eder Militao,62
+10507,361,Brazil,home,1683,Casemiro,93
+10507,361,Brazil,home,1695,Vinícius Junior,71
+10507,361,Brazil,home,1697,Rodrygo,13
+10507,361,Brazil,home,1926,Thiago Silva,93
+10507,361,Brazil,home,195,Richarlison,93
+10507,361,Brazil,home,2074,Raphinha,93
+10507,361,Brazil,home,32,Alisson,79
+10507,361,Brazil,home,3846,Marquinhos,93
+10507,361,Brazil,home,3865,Neymar,80
+10507,361,Brazil,home,3930,Lucas Paquetá,93
+10507,361,Brazil,home,8061,Danilo,71
+10507,361,Brazil,home,9330,Dani Alves,31
+10507,377,South Korea,away,12502,Min Jae Kim,93
+10507,377,South Korea,away,1257,In-beom Hwang,64
+10507,377,South Korea,away,13907,Seun-gyu Kim,93
+10507,377,South Korea,away,13911,Young-gwon Kim,93
+10507,377,South Korea,away,13912,Jin-su Kim,45
+10507,377,South Korea,away,13916,Chul Hong,48
+10507,377,South Korea,away,13919,Seung-ho Paik,29
+10507,377,South Korea,away,13920,Jun-ho Son,48
+10507,377,South Korea,away,13922,Woo-young Jung,45
+10507,377,South Korea,away,13923,Gue-sung Cho,79
+10507,377,South Korea,away,1830,Kang-in Lee,20
+10507,377,South Korea,away,2443,Moon-hwan Kim,93
+10507,377,South Korea,away,4280,Ui-jo Hwang,14
+10507,377,South Korea,away,4915,Hee-chan Hwang,93
+10507,377,South Korea,away,5038,Jae-sung Lee,73
+10507,377,South Korea,away,83,Heung-min Son,93
+10508,52,Spain,away,13178,Nico Williams,50
+10508,52,Spain,away,1341,Unai Simon,125
+10508,52,Spain,away,1381,Marcos Llorente,125
+10508,52,Spain,away,1394,Alvaro Morata,63
+10508,52,Spain,away,1513,Jordi Alba,97
+10508,52,Spain,away,1519,Sergio Busquets,125
+10508,52,Spain,away,1529,Ansu Fati,28
+10508,52,Spain,away,1530,Pedri,125
+10508,52,Spain,away,1696,Marco Asensio,62
+10508,52,Spain,away,18,Rodri,125
+10508,52,Spain,away,1829,Carlos Soler,63
+10508,52,Spain,away,1950,Ferran Torres,75
+10508,52,Spain,away,3867,Pablo Sarabia,8
+10508,52,Spain,away,4908,Dani Olmo,97
+10508,52,Spain,away,8341,Gavi,62
+10508,52,Spain,away,8344,Alex Balde,28
+10508,52,Spain,away,9,Aymeric Laporte,125
+10508,374,Morocco,home,12586,Sofyan Amrabat,125
+10508,374,Morocco,home,12777,Abdelhamid Sabiri,5
+10508,374,Morocco,home,13021,Abde Ezzalzouli,5
+10508,374,Morocco,home,13044,Jawad El Yamiq,5
+10508,374,Morocco,home,13864,Yahia Attiat-Allah,5
+10508,374,Morocco,home,13865,Badr Benoun,6
+10508,374,Morocco,home,13866,Selim Amallah,81
+10508,374,Morocco,home,13869,Walid Cheddira,5
+10508,374,Morocco,home,1681,Achraf Hakimi,125
+10508,374,Morocco,home,1785,Bono,125
+10508,374,Morocco,home,1810,Youssef En-Nesyri,81
+10508,374,Morocco,home,1938,Hakim Ziyech,125
+10508,374,Morocco,home,233,Romain Saïss,125
+10508,374,Morocco,home,4002,Nayef Aguerd,84
+10508,374,Morocco,home,401,Sofiane Boufal,65
+10508,374,Morocco,home,4324,Azzedine Ounahi,125
+10508,374,Morocco,home,8027,Noussair Mazraoui,82
+10509,365,Portugal,home,11488,Ricardo Horta,22
+10509,365,Portugal,home,127,Diogo Dalot,94
+10509,365,Portugal,home,133,Bruno Fernandes,86
+10509,365,Portugal,home,1393,Joao Felix,72
+10509,365,Portugal,home,1876,William Carvalho,94
+10509,365,Portugal,home,1907,Vitinha,21
+10509,365,Portugal,home,2066,Ruben Dias,94
+10509,365,Portugal,home,240,Rúben Neves,14
+10509,365,Portugal,home,27,Bernardo Silva,80
+10509,365,Portugal,home,4666,Raphaël Guerreiro,94
+10509,365,Portugal,home,6020,Cristiano Ronaldo,22
+10509,365,Portugal,home,8008,Goncalo Ramos,72
+10509,365,Portugal,home,8538,Diogo Costa,94
+10509,365,Portugal,home,8555,Otavio,73
+10509,365,Portugal,home,8564,Pepe,94
+10509,365,Portugal,home,8593,Rafael Leao,8
+10509,370,Switzerland,away,12960,Ricardo Rodriguez,94
+10509,370,Switzerland,away,13118,Eray Comert,49
+10509,370,Switzerland,away,13881,Ardon Jashari,6
+10509,370,Switzerland,away,157,Granit Xhaka,94
+10509,370,Switzerland,away,320,Fabian Schär,45
+10509,370,Switzerland,away,4566,Rubén Vargas,65
+10509,370,Switzerland,away,4661,Manuel Akanji,94
+10509,370,Switzerland,away,4691,Yann Sommer,94
+10509,370,Switzerland,away,4703,Denis Zakaria,41
+10509,370,Switzerland,away,4717,Breel Embolo,88
+10509,370,Switzerland,away,4732,Djibril Sow,53
+10509,370,Switzerland,away,5035,Edimilson Fernandes,94
+10509,370,Switzerland,away,57,Xherdan Shaqiri,94
+10509,370,Switzerland,away,8011,Haris Seferovic,41
+10509,370,Switzerland,away,8113,Noah Okafor,29
+10509,370,Switzerland,away,8328,Remo Freuler,53
+10510,361,Brazil,away,13830,Pedro,20
+10510,361,Brazil,away,1676,Eder Militao,125
+10510,361,Brazil,away,1683,Casemiro,125
+10510,361,Brazil,away,1695,Vinícius Junior,63
+10510,361,Brazil,away,1697,Rodrygo,20
+10510,361,Brazil,away,1926,Thiago Silva,125
+10510,361,Brazil,away,195,Richarlison,83
+10510,361,Brazil,away,2074,Raphinha,55
+10510,361,Brazil,away,32,Alisson,125
+10510,361,Brazil,away,3846,Marquinhos,125
+10510,361,Brazil,away,3865,Neymar,125
+10510,361,Brazil,away,3930,Lucas Paquetá,125
+10510,361,Brazil,away,8039,Antony,20
+10510,361,Brazil,away,8061,Danilo,125
+10510,371,Croatia,home,100,Mateo Kovacic,105
+10510,371,Croatia,home,13854,Dominik Livakovic,125
+10510,371,Croatia,home,13858,Josip Juranovic,125
+10510,371,Croatia,home,13861,Bruno Petkovic,16
+10510,371,Croatia,home,1687,Luka Modric,125
+10510,371,Croatia,home,40,Dejan Lovren,125
+10510,371,Croatia,home,4883,Andrej Kramaric,71
+10510,371,Croatia,home,4892,Josko Gvardiol,125
+10510,371,Croatia,home,4926,Borna Sosa,109
+10510,371,Croatia,home,6019,Nikola Vlasic,16
+10510,371,Croatia,home,8129,Marcelo Brozovic,113
+10510,371,Croatia,home,8136,Ivan Perisic,125
+10510,371,Croatia,home,8330,Mario Pasalic,71
+10511,364,Argentina,away,10715,Julian Alvarez,80
+10511,364,Argentina,away,11,Nicolás Otamendi,127
+10511,364,Argentina,away,11856,Enzo Fernandez,127
+10511,364,Argentina,away,13222,Nahuel Molina,127
+10511,364,Argentina,away,13226,German Pezzella,15
+10511,364,Argentina,away,144,Emiliano Martínez,127
+10511,364,Argentina,away,1531,Lionel Messi,127
+10511,364,Argentina,away,3856,Leandro Paredes,15
+10511,364,Argentina,away,453,Alexis Mac Allister,127
+10511,364,Argentina,away,5116,Cristian Romero,77
+10511,364,Argentina,away,6895,Rodrigo de Paul,65
+10511,364,Argentina,away,8023,Lisandro Martinez,127
+10511,364,Argentina,away,8025,Nicolas Tagliafico,15
+10511,364,Argentina,away,8138,Lautaro Martinez,15
+10511,364,Argentina,away,9178,Marcos Acuña,77
+10511,366,Netherlands,home,11094,Cody Gakpo,127
+10511,366,Netherlands,home,11241,Andries Noppert,127
+10511,366,Netherlands,home,1522,Frenkie de Jong,127
+10511,366,Netherlands,home,1812,Luuk de Jong,63
+10511,366,Netherlands,home,284,Nathan Aké,127
+10511,366,Netherlands,home,37,Virgil van Dijk,127
+10511,366,Netherlands,home,5009,Wout Weghorst,50
+10511,366,Netherlands,home,8022,Jurrien Timber,127
+10511,366,Netherlands,home,8026,Daley Blind,64
+10511,366,Netherlands,home,8034,Steven Berghuis,82
+10511,366,Netherlands,home,8134,Denzel Dumfries,127
+10511,366,Netherlands,home,8326,Teun Koopmeiners,82
+10511,366,Netherlands,home,8327,Marten De Roon,45
+10511,366,Netherlands,home,8342,Memphis Depay,77
+10511,366,Netherlands,home,84,Steven Bergwijn,45
+10512,365,Portugal,away,11488,Ricardo Horta,20
+10512,365,Portugal,away,127,Diogo Dalot,78
+10512,365,Portugal,away,133,Bruno Fernandes,98
+10512,365,Portugal,away,1393,Joao Felix,98
+10512,365,Portugal,away,17,João Cancelo,48
+10512,365,Portugal,away,1907,Vitinha,30
+10512,365,Portugal,away,2066,Ruben Dias,98
+10512,365,Portugal,away,240,Rúben Neves,50
+10512,365,Portugal,away,27,Bernardo Silva,98
+10512,365,Portugal,away,4666,Raphaël Guerreiro,50
+10512,365,Portugal,away,6020,Cristiano Ronaldo,48
+10512,365,Portugal,away,8008,Goncalo Ramos,68
+10512,365,Portugal,away,8538,Diogo Costa,98
+10512,365,Portugal,away,8555,Otavio,68
+10512,365,Portugal,away,8564,Pepe,98
+10512,365,Portugal,away,8593,Rafael Leao,30
+10512,374,Morocco,home,12586,Sofyan Amrabat,98
+10512,374,Morocco,home,13044,Jawad El Yamiq,98
+10512,374,Morocco,home,13864,Yahia Attiat-Allah,98
+10512,374,Morocco,home,13865,Badr Benoun,34
+10512,374,Morocco,home,13866,Selim Amallah,63
+10512,374,Morocco,home,13868,Yahya Jabrane,18
+10512,374,Morocco,home,13869,Walid Cheddira,35
+10512,374,Morocco,home,1681,Achraf Hakimi,98
+10512,374,Morocco,home,1785,Bono,98
+10512,374,Morocco,home,1810,Youssef En-Nesyri,64
+10512,374,Morocco,home,1938,Hakim Ziyech,80
+10512,374,Morocco,home,233,Romain Saïss,56
+10512,374,Morocco,home,401,Sofiane Boufal,80
+10512,374,Morocco,home,4324,Azzedine Ounahi,98
+10512,374,Morocco,home,9820,Achraf Dari,42
+10512,374,Morocco,home,9865,Zakaria Aboukhlal,18
+10513,50,England,home,1,Harry Kane,100
+10513,50,England,home,10,John Stones,97
+10513,50,England,home,105,Mason Mount,22
+10513,50,England,home,118,Harry Maguire,100
+10513,50,England,home,123,Luke Shaw,100
+10513,50,England,home,136,Marcus Rashford,16
+10513,50,England,home,16,Kyle Walker,100
+10513,50,England,home,163,Bukayo Saka,78
+10513,50,England,home,169,Jordan Pickford,100
+10513,50,England,home,21,Phil Foden,84
+10513,50,England,home,25,Raheem Sterling,22
+10513,50,England,home,265,Declan Rice,100
+10513,50,England,home,371,Jack Grealish,3
+10513,50,England,home,4677,Jude Bellingham,100
+10513,50,England,home,47,Jordan Henderson,78
+10513,363,France,away,113,Olivier Giroud,100
+10513,363,France,away,1532,Ousmane Dembele,78
+10513,363,France,away,1534,Antoine Griezmann,100
+10513,363,France,away,1675,Raphael Varane,100
+10513,363,France,away,1789,Jules Kounde,100
+10513,363,France,away,3870,Kylian Mbappé,100
+10513,363,France,away,3888,Aurélien Tchouaméni,100
+10513,363,France,away,4606,Dayot Upamecano,100
+10513,363,France,away,61,Hugo Lloris,100
+10513,363,France,away,8054,Adrien Rabiot,100
+10513,363,France,away,8583,Theo Hernandez,100
+10514,364,Argentina,home,10715,Julian Alvarez,73
+10514,364,Argentina,home,11,Nicolás Otamendi,95
+10514,364,Argentina,home,11856,Enzo Fernandez,95
+10514,364,Argentina,home,13222,Nahuel Molina,85
+10514,364,Argentina,home,1389,Angel Correa,10
+10514,364,Argentina,home,144,Emiliano Martínez,95
+10514,364,Argentina,home,1531,Lionel Messi,95
+10514,364,Argentina,home,3856,Leandro Paredes,61
+10514,364,Argentina,home,453,Alexis Mac Allister,85
+10514,364,Argentina,home,4590,Exequiel Palacios,22
+10514,364,Argentina,home,5116,Cristian Romero,95
+10514,364,Argentina,home,68,Juan Foyth,10
+10514,364,Argentina,home,6895,Rodrigo de Paul,73
+10514,364,Argentina,home,8023,Lisandro Martinez,34
+10514,364,Argentina,home,8025,Nicolas Tagliafico,95
+10514,364,Argentina,home,8058,Paulo Dybala,22
+10514,371,Croatia,away,100,Mateo Kovacic,95
+10514,371,Croatia,away,13854,Dominik Livakovic,95
+10514,371,Croatia,away,13858,Josip Juranovic,95
+10514,371,Croatia,away,13859,Mislav Orsic,50
+10514,371,Croatia,away,13860,Marko Livaja,24
+10514,371,Croatia,away,13861,Bruno Petkovic,46
+10514,371,Croatia,away,1687,Luka Modric,80
+10514,371,Croatia,away,40,Dejan Lovren,95
+10514,371,Croatia,away,4883,Andrej Kramaric,71
+10514,371,Croatia,away,4892,Josko Gvardiol,95
+10514,371,Croatia,away,4926,Borna Sosa,45
+10514,371,Croatia,away,5968,Lovro Majer,15
+10514,371,Croatia,away,6019,Nikola Vlasic,50
+10514,371,Croatia,away,8129,Marcelo Brozovic,49
+10514,371,Croatia,away,8136,Ivan Perisic,95
+10514,371,Croatia,away,8330,Mario Pasalic,45
+10515,363,France,home,113,Olivier Giroud,64
+10515,363,France,home,1532,Ousmane Dembele,78
+10515,363,France,home,1534,Antoine Griezmann,95
+10515,363,France,home,1675,Raphael Varane,95
+10515,363,France,home,1789,Jules Kounde,95
+10515,363,France,home,3870,Kylian Mbappé,95
+10515,363,France,home,3888,Aurélien Tchouaméni,95
+10515,363,France,home,3890,Youssouf Fofana,95
+10515,363,France,home,4194,Randal Kolo Muani,17
+10515,363,France,home,4712,Marcus Thuram,31
+10515,363,France,home,5097,Ibrahima Konaté,95
+10515,363,France,home,61,Hugo Lloris,95
+10515,363,France,home,8583,Theo Hernandez,95
+10515,374,Morocco,away,12586,Sofyan Amrabat,95
+10515,374,Morocco,away,13021,Abde Ezzalzouli,18
+10515,374,Morocco,away,13044,Jawad El Yamiq,95
+10515,374,Morocco,away,13864,Yahia Attiat-Allah,50
+10515,374,Morocco,away,13866,Selim Amallah,57
+10515,374,Morocco,away,13870,Abderrazak Hamdallah,30
+10515,374,Morocco,away,1681,Achraf Hakimi,95
+10515,374,Morocco,away,1785,Bono,95
+10515,374,Morocco,away,1810,Youssef En-Nesyri,65
+10515,374,Morocco,away,1938,Hakim Ziyech,95
+10515,374,Morocco,away,233,Romain Saïss,20
+10515,374,Morocco,away,401,Sofiane Boufal,66
+10515,374,Morocco,away,4324,Azzedine Ounahi,95
+10515,374,Morocco,away,8027,Noussair Mazraoui,45
+10515,374,Morocco,away,9820,Achraf Dari,95
+10515,374,Morocco,away,9865,Zakaria Aboukhlal,29
+10516,371,Croatia,home,100,Mateo Kovacic,96
+10516,371,Croatia,home,13854,Dominik Livakovic,96
+10516,371,Croatia,home,13856,Josip Sutalo,96
+10516,371,Croatia,home,13859,Mislav Orsic,94
+10516,371,Croatia,home,13860,Marko Livaja,66
+10516,371,Croatia,home,13861,Bruno Petkovic,30
+10516,371,Croatia,home,1687,Luka Modric,96
+10516,371,Croatia,home,4615,Josip Stanisic,96
+10516,371,Croatia,home,4883,Andrej Kramaric,61
+10516,371,Croatia,home,4892,Josko Gvardiol,96
+10516,371,Croatia,home,5968,Lovro Majer,66
+10516,371,Croatia,home,6019,Nikola Vlasic,35
+10516,371,Croatia,home,6029,Kristijan Jakic,2
+10516,371,Croatia,home,8136,Ivan Perisic,96
+10516,371,Croatia,home,8330,Mario Pasalic,30
+10516,374,Morocco,away,12586,Sofyan Amrabat,96
+10516,374,Morocco,away,12777,Abdelhamid Sabiri,45
+10516,374,Morocco,away,13044,Jawad El Yamiq,66
+10516,374,Morocco,away,13560,Anass Zaroury,33
+10516,374,Morocco,away,13864,Yahia Attiat-Allah,96
+10516,374,Morocco,away,13865,Badr Benoun,33
+10516,374,Morocco,away,13866,Selim Amallah,30
+10516,374,Morocco,away,13867,Bilal El Khannouss,55
+10516,374,Morocco,away,1681,Achraf Hakimi,96
+10516,374,Morocco,away,1785,Bono,96
+10516,374,Morocco,away,1810,Youssef En-Nesyri,96
+10516,374,Morocco,away,1938,Hakim Ziyech,96
+10516,374,Morocco,away,401,Sofiane Boufal,63
+10516,374,Morocco,away,4324,Azzedine Ounahi,41
+10516,374,Morocco,away,6925,Ilias Chair,51
+10516,374,Morocco,away,9820,Achraf Dari,63
+10517,363,France,away,113,Olivier Giroud,41
+10517,363,France,away,1532,Ousmane Dembele,40
+10517,363,France,away,1534,Antoine Griezmann,70
+10517,363,France,away,1675,Raphael Varane,125
+10517,363,France,away,1789,Jules Kounde,125
+10517,363,France,away,3870,Kylian Mbappé,125
+10517,363,France,away,3878,Axel Disasi,5
+10517,363,France,away,3888,Aurélien Tchouaméni,125
+10517,363,France,away,3890,Youssouf Fofana,30
+10517,363,France,away,4012,Eduardo Camavinga,55
+10517,363,France,away,4194,Randal Kolo Muani,85
+10517,363,France,away,4606,Dayot Upamecano,125
+10517,363,France,away,4622,Kingsley Coman,55
+10517,363,France,away,4712,Marcus Thuram,84
+10517,363,France,away,5097,Ibrahima Konaté,13
+10517,363,France,away,61,Hugo Lloris,125
+10517,363,France,away,8054,Adrien Rabiot,95
+10517,363,France,away,8583,Theo Hernandez,70
+10517,364,Argentina,home,10715,Julian Alvarez,101
+10517,364,Argentina,home,11,Nicolás Otamendi,125
+10517,364,Argentina,home,11856,Enzo Fernandez,125
+10517,364,Argentina,home,13222,Nahuel Molina,90
+10517,364,Argentina,home,13226,German Pezzella,10
+10517,364,Argentina,home,144,Emiliano Martínez,125
+10517,364,Argentina,home,1531,Lionel Messi,125
+10517,364,Argentina,home,3856,Leandro Paredes,24
+10517,364,Argentina,home,3868,Ángel Di María,63
+10517,364,Argentina,home,453,Alexis Mac Allister,115
+10517,364,Argentina,home,5116,Cristian Romero,125
+10517,364,Argentina,home,6895,Rodrigo de Paul,101
+10517,364,Argentina,home,8025,Nicolas Tagliafico,120
+10517,364,Argentina,home,8058,Paulo Dybala,5
+10517,364,Argentina,home,8138,Lautaro Martinez,24
+10517,364,Argentina,home,8419,Gonzalo Montiel,23
+10517,364,Argentina,home,9178,Marcos Acuña,23

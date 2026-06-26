@@ -1,0 +1,145 @@
+metric_family,node_metric,outcome,kind,min,average,sum,product,r_range_trio,r_range_all
+Total Strength,raw_involvement,goals_against,raw,+0.28**,+0.28**,+0.28**,+0.26**,0.002610750837920117,0.025946348684530496
+Total Strength,raw_involvement,goals_against,partial,+0.24**,+0.24**,+0.24**,+0.19*,0.00682143799980256,0.05046147848763993
+Total Strength,raw_involvement,shots_against,raw,+0.49***,+0.50***,+0.50***,+0.48***,0.0035552986785439833,0.014603980456300736
+Total Strength,raw_involvement,shots_against,partial,+0.26**,+0.26**,+0.26**,+0.25**,0.004761688824056698,0.016375329713933184
+Total Strength,raw_involvement,xg_against,raw,+0.41***,+0.41***,+0.41***,+0.40***,0.002436872069189411,0.017335772207042077
+Total Strength,raw_involvement,xg_against,partial,+0.32***,+0.33***,+0.33***,+0.29***,0.006656204233796925,0.037054625376087114
+Gini (strength inequality),raw_involvement,goals_against,raw,+0.07,+0.06,+0.06,+0.06,0.001692649863699533,0.008749935433823235
+Gini (strength inequality),raw_involvement,goals_against,partial,+0.04,+0.04,+0.04,+0.03,0.004149360173444784,0.005553662323515458
+Gini (strength inequality),raw_involvement,shots_against,raw,-0.00,-0.00,-0.00,-0.01,0.002158591775008248,0.006867905342020024
+Gini (strength inequality),raw_involvement,shots_against,partial,-0.08,-0.08,-0.08,-0.07,0.00450708428052099,0.009024901411108718
+Gini (strength inequality),raw_involvement,xg_against,raw,-0.05,-0.05,-0.05,-0.05,0.0011998211046294824,0.0038317927601841523
+Gini (strength inequality),raw_involvement,xg_against,partial,-0.10,-0.10,-0.10,-0.09,0.0030379719698334223,0.006335882850763225
+Clustering (weighted),raw_involvement,goals_against,raw,-0.00,-0.03,-0.03,+0.00,0.02339544844370468,0.028264955798851524
+Clustering (weighted),raw_involvement,goals_against,partial,+0.04,+0.02,+0.02,+0.03,0.015091411003447491,0.015091411003447491
+Clustering (weighted),raw_involvement,shots_against,raw,+0.03,-0.01,-0.01,+0.03,0.031161403003516237,0.035602871967154316
+Clustering (weighted),raw_involvement,shots_against,partial,+0.14,+0.13,+0.13,+0.12,0.009537025082609368,0.021715635234915764
+Clustering (weighted),raw_involvement,xg_against,raw,+0.07,+0.03,+0.03,+0.06,0.046170568344086935,0.046170568344086935
+Clustering (weighted),raw_involvement,xg_against,partial,+0.14,+0.11,+0.11,+0.12,0.03324311873284558,0.03324311873284558
+Freeman Centralization (weighted),raw_involvement,goals_against,raw,+0.14,+0.14,+0.14,+0.13,0.004763941778216235,0.015714357770434867
+Freeman Centralization (weighted),raw_involvement,goals_against,partial,+0.11,+0.11,+0.11,+0.10,0.007262887567166809,0.011128835282829
+Freeman Centralization (weighted),raw_involvement,shots_against,raw,+0.09,+0.09,+0.09,+0.08,0.005314017080932015,0.009557406170713975
+Freeman Centralization (weighted),raw_involvement,shots_against,partial,+0.01,-0.00,-0.00,+0.02,0.01319658978403539,0.01769391703889183
+Freeman Centralization (weighted),raw_involvement,xg_against,raw,+0.07,+0.07,+0.07,+0.06,0.003985280546424039,0.010779076579186309
+Freeman Centralization (weighted),raw_involvement,xg_against,partial,+0.02,+0.01,+0.01,+0.02,0.008514607534572012,0.008514607534572012
+Total Strength,raw_fault,goals_against,raw,+0.28**,+0.28**,+0.28**,+0.25**,0.0005856456876303096,0.025176779686126305
+Total Strength,raw_fault,goals_against,partial,+0.22*,+0.22*,+0.22*,+0.18*,0.0003816599526968445,0.041288209777382345
+Total Strength,raw_fault,shots_against,raw,+0.48***,+0.48***,+0.48***,+0.47***,0.0027749139080079366,0.01853514064027001
+Total Strength,raw_fault,shots_against,partial,+0.25**,+0.25**,+0.25**,+0.23**,0.0036538629680488433,0.018852195545242034
+Total Strength,raw_fault,xg_against,raw,+0.41***,+0.41***,+0.41***,+0.39***,0.0015366578273500187,0.02216769296583959
+Total Strength,raw_fault,xg_against,partial,+0.30***,+0.31***,+0.31***,+0.27**,0.002969471787350797,0.03714163758389971
+Gini (strength inequality),raw_fault,goals_against,raw,+0.11,+0.10,+0.10,+0.09,0.002633818442818181,0.012864021687992125
+Gini (strength inequality),raw_fault,goals_against,partial,+0.08,+0.07,+0.07,+0.07,0.004830859022270387,0.010517198633209948
+Gini (strength inequality),raw_fault,shots_against,raw,+0.04,+0.04,+0.04,+0.04,0.0008138733632929995,0.005466288500177406
+Gini (strength inequality),raw_fault,shots_against,partial,-0.03,-0.04,-0.04,-0.03,0.00534972205390373,0.00804246279994383
+Gini (strength inequality),raw_fault,xg_against,raw,+0.02,+0.02,+0.02,+0.01,0.001203577566638657,0.006974523994398869
+Gini (strength inequality),raw_fault,xg_against,partial,-0.03,-0.03,-0.03,-0.03,0.002526644847344106,0.002526644847344106
+Clustering (weighted),raw_fault,goals_against,raw,-0.06,-0.08,-0.08,-0.04,0.019798332469552912,0.036729587997396895
+Clustering (weighted),raw_fault,goals_against,partial,-0.03,-0.04,-0.04,-0.02,0.009794875567253732,0.020900565223080744
+Clustering (weighted),raw_fault,shots_against,raw,+0.01,-0.01,-0.01,+0.02,0.022925311420532432,0.030567219838515097
+Clustering (weighted),raw_fault,shots_against,partial,+0.10,+0.10,+0.10,+0.09,0.005518540548222775,0.014865400870565676
+Clustering (weighted),raw_fault,xg_against,raw,+0.00,-0.02,-0.02,+0.01,0.025612121219790056,0.03136124070089186
+Clustering (weighted),raw_fault,xg_against,partial,+0.06,+0.05,+0.05,+0.05,0.008296746799731594,0.008296746799731594
+Freeman Centralization (weighted),raw_fault,goals_against,raw,+0.17*,+0.16,+0.16,+0.15,0.013128049710420808,0.021869325645638843
+Freeman Centralization (weighted),raw_fault,goals_against,partial,+0.15,+0.13,+0.13,+0.13,0.01737695192530797,0.01737695192530797
+Freeman Centralization (weighted),raw_fault,shots_against,raw,+0.13,+0.12,+0.12,+0.12,0.009950965595779473,0.011794227287079545
+Freeman Centralization (weighted),raw_fault,shots_against,partial,+0.06,+0.04,+0.04,+0.07,0.023140034296990214,0.029597233632945835
+Freeman Centralization (weighted),raw_fault,xg_against,raw,+0.14,+0.14,+0.14,+0.13,0.004314539933818501,0.015499720189655175
+Freeman Centralization (weighted),raw_fault,xg_against,partial,+0.10,+0.09,+0.09,+0.09,0.011432071435784091,0.011432071435784091
+Total Strength,raw_contribution,goals_against,raw,+0.25**,+0.26**,+0.26**,+0.23**,0.011277875035291707,0.032950548787125195
+Total Strength,raw_contribution,goals_against,partial,+0.19*,+0.21*,+0.21*,+0.15,0.023121258630442343,0.0617609567856898
+Total Strength,raw_contribution,shots_against,raw,+0.46***,+0.46***,+0.46***,+0.45***,0.0052051988558206586,0.011948267661478051
+Total Strength,raw_contribution,shots_against,partial,+0.19*,+0.19*,+0.19*,+0.19*,0.003924026675937747,0.004898505435501466
+Total Strength,raw_contribution,xg_against,raw,+0.37***,+0.38***,+0.38***,+0.37***,0.005263497679540041,0.011128172915579881
+Total Strength,raw_contribution,xg_against,partial,+0.25**,+0.26**,+0.26**,+0.24**,0.011678972256088549,0.023181786768051077
+Gini (strength inequality),raw_contribution,goals_against,raw,-0.02,-0.01,-0.01,-0.00,0.0038130158260213202,0.017002305955355543
+Gini (strength inequality),raw_contribution,goals_against,partial,-0.05,-0.05,-0.05,-0.03,0.0013200949445150365,0.024862531178798167
+Gini (strength inequality),raw_contribution,shots_against,raw,-0.03,-0.03,-0.03,-0.05,0.0009593628783738546,0.01879264193949326
+Gini (strength inequality),raw_contribution,shots_against,partial,-0.13,-0.13,-0.13,-0.13,0.006011804155473699,0.006011804155473699
+Gini (strength inequality),raw_contribution,xg_against,raw,-0.11,-0.11,-0.11,-0.11,0.0005967479409636212,0.005679540517727552
+Gini (strength inequality),raw_contribution,xg_against,partial,-0.17*,-0.18*,-0.18*,-0.16,0.005185545477419756,0.023239862268502637
+Clustering (weighted),raw_contribution,goals_against,raw,-0.02,-0.01,-0.01,-0.04,0.002920743861984959,0.02737496095243732
+Clustering (weighted),raw_contribution,goals_against,partial,+0.04,+0.06,+0.06,+0.01,0.01145055638096041,0.05097756948509577
+Clustering (weighted),raw_contribution,shots_against,raw,+0.02,+0.02,+0.02,+0.02,0.0004289158633040517,0.0050758185195461
+Clustering (weighted),raw_contribution,shots_against,partial,+0.19*,+0.21*,+0.21*,+0.16,0.022958113447455186,0.056591926744097604
+Clustering (weighted),raw_contribution,xg_against,raw,+0.08,+0.05,+0.05,+0.05,0.031158974059297274,0.031158974059297274
+Clustering (weighted),raw_contribution,xg_against,partial,+0.19*,+0.17,+0.17,+0.14,0.019496199510002532,0.05531953557756944
+Freeman Centralization (weighted),raw_contribution,goals_against,raw,+0.04,+0.06,+0.06,+0.05,0.0284584691875113,0.0284584691875113
+Freeman Centralization (weighted),raw_contribution,goals_against,partial,+0.02,+0.05,+0.05,+0.04,0.028381822265507874,0.028381822265507874
+Freeman Centralization (weighted),raw_contribution,shots_against,raw,-0.05,-0.06,-0.06,-0.07,0.0027618543823911407,0.01878884843139065
+Freeman Centralization (weighted),raw_contribution,shots_against,partial,-0.11,-0.11,-0.11,-0.11,0.005011380106115321,0.005011380106115321
+Freeman Centralization (weighted),raw_contribution,xg_against,raw,-0.07,-0.07,-0.07,-0.09,0.0038336510777495364,0.024284938787974886
+Freeman Centralization (weighted),raw_contribution,xg_against,partial,-0.10,-0.10,-0.10,-0.11,0.0028457186837743537,0.011659219961579828
+Total Strength,valued_involvement,goals_against,raw,+0.16,+0.16,+0.16,+0.04,0.0051525590661702925,0.11891124472376872
+Total Strength,valued_involvement,goals_against,partial,+0.07,+0.07,+0.07,+0.02,0.003287610893608059,0.05256448700360147
+Total Strength,valued_involvement,shots_against,raw,+0.55***,+0.56***,+0.56***,+0.30***,0.009770032873567258,0.2606266866135884
+Total Strength,valued_involvement,shots_against,partial,+0.41***,+0.41***,+0.41***,+0.27**,0.008698280760241539,0.14649911646863817
+Total Strength,valued_involvement,xg_against,raw,+0.38***,+0.39***,+0.39***,+0.17,0.016335657885219346,0.2275714128593425
+Total Strength,valued_involvement,xg_against,partial,+0.27**,+0.29***,+0.29***,+0.13,0.018739890440995,0.1586802541969513
+Gini (strength inequality),valued_involvement,goals_against,raw,+0.08,+0.07,+0.07,+0.11,0.00788420899159653,0.04302574924869704
+Gini (strength inequality),valued_involvement,goals_against,partial,+0.08,+0.07,+0.07,+0.12,0.01283882895654348,0.05887889665047254
+Gini (strength inequality),valued_involvement,shots_against,raw,+0.06,+0.05,+0.05,+0.09,0.012253021022028007,0.03903395751456102
+Gini (strength inequality),valued_involvement,shots_against,partial,+0.06,+0.03,+0.03,+0.12,0.026855117681948176,0.08452763529455362
+Gini (strength inequality),valued_involvement,xg_against,raw,+0.03,+0.03,+0.03,+0.08,0.0035151099371645497,0.05303072257484314
+Gini (strength inequality),valued_involvement,xg_against,partial,+0.03,+0.02,+0.02,+0.10,0.011642282132783285,0.08012684160494345
+Clustering (weighted),valued_involvement,goals_against,raw,-0.05,-0.06,-0.06,-0.14,0.005428595980750059,0.08730019840743242
+Clustering (weighted),valued_involvement,goals_against,partial,-0.06,-0.05,-0.05,-0.15,0.009379861717220439,0.0995328483967896
+Clustering (weighted),valued_involvement,shots_against,raw,+0.05,+0.04,+0.04,-0.04,0.013502405797289875,0.09677587006620171
+Clustering (weighted),valued_involvement,shots_against,partial,+0.03,+0.05,+0.05,-0.08,0.02507704833700811,0.13640806078420184
+Clustering (weighted),valued_involvement,xg_against,raw,-0.02,-0.03,-0.03,-0.06,0.00837345443031496,0.03810861336778432
+Clustering (weighted),valued_involvement,xg_against,partial,-0.04,-0.03,-0.03,-0.09,0.015594976624222524,0.057432680462367686
+Freeman Centralization (weighted),valued_involvement,goals_against,raw,+0.13,+0.13,+0.13,+0.10,8.693053410557816e-06,0.03136987512270041
+Freeman Centralization (weighted),valued_involvement,goals_against,partial,+0.14,+0.13,+0.13,+0.11,0.00837140851516699,0.023472242690502007
+Freeman Centralization (weighted),valued_involvement,shots_against,raw,-0.01,-0.04,-0.04,+0.01,0.02146444729117855,0.04900462576019339
+Freeman Centralization (weighted),valued_involvement,shots_against,partial,-0.01,-0.06,-0.06,+0.04,0.04691128356420626,0.10000917587038256
+Freeman Centralization (weighted),valued_involvement,xg_against,raw,+0.02,-0.00,-0.00,+0.06,0.016854502800323325,0.06535734900345563
+Freeman Centralization (weighted),valued_involvement,xg_against,partial,+0.02,-0.01,-0.01,+0.08,0.031455195495661295,0.09567307293386602
+Total Strength,valued_contribution,goals_against,raw,+0.12,+0.15,+0.15,-0.00,0.02200635103402783,0.15027577881192636
+Total Strength,valued_contribution,goals_against,partial,+0.05,+0.07,+0.07,-0.01,0.019552770189383596,0.08243574676583403
+Total Strength,valued_contribution,shots_against,raw,+0.39***,+0.40***,+0.40***,+0.11,0.010720154820288152,0.29024723189754326
+Total Strength,valued_contribution,shots_against,partial,+0.24**,+0.24**,+0.24**,+0.10,0.0004690591661656862,0.1393475215917726
+Total Strength,valued_contribution,xg_against,raw,+0.33***,+0.34***,+0.34***,+0.11,0.01480969029978979,0.23710859664723338
+Total Strength,valued_contribution,xg_against,partial,+0.24**,+0.25**,+0.25**,+0.10,0.010967198432574793,0.14851089850380422
+Gini (strength inequality),valued_contribution,goals_against,raw,+0.01,+0.04,+0.04,+0.11,0.03050094131449644,0.10134566281067292
+Gini (strength inequality),valued_contribution,goals_against,partial,+0.03,+0.06,+0.06,+0.14,0.028739929037360112,0.10371715524009367
+Gini (strength inequality),valued_contribution,shots_against,raw,-0.10,-0.07,-0.07,-0.14,0.02668457613642093,0.06766622642570312
+Gini (strength inequality),valued_contribution,shots_against,partial,-0.06,-0.03,-0.03,-0.10,0.023525534033910014,0.06941512188748426
+Gini (strength inequality),valued_contribution,xg_against,raw,-0.07,-0.04,-0.04,-0.10,0.02449621561798302,0.057542932956738284
+Gini (strength inequality),valued_contribution,xg_against,partial,-0.04,-0.01,-0.01,-0.07,0.02184830751556098,0.05650424432078552
+Clustering (weighted),valued_contribution,goals_against,raw,-0.05,-0.08,-0.08,-0.12,0.03297252234718086,0.07733750974870056
+Clustering (weighted),valued_contribution,goals_against,partial,-0.06,-0.09,-0.09,-0.14,0.023654338700020996,0.07798331463337368
+Clustering (weighted),valued_contribution,shots_against,raw,+0.05,-0.03,-0.03,+0.10,0.08027014447554315,0.13839955459688041
+Clustering (weighted),valued_contribution,shots_against,partial,+0.01,-0.05,-0.05,+0.08,0.06321177539071815,0.13037725045309928
+Clustering (weighted),valued_contribution,xg_against,raw,+0.08,+0.02,+0.02,+0.14,0.05566199153661203,0.11389588331176956
+Clustering (weighted),valued_contribution,xg_against,partial,+0.06,+0.01,+0.01,+0.12,0.042368900280487086,0.10460684335754267
+Freeman Centralization (weighted),valued_contribution,goals_against,raw,-0.03,-0.00,-0.00,+0.12,0.02456574915280726,0.14934959289988964
+Freeman Centralization (weighted),valued_contribution,goals_against,partial,-0.01,+0.01,+0.01,+0.13,0.02494034113593487,0.1424194853103083
+Freeman Centralization (weighted),valued_contribution,shots_against,raw,-0.18*,-0.18*,-0.18*,-0.10,0.001261229731757324,0.07337873137149216
+Freeman Centralization (weighted),valued_contribution,shots_against,partial,-0.16,-0.16,-0.16,-0.10,0.0016941452574647242,0.05684977455179323
+Freeman Centralization (weighted),valued_contribution,xg_against,raw,-0.14,-0.16,-0.16,-0.10,0.01239625560443941,0.05789053367315625
+Freeman Centralization (weighted),valued_contribution,xg_against,partial,-0.13,-0.14,-0.14,-0.09,0.013143135564171848,0.04547775390196526
+Total Strength,valued_fault,goals_against,raw,+0.14,+0.14,+0.14,+0.05,0.001743062441841997,0.09508906928433505
+Total Strength,valued_fault,goals_against,partial,+0.06,+0.06,+0.06,+0.03,0.004215907170798748,0.03412551569465296
+Total Strength,valued_fault,shots_against,raw,+0.53***,+0.54***,+0.54***,+0.29***,0.010108363090742145,0.24738141560257781
+Total Strength,valued_fault,shots_against,partial,+0.38***,+0.39***,+0.39***,+0.25**,0.009815887166517212,0.13668235797081174
+Total Strength,valued_fault,xg_against,raw,+0.34***,+0.35***,+0.35***,+0.14,0.014276093292322822,0.21183873283422094
+Total Strength,valued_fault,xg_against,partial,+0.23**,+0.24**,+0.24**,+0.10,0.015558919555159867,0.13867979407404013
+Gini (strength inequality),valued_fault,goals_against,raw,+0.13,+0.11,+0.11,+0.11,0.01590262228751496,0.01642406036305942
+Gini (strength inequality),valued_fault,goals_against,partial,+0.12,+0.10,+0.10,+0.11,0.02065924512481941,0.02065924512481941
+Gini (strength inequality),valued_fault,shots_against,raw,+0.09,+0.08,+0.08,+0.14,0.008651703981197065,0.061650845697373474
+Gini (strength inequality),valued_fault,shots_against,partial,+0.07,+0.05,+0.05,+0.15,0.022162601833251985,0.09853959655144799
+Gini (strength inequality),valued_fault,xg_against,raw,+0.08,+0.08,+0.08,+0.13,0.005915564314921573,0.05674015282851011
+Gini (strength inequality),valued_fault,xg_against,partial,+0.06,+0.06,+0.06,+0.13,0.001331415984491574,0.07096224988395043
+Clustering (weighted),valued_fault,goals_against,raw,-0.11,-0.11,-0.11,-0.09,0.005595021442584697,0.021122051201657804
+Clustering (weighted),valued_fault,goals_against,partial,-0.11,-0.10,-0.10,-0.10,0.009860209862358527,0.013072795725346323
+Clustering (weighted),valued_fault,shots_against,raw,+0.05,+0.02,+0.02,-0.07,0.029010249071740622,0.11628425529317599
+Clustering (weighted),valued_fault,shots_against,partial,+0.05,+0.06,+0.06,-0.09,0.010899412082589391,0.14776914905537442
+Clustering (weighted),valued_fault,xg_against,raw,-0.03,-0.06,-0.06,-0.09,0.027025937732834508,0.057891381120635424
+Clustering (weighted),valued_fault,xg_against,partial,-0.04,-0.04,-0.04,-0.10,0.002317385495871453,0.06481217646204615
+Freeman Centralization (weighted),valued_fault,goals_against,raw,+0.16,+0.13,+0.13,+0.13,0.032865054049534936,0.03546938436405239
+Freeman Centralization (weighted),valued_fault,goals_against,partial,+0.16,+0.12,+0.12,+0.13,0.043455750217077566,0.043455750217077566
+Freeman Centralization (weighted),valued_fault,shots_against,raw,+0.03,-0.00,-0.00,+0.09,0.032237154753842076,0.09017779647772065
+Freeman Centralization (weighted),valued_fault,shots_against,partial,+0.03,-0.04,-0.04,+0.12,0.0641456204643898,0.15233870599623028
+Freeman Centralization (weighted),valued_fault,xg_against,raw,+0.08,+0.05,+0.05,+0.16,0.02528013429861356,0.11103373441732525
+Freeman Centralization (weighted),valued_fault,xg_against,partial,+0.08,+0.03,+0.03,+0.18*,0.04327576862103945,0.14704546882496705
