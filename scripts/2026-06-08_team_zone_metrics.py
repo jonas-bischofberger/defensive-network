@@ -108,6 +108,9 @@ for f in files:
         for (tid, zone), g in df.groupby(["defending_team", "zone"], observed=True):
             g_inv  = g[g["raw_involvement"].fillna(0) > 0]              # defended passes
             uniq   = g.drop_duplicates(pass_id_col)                     # one row per pass
+            duniq  = g_inv.drop_duplicates(pass_id_col)                 # one row per DEFENDED pass
+            n_actions       = int(duniq[pass_id_col].nunique())         # unique DEFENDED passes (denominator)
+            n_completed_def = int(duniq["success"].sum())              # DEFENDED passes that still completed
             rec = dict(
                 match_id=match_id,
                 defending_team=int(tid),
@@ -117,8 +120,14 @@ for f in files:
                 zone=str(zone),
                 n_pass_rows=len(g),                                     # defender-action rows
                 n_passes=int(g[pass_id_col].nunique()),                 # unique passes in zone
-                n_actions=int(g_inv[pass_id_col].nunique()),            # unique DEFENDED passes
-                n_success=int(uniq["success"].sum()),                  # unique successful passes
+                n_actions=n_actions,                                    # unique DEFENDED passes
+                n_success=int(uniq["success"].sum()),                  # [legacy] completed over ALL passes
+                # ── consistent-denominator DEFENSIVE success (same set in num & denom) ──
+                # `success`==C means the pass COMPLETED, i.e. the defence was beaten. A
+                # proper defensive success = a defended pass that did NOT complete (B/D).
+                n_completed_def=n_completed_def,                        # defended & completed (defence beaten)
+                n_stop_def=n_actions - n_completed_def,                # defended & stopped (defensive success)
+                stop_rate=(n_actions - n_completed_def) / n_actions if n_actions else np.nan,
             )
             for m in active:
                 rec[f"{m}_sum"]   = float(g[m].fillna(0).sum())                       # load

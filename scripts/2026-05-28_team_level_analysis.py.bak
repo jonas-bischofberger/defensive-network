@@ -10,14 +10,10 @@ Tabs:
   6. Zone Topology
   7. Zone Contrasts (ICC) — within-team zone differences/slopes, partial-pooled
      (mixed-model) ICC + shrunk per-team fingerprints
-  8. Pressing Style — role-projected co-defending pattern as a team trait
-     (permutation-tested); the one geometry-free network signal, strongest in
-     the high press
-  9. Correlation
- 10. Robustness (ICC)
- 11. Regression
- 12. Sensitivity
- 13. Data
+  8. Correlation
+  9. Robustness (ICC)
+ 10. Regression
+ 11. Data
 """
 import warnings
 from itertools import combinations
@@ -54,18 +50,6 @@ _reached_ko = outcomes.groupby("team_name")["competition_stage"].apply(
     lambda s: bool((s != "Group Stage").any()))
 outcomes["reached_knockout"] = outcomes["team_name"].map(_reached_ko)
 
-# Exogenous team-strength proxy: mean FIFA overall rating of the squad (player-level
-# ratings, deduped per team). Used as a control variable. Optional.
-try:
-    _fifa = pd.read_csv("scripts/2026-05-25_player_level_enriched_with_ratings.csv",
-                        usecols=["defending_team_name", "defender_id", "overall_rating"])
-    _fifa["overall_rating"] = pd.to_numeric(_fifa["overall_rating"], errors="coerce")
-    fifa_team_rating = (_fifa.dropna(subset=["overall_rating"])
-                        .drop_duplicates(["defending_team_name", "defender_id"])
-                        .groupby("defending_team_name")["overall_rating"].mean())
-except (FileNotFoundError, ValueError):
-    fifa_team_rating = None
-
 # Pitch-zone defensive metrics (produced by 2026-06-08_team_zone_metrics.py).
 # Optional: app still runs without it (the Zones tab shows a hint instead).
 try:
@@ -93,18 +77,6 @@ try:
 except FileNotFoundError:
     zone_spatial_df = None
 
-# Pressing-style fingerprint inputs (zone co-defending edges + per-zone avg
-# positions). Powers the role-projected co-defending pattern — the one network
-# signal that is geometry-free AND a (faint) team trait, strongest in the high
-# press (validated by team-label permutation). Optional.
-try:
-    zone_edge_avg = pd.read_csv("scripts/2026-06-18_zone_network_edge(average).csv")
-    zone_pos_df   = pd.read_csv("scripts/2026-06-18_zone_network_positions.csv")
-    zone_edge_avg["mtid"] = (zone_edge_avg["match_id"].astype(str) + "_"
-                             + zone_edge_avg["defending_team"].astype(str))
-except FileNotFoundError:
-    zone_edge_avg = zone_pos_df = None
-
 match_mins   = nodes.groupby("match_team_id")["mins_played"].max().rename("match_mins")
 squad_size   = nodes.groupby("match_team_id")["defender_id"].count().rename("n_players")
 team_names   = nodes.groupby("match_team_id")["team_name"].first()
@@ -127,173 +99,6 @@ OUTCOME_COLS      = ["goals_against", "shots_against", "xg_against"]
 CONTRIBUTION_COLS = ["raw_contribution", "valued_contribution"]
 FAULT_COLS        = ["raw_fault", "valued_fault"]
 INV_COLS          = ["raw_involvement", "valued_involvement"]
-
-# ── Pressing-style fingerprint (role-projected co-defending pattern) ───────────
-PRESS_ZONES = ["own", "mid", "high_press"]
-FULL_NETWORK = "full"                       # sentinel: all zones combined
-PRESS_ZONE_OPTIONS = [FULL_NETWORK] + PRESS_ZONES
-# defending_team id -> team name (fingerprint row labels)
-_TEAM_BY_ID = (nodes.drop_duplicates("defending_team")
-               .set_index("defending_team")["team_name"].to_dict())
-
-
-def _build_press_role_map(pos_df):
-    """Assign each player a pitch role per (match, team, zone): line B/M/F ×
-    channel L/C/R, by within-block tertiles of avg x and y. Position-*relative*,
-    so the pattern is comparable across matches with different personnel and
-    press heights."""
-    p = pos_df.dropna(subset=["overall_avg_x", "overall_avg_y"]).copy()
-    gk = ["match_id", "defending_team", "zone"]
-    p = p[p.groupby(gk)["defender_name"].transform("count") >= 4].copy()
-
-    def _tert(s):
-        try:
-            return pd.qcut(s.rank(method="first"), 3, labels=False).astype(int)
-        except Exception:                       # <3 distinct -> all middle
-            return pd.Series(1, index=s.index)
-
-    g = p.groupby(gk)
-    p["_xl"] = g["overall_avg_x"].transform(_tert)
-    p["_yc"] = g["overall_avg_y"].transform(_tert)
-    p["role"] = (p["_xl"].map({0: "B", 1: "M", 2: "F"})
-                 + p["_yc"].map({0: "L", 1: "C", 2: "R"}))
-    return p.set_index(gk + ["defender_name"])["role"].to_dict()
-
-
-def _build_press_role_map_full(pos_df):
-    """Like _build_press_role_map but for the *full* network: collapse the three
-    pitch zones into one avg position per (match, team, player), so roles reflect
-    the whole-match shape rather than a single press height. Keyed by
-    (match_id, defending_team, defender_name)."""
-    p = pos_df.dropna(subset=["overall_avg_x", "overall_avg_y"]).copy()
-    p = (p.groupby(["match_id", "defending_team", "defender_name"], as_index=False)
-           [["overall_avg_x", "overall_avg_y"]].mean())
-    gk = ["match_id", "defending_team"]
-    p = p[p.groupby(gk)["defender_name"].transform("count") >= 4].copy()
-
-    def _tert(s):
-        try:
-            return pd.qcut(s.rank(method="first"), 3, labels=False).astype(int)
-        except Exception:                       # <3 distinct -> all middle
-            return pd.Series(1, index=s.index)
-
-    g = p.groupby(gk)
-    p["_xl"] = g["overall_avg_x"].transform(_tert)
-    p["_yc"] = g["overall_avg_y"].transform(_tert)
-    p["role"] = (p["_xl"].map({0: "B", 1: "M", 2: "F"})
-                 + p["_yc"].map({0: "L", 1: "C", 2: "R"}))
-    return p.set_index(gk + ["defender_name"])["role"].to_dict()
-
-
-PRESS_ROLE_MAP = _build_press_role_map(zone_pos_df) if zone_pos_df is not None else None
-PRESS_ROLE_MAP_FULL = (_build_press_role_map_full(zone_pos_df)
-                       if zone_pos_df is not None else None)
-
-
-@st.cache_data(show_spinner="Building pressing-style patterns…")
-def pressing_role_patterns(weight, zone):
-    """Per match-team: row-normalised role-pair co-defending weight vector (a
-    *pattern*, not a volume). Returns (matrix, mtids, team_names, role_pairs)."""
-    if zone == FULL_NETWORK:
-        # all zones combined: keep every edge, use the whole-match role map. The
-        # pivot below sums across the (now multiple) zone rows per role pair.
-        ed = zone_edge_avg[zone_edge_avg[weight] > 0].copy()
-        rm = PRESS_ROLE_MAP_FULL
-        r1 = [rm.get((r.match_id, r.defending_team, r.player_1)) for r in ed.itertuples()]
-        r2 = [rm.get((r.match_id, r.defending_team, r.player_2)) for r in ed.itertuples()]
-    else:
-        ed = zone_edge_avg[(zone_edge_avg[weight] > 0)
-                           & (zone_edge_avg["zone"] == zone)].copy()
-        rm = PRESS_ROLE_MAP
-        r1 = [rm.get((r.match_id, r.defending_team, zone, r.player_1)) for r in ed.itertuples()]
-        r2 = [rm.get((r.match_id, r.defending_team, zone, r.player_2)) for r in ed.itertuples()]
-    ed["_rp"] = ["-".join(sorted([a, b])) if (a and b) else None
-                 for a, b in zip(r1, r2)]
-    ed = ed.dropna(subset=["_rp"])
-    piv = ed.groupby(["mtid", "_rp"])[weight].sum().unstack(fill_value=0.0)
-    piv = piv.div(piv.sum(axis=1), axis=0)              # row-normalise -> pattern
-    teams = [_TEAM_BY_ID.get(int(m.split("_")[1]), m.split("_")[1]) for m in piv.index]
-    return piv.values.astype(float), list(piv.index), teams, list(piv.columns)
-
-
-def _cos_sim_matrix(V):
-    n = np.linalg.norm(V, axis=1, keepdims=True)
-    n[n == 0] = 1.0
-    U = V / n
-    return U @ U.T
-
-
-def _within_between(C, teams):
-    wi, bw = [], []
-    for i, j in combinations(range(len(teams)), 2):
-        (wi if teams[i] == teams[j] else bw).append(C[i, j])
-    return float(np.mean(wi)), float(np.mean(bw)), len(wi), len(bw)
-
-
-def _press_icc11(vals, teams):
-    """ICC(1,1): team = subject, match = replicate."""
-    df = pd.DataFrame({"v": vals, "t": teams})
-    g = df.groupby("t")["v"]; k = g.count(); nt = df["t"].nunique()
-    if nt < 2 or len(df) == nt:
-        return np.nan
-    grand = df["v"].mean()
-    msb = ((g.mean() - grand) ** 2 * k).sum() / (nt - 1)
-    msw = ((df["v"] - df["t"].map(g.mean())) ** 2).sum() / (len(df) - nt)
-    den = msb + (k.mean() - 1) * msw
-    return float((msb - msw) / den) if den else np.nan
-
-
-def _perm_delta(C, teams, nperm, rng):
-    """Permutation p-value for within−between cosine gap."""
-    wi, bw, _, _ = _within_between(C, teams)
-    obs = wi - bw
-    ge = 0
-    for _ in range(nperm):
-        p = rng.permutation(teams)
-        w2, b2, _, _ = _within_between(C, p)
-        if (w2 - b2) >= obs:
-            ge += 1
-    return obs, wi, bw, (ge + 1) / (nperm + 1)
-
-
-@st.cache_data(show_spinner="Permuting team labels…")
-def pressing_style_stats(weight, zone, nperm=2000, seed=20260625):
-    """Within- vs between-team cosine similarity of the role-pair pattern, with a
-    team-label permutation null (correct for non-independent match-team pairs).
-    Also runs a formation-confound check: binary presence/absence vs continuous
-    weight, and a common-pairs-only (>=80% presence) re-test."""
-    V, mtids, teams, cols = pressing_role_patterns(weight, zone)
-    teams = np.array(teams)
-    rng = np.random.default_rng(seed)
-
-    C = _cos_sim_matrix(V)
-    obs, wi, bw, perm_p = _perm_delta(C, teams, nperm, rng)
-
-    # --- formation-confound checks ---
-    V_bin = (V > 0).astype(float)
-    C_bin = _cos_sim_matrix(V_bin)
-    obs_bin, _, _, p_bin = _perm_delta(C_bin, teams, nperm, rng)
-
-    presence = (V > 0).sum(axis=0)
-    common_mask = presence >= len(V) * 0.8
-    n_common = int(common_mask.sum())
-    obs_com, p_com = np.nan, np.nan
-    if n_common >= 3:
-        V_com = V[:, common_mask]
-        V_com = V_com / V_com.sum(axis=1, keepdims=True)
-        C_com = _cos_sim_matrix(V_com)
-        obs_com, _, _, p_com = _perm_delta(C_com, teams, nperm, rng)
-
-    icc = (pd.DataFrame([(c, _press_icc11(V[:, i], teams)) for i, c in enumerate(cols)],
-                        columns=["role_pair", "icc"])
-           .dropna().sort_values("icc", ascending=False).reset_index(drop=True))
-    fingerprint = pd.DataFrame(V, columns=cols, index=teams).groupby(level=0).mean()
-    return {"within": wi, "between": bw, "delta": obs, "perm_p": perm_p,
-            "n_mt": len(teams), "n_teams": int(pd.Series(teams).nunique()),
-            "icc": icc, "fingerprint": fingerprint,
-            "bin_delta": obs_bin, "bin_p": p_bin,
-            "com_delta": obs_com, "com_p": p_com, "n_common": n_common,
-            "n_total_pairs": len(cols)}
 
 GROUPS = {
     "Total Network Strength":              WEIGHT_COLS,
@@ -404,18 +209,15 @@ def build_conc_match(edge_df, metric, thr=1):
     p2 = edge_df[["match_team_id", "player_2", metric]].rename(columns={"player_2": "player"})
     player_str = pd.concat([p1, p2]).groupby(["match_team_id", "player"])[metric].sum()
     cent_w = player_str.groupby("match_team_id").apply(_cent_w).rename("centralization_w")
-    kcore_dict   = {}
-    density_dict = {}
+    kcore_dict = {}
     for mid, grp in edge_df.groupby("match_team_id"):
         e = grp[grp[ec_col] >= thr] if ec_col in edge_df.columns else grp
         G = nx.Graph()
         G.add_edges_from(zip(e["player_1"], e["player_2"]))
         if G.number_of_nodes() >= 2:
-            kcore_dict[mid]   = max(nx.core_number(G).values())
-            density_dict[mid] = nx.density(G)
-    kcore_s   = pd.Series(kcore_dict,   name="kcore_max")
-    density_s = pd.Series(density_dict, name="network_density")
-    df = (_join_outcomes(pd.concat([strength, cent_w, kcore_s, density_s], axis=1))
+            kcore_dict[mid] = max(nx.core_number(G).values())
+    kcore_s = pd.Series(kcore_dict, name="kcore_max")
+    df = (_join_outcomes(pd.concat([strength, cent_w, kcore_s], axis=1))
           .join(match_labels)
           .join(match_mins)
           .dropna(subset=["strength"]))
@@ -430,13 +232,13 @@ def build_conc_team(df):
     _pp_oc = [oc + "_per_pass" for oc in OUTCOME_COLS if oc + "_per_pass" in df.columns]
     agg = df.groupby("team_name")[
         ["strength", "strength_per90", "strength_per_pass",
-         "centralization_w", "kcore_max", "network_density"] + OUTCOME_COLS + _pp_oc
+         "centralization_w", "kcore_max"] + OUTCOME_COLS + _pp_oc
     ].mean().reset_index()
     return agg.merge(_furthest_stage(df), on="team_name")
 
 
-_Y_HIGH = {"centralization_w": "Centralized", "kcore_max": "Dense core",    "network_density": "Dense"}
-_Y_LOW  = {"centralization_w": "Distributed", "kcore_max": "Sparse core", "network_density": "Sparse"}
+_Y_HIGH = {"centralization_w": "Centralized", "kcore_max": "Dense core"}
+_Y_LOW  = {"centralization_w": "Distributed", "kcore_max": "Sparse core"}
 
 
 def plot_conc_match(df, outcome_col, strength_col="strength", x_label="Total Strength",
@@ -1082,9 +884,8 @@ def run_ols(df, x_cols, y_col):
 
 # ── Zones (pitch-area defensive metrics) ───────────────────────────────────────
 ZONE_ORDER   = ["own", "mid", "high_press"]              # near own goal -> high press
-ZONE_LABEL   = {"own": "Own-third (forced)", "mid": "Midfield", "high_press": "High press",
-                "all": "Whole network (all zones)"}
-ZONE_SHORT   = {"own": "Own", "mid": "Mid", "high_press": "High press", "all": "Whole network"}
+ZONE_LABEL   = {"own": "Own-third (forced)", "mid": "Midfield", "high_press": "High press"}
+ZONE_SHORT   = {"own": "Own", "mid": "Mid", "high_press": "High press"}
 SCHEME_LABEL = {"thirds": "Pitch thirds (±17.5)",
                 "scheme_4060": "40 / 60 split (±10.5)",
                 "half": "Half — own vs opponent (0)"}
@@ -1224,33 +1025,24 @@ def build_zone_volume_diag(zone_df, scheme, outcomes_df, outcome, kind="raw"):
 def build_team_style(zone_df, scheme, outcomes_df, kind="raw"):
     """Team-level defensive-style profile + performance (pooled across a team's matches).
 
-    Zone proportions are computed for involvement, contribution AND fault (each = that
-    zone's sum ÷ the team's total of that metric across zones). Joined with mean outcomes
-    & knockout. Proportion columns: '{zone}_share' (inv), 'con_{zone}_share', 'fault_{zone}_share'.
+    Zone proportions are of involvement; press_index = high_press_share − own_share
+    (mid is the neutral pivot). Joined with mean outcomes & knockout flag.
     """
+    icol = f"{kind}_involvement_sum"
     d = zone_df[zone_df["scheme"] == scheme].merge(
         outcomes_df[["match_team_id", "team_name"]], on="match_team_id")
-    t = None
-    for metric, pre in [("involvement", ""), ("contribution", "con_"), ("fault", "fault_")]:
-        col = f"{kind}_{metric}_sum"
-        m = (d.groupby(["team_name", "zone"], observed=True)[col].sum()
-               .unstack().fillna(0))
-        sh = m.div(m.sum(axis=1).replace(0, np.nan), axis=0)
-        if t is None:
-            t = pd.DataFrame(index=sh.index)
-        for z in ZONE_ORDER:
-            if z in sh.columns:
-                t[f"{pre}{z}_share"] = sh[z]
-    # team-level faced-pass totals per zone (control variable for zone-pass partial)
-    npz = (d.groupby(["team_name", "zone"], observed=True)["n_passes"].sum()
-             .unstack().fillna(0))
+    g = (d.groupby(["team_name", "zone"], observed=True)
+           .agg(inv=(icol, "sum")).reset_index())
+    inv = g.pivot(index="team_name", columns="zone", values="inv").fillna(0)
+    share = inv.div(inv.sum(axis=1).replace(0, np.nan), axis=0)
+    t = pd.DataFrame(index=inv.index)
     for z in ZONE_ORDER:
-        if z in npz.columns:
-            t[f"npass_{z}"] = npz[z]
+        if z in share.columns:
+            t[f"{z}_share"] = share[z]
+    t["press_index"] = share.get("high_press", 0) - share.get("own", 0)
     perf = outcomes_df.groupby("team_name").agg(
         shots_against=("shots_against", "mean"), xg_against=("xg_against", "mean"),
         goals_against=("goals_against", "mean"),
-        passes_against=("passes_against", "mean"),
         reached_knockout=("reached_knockout", "first"))
     return t.join(perf)
 
@@ -1492,26 +1284,18 @@ SPATIAL_VIS = {
 
 
 def build_zone_spatial_corr(sp_df, zone_raw_df):
-    """Pearson r of each spatial / edge predictor with per-zone defensive **stop
-    rate** (n_stop_def/n_actions), at match-team level, per zone. Stop rate is a
-    consistent-denominator defensive-success target: of the passes the defence
-    engaged (raw_involvement>0), the share it kept from completing — higher = better
-    defending. (Supersedes the old n_success/n_actions, which mixed a completed-pass
-    numerator over *all* passes with a defended-pass denominator and was unbounded.)
-    BH-FDR q across all (metric × zone) cells. Long df: metric, zone, r, p, n, q."""
+    """Pearson r of each spatial / edge predictor with per-zone defensive **success
+    rate** (n_success/n_actions), at match-team level, per zone. Success rate is the
+    confound-cleaner target (the zone already conditions on press height). BH-FDR q
+    across all (metric × zone) cells. Long df: metric, zone, r, p, n, q."""
     zr = zone_raw_df[zone_raw_df["scheme"] == "thirds"].copy()
-    zr["succ_rate"] = zr["n_stop_def"] / zr["n_actions"]
-    tgt = zr[["match_team_id", "zone", "succ_rate"]]
-    # whole-match ("all") stop rate = pooled Σstop / Σactions across the thirds
-    allt = (zr.groupby("match_team_id")[["n_stop_def", "n_actions"]].sum()
-              .assign(succ_rate=lambda d: d["n_stop_def"] / d["n_actions"], zone="all")
-              .reset_index()[["match_team_id", "zone", "succ_rate"]])
-    tgt = pd.concat([tgt, allt], ignore_index=True)
-    m = sp_df.merge(tgt, on=["match_team_id", "zone"], how="left")
+    zr["succ_rate"] = zr["n_success"] / zr["n_actions"]
+    m = sp_df.merge(zr[["match_team_id", "zone", "succ_rate"]],
+                    on=["match_team_id", "zone"], how="left")
     skip = {"match_team_id", "match_id", "defending_team", "zone"}
     metrics = [c for c in sp_df.columns if c not in skip]
     rows = []
-    for z in ZONE_ORDER + ["all"]:
+    for z in ZONE_ORDER:
         dz = m[m["zone"] == z]
         for v in metrics:
             s = dz[[v, "succ_rate"]].dropna()
@@ -1659,8 +1443,7 @@ with st.sidebar:
     metric_conc_inv   = st.selectbox("Involvement", INV_COLS, key="metric_conc_inv")
     metric_conc_fault = st.selectbox("Fault", FAULT_COLS, key="metric_conc_fault")
     metric_conc_cont  = st.selectbox("Contribution", CONTRIBUTION_COLS, key="metric_conc_cont")
-    _y_opts = {"centralization_w": "Centralization (weighted)", "kcore_max": "Max K-core",
-               "network_density": "Network Density"}
+    _y_opts = {"centralization_w": "Centralization (weighted)", "kcore_max": "Max K-core"}
     y_conc = st.selectbox("Y axis", list(_y_opts), format_func=_y_opts.__getitem__, key="y_conc")
     st.subheader("Self vs Shared")
     metric_self  = st.selectbox("Metric", WEIGHT_COLS, key="metric_self")
@@ -1704,11 +1487,10 @@ avg_co, avg_co_team = build_co_defender_data()
 partnerships        = build_partnerships()
 df_corr             = process(edge_dfs[method], thr)
 
-(tab_conc, tab_self, tab_style, tab_codef, tab_zone, tab_ztopo, tab_zcon, tab_pstyle,
- tab_corr, tab_icc, tab_reg, tab_sens, tab_data) = st.tabs([
+(tab_conc, tab_self, tab_style, tab_codef, tab_zone, tab_ztopo, tab_zcon,
+ tab_corr, tab_icc, tab_reg, tab_data) = st.tabs([
     "Concentrated vs Balanced", "Self vs Shared", "Defensive Style", "Co-Defenders", "Zones",
-    "Zone Topology", "Zone Contrasts (ICC)", "Pressing Style",
-    "Correlation", "Robustness (ICC)", "Regression", "Sensitivity", "Data",
+    "Zone Topology", "Zone Contrasts (ICC)", "Correlation", "Robustness (ICC)", "Regression", "Data",
 ])
 
 _QUAD_EXPLAIN = {
@@ -1855,7 +1637,7 @@ def _render_conc_group(match_df, team_df, group_label, y_conc, y_label_conc, out
 with tab_conc:
     @st.fragment
     def _frag_tab_conc():
-        _y_label_conc = _y_opts[y_conc]
+        _y_label_conc = {"centralization_w": "Centralization (weighted)", "kcore_max": "Max K-core"}[y_conc]
         if y_conc == "centralization_w":
             st.caption("Centralization (weighted) is scale-invariant — y axis values are identical across all normalisation sections; only quadrant *boundaries* shift as x changes.")
 
@@ -2301,137 +2083,73 @@ with tab_zone:
             if mw:
                 st.table(pd.DataFrame(mw).set_index("Zone"))
 
-            _present_zones = [z for z in ZONE_ORDER
-                              if z in set(zone_raw.loc[zone_raw["scheme"] == zone_scheme, "zone"])]
-
             # ── Defensive style map (team level) ──────────────────────────────────
             st.subheader("Defensive style map (team level)")
             st.caption(
-                "One point per team (pooled across its matches). X = the chosen metric's "
-                "proportion in the chosen zone (zone sum ÷ the team's total of that metric); "
-                "Y = mean-per-match outcome (lower = better defence); colour = reached "
-                "knockout. OLS fit + r in title; dashed lines = medians."
+                "One point per team (pooled across its matches). **press index** = "
+                "high-press proportion − own-third proportion (right = proactive/high line; "
+                "left = forced/deep; midfield is the neutral pivot, not in this axis). Colour = "
+                "reached knockout. Lower y (shots/xG against) = better defence."
             )
-            _METRIC6 = {"raw inv": ("raw", ""), "valued inv": ("valued", ""),
-                        "raw con": ("raw", "con_"), "valued con": ("valued", "con_"),
-                        "raw fault": ("raw", "fault_"), "valued fault": ("valued", "fault_")}
-            sc1, sc2, sc3 = st.columns(3)
-            sc_metric = sc1.selectbox("Metric", list(_METRIC6), key="style_metric")
-            sc_zone = sc2.selectbox("Zone", _present_zones,
-                                    format_func=ZONE_SHORT.__getitem__, key="style_zone")
-            sc_y = sc3.selectbox("Y axis (outcome)", OUTCOME_COLS, index=1, key="style_y")
-            _sk, _spre = _METRIC6[sc_metric]
-            ts_sc = build_team_style(zone_raw, zone_scheme, outcomes, kind=_sk)
-            if fifa_team_rating is not None:
-                ts_sc["fifa_rating"] = ts_sc.index.map(fifa_team_rating)
-            _xcol = f"{_spre}{sc_zone}_share"
-            _xlab = f"{sc_metric} · {ZONE_SHORT[sc_zone]} proportion"
-            if _xcol in ts_sc.columns:
-                ts = ts_sc.reset_index().dropna(subset=[_xcol, sc_y])
-                ts["Stage"] = ts["reached_knockout"].map({True: "Reached knockout", False: "Group only"})
-                r_sm, p_sm = pearsonr(ts[_xcol], ts[sc_y])
-                fig_sm = px.scatter(ts, x=_xcol, y=sc_y, color="Stage", text="team_name",
-                                    color_discrete_map={"Group only": "#bbbbbb",
-                                                        "Reached knockout": "#1f78b4"},
-                                    trendline="ols", trendline_scope="overall",
-                                    trendline_color_override="black",
-                                    labels={_xcol: _xlab, sc_y: sc_y.replace("_", " ")},
-                                    title=f"{_xlab} vs {sc_y.replace('_',' ')}  "
-                                          f"(r={r_sm:+.2f}, p={p_sm:.3f}, N={len(ts)})")
-                fig_sm.update_traces(textposition="top center",
-                                     marker=dict(size=11, line=dict(width=1, color="white")),
-                                     selector=dict(mode="markers+text"))
-                fig_sm.add_vline(x=ts[_xcol].median(), line_dash="dash", line_color="grey", opacity=0.5)
-                fig_sm.add_hline(y=ts[sc_y].median(), line_dash="dash", line_color="grey", opacity=0.5)
-                fig_sm.update_layout(height=620)
-                st.plotly_chart(fig_sm, use_container_width=True)
-
-            # ── Merged correlation table: rows = metric × zone, cols = control × outcome ──
-            st.subheader("Style proportion × outcome correlation (team level)")
-            tbl_kind = st.selectbox("raw / valued", ["raw", "valued"], key="style_tbl_kind")
-            ts_t = build_team_style(zone_raw, zone_scheme, outcomes, kind=tbl_kind)
-            if fifa_team_rating is not None:
-                ts_t["fifa_rating"] = ts_t.index.map(fifa_team_rating)
-            _controls = [("raw", None), ("ctrl total-pass", "passes_against"),
-                         ("ctrl zone-pass", "zone")]
-            if fifa_team_rating is not None:
-                _controls.append(("ctrl FIFA", "fifa_rating"))
-            _rows_def = [(f"{pre}{z}_share", f"{ml} · {zl}", z)
-                         for pre, ml in [("", "inv"), ("con_", "con"), ("fault_", "fault")]
-                         for z, zl in [("high_press", "high"), ("mid", "mid"), ("own", "own")]]
-
-            def _fmt(rr, pp):
-                return "—" if np.isnan(rr) else \
-                    f"{rr:+.2f}{'**' if pp < 0.01 else '*' if pp < 0.05 else ''}"
-
-            data, data_num, rlabels = {}, {}, []
-            for key, lab, z in _rows_def:
-                if key not in ts_t.columns:
-                    continue
-                rlabels.append(lab)
-                for clab, ctrl in _controls:
-                    cc = f"npass_{z}" if ctrl == "zone" else ctrl
-                    for oc in OUTCOME_COLS:
-                        ocl = oc.replace("_against", " ag.")
-                        if ctrl is None:
-                            s = ts_t[[key, oc]].dropna()
-                            rr, pp = pearsonr(s[key], s[oc]) if len(s) > 3 else (np.nan, np.nan)
-                        else:
-                            s = ts_t[[key, oc, cc]].dropna()
-                            if len(s) > 3:
-                                a = _resid(s[key].values, s[cc].values)
-                                b = _resid(s[oc].values, s[cc].values)
-                                mk = ~(np.isnan(a) | np.isnan(b))
-                                rr, pp = pearsonr(a[mk], b[mk]) if mk.sum() > 3 else (np.nan, np.nan)
-                            else:
-                                rr, pp = np.nan, np.nan
-                        data.setdefault((clab, ocl), []).append(_fmt(rr, pp))
-                        data_num.setdefault((clab, ocl), []).append(rr)
-            txt = pd.DataFrame(data, index=rlabels)
-            num = pd.DataFrame(data_num, index=rlabels)
-            txt.columns = pd.MultiIndex.from_tuples(txt.columns)
-            num.columns = pd.MultiIndex.from_tuples(num.columns)
-
-            def _bg(v):  # diverging: 0 = lightest (white), + -> red, - -> blue
-                if pd.isna(v):
-                    return ""
-                tt = max(-1.0, min(1.0, v / 0.8))
-                if tt >= 0:
-                    r, g, b = 255, int(255 - 215 * tt), int(255 - 215 * tt)
-                else:
-                    r, g, b = int(255 + 215 * tt), int(255 + 165 * tt), 255
-                return f"background-color: rgb({r},{g},{b}); color: #000"
-
-            css = num.apply(lambda c: c.map(_bg))
+            sm1, sm2, sm3 = st.columns(3)
+            _xopts = {"press_index": "Press index (high − own proportion)",
+                      "high_press_share": "High-press proportion", "own_share": "Own-third proportion",
+                      "mid_share": "Midfield proportion"}
+            sm_kind = sm1.selectbox("raw / valued", ["raw", "valued"], key="style_kind")
+            team_style = build_team_style(zone_raw, zone_scheme, outcomes, kind=sm_kind)
+            _xavail = [k for k in _xopts if k in team_style.columns]
+            sm_x = sm2.selectbox("X axis", _xavail, format_func=_xopts.__getitem__, key="style_x")
+            sm_y = sm3.selectbox("Y axis (outcome)", OUTCOME_COLS, index=1, key="style_y")
+            ts = team_style.reset_index().dropna(subset=[sm_x, sm_y])
+            ts["Stage"] = ts["reached_knockout"].map({True: "Reached knockout", False: "Group only"})
+            r_sm, p_sm = pearsonr(ts[sm_x], ts[sm_y])
+            fig_sm = px.scatter(ts, x=sm_x, y=sm_y, color="Stage", text="team_name",
+                                color_discrete_map={"Group only": "#bbbbbb",
+                                                    "Reached knockout": "#1f78b4"},
+                                trendline="ols", trendline_scope="overall",
+                                trendline_color_override="black",
+                                labels={sm_x: _xopts[sm_x], sm_y: sm_y.replace("_", " ")},
+                                title=f"{_xopts[sm_x]} vs {sm_y.replace('_',' ')}  "
+                                      f"(r={r_sm:+.2f}, p={p_sm:.3f}, N={len(ts)})")
+            fig_sm.update_traces(textposition="top center",
+                                 marker=dict(size=11, line=dict(width=1, color="white")),
+                                 selector=dict(mode="markers+text"))
+            fig_sm.add_vline(x=ts[sm_x].median(), line_dash="dash", line_color="grey", opacity=0.5)
+            fig_sm.add_hline(y=ts[sm_y].median(), line_dash="dash", line_color="grey", opacity=0.5)
+            fig_sm.update_layout(height=620)
+            st.plotly_chart(fig_sm, use_container_width=True)
             st.caption(
-                f"N={len(ts_t)}, {tbl_kind}. Pearson r between each zone proportion (rows: "
-                "inv/con/fault × high/mid/own) and each outcome, under no control (raw) and "
-                "three partial controls (total opponent passes / that zone's passes / FIFA "
-                "rating). Colour: 0 = white, red = positive (concedes more), blue = negative. "
-                "`*` p<0.05, `**` p<0.01."
-            )
-            st.table(txt.style.apply(lambda _: css, axis=None))
-            st.caption(
-                "Robustness: controlling **FIFA rating** (exogenous strength) barely changes "
-                "the raw values (own-third +0.72→+0.67, high-press −0.62→−0.54) — the "
-                "style↔conceding link is not just 'stronger teams'. **Zone-pass** control "
-                "also barely moves it. **Total-pass** control shrinks it sharply, but that "
-                "over-corrects (passes_against is partly a consequence of a deep style)."
+                "Note: press index strongly tracks **defensive** quality (fewer shots/xG "
+                "against) but **not** knockout qualification — deep/forced teams can still "
+                "advance via attack & results, so colour (knockout) scatters across the plot."
             )
 
-            st.markdown("**Style proportion by stage** — median (knockout vs group-only) + "
+            # index × performance summary tables (team level)
+            _idx = [k for k in _xopts if k in team_style.columns]
+            st.markdown(f"**Style index × outcome correlation** (team level, N={len(team_style)}, "
+                        f"{sm_kind}). `*` p<0.05, `**` p<0.01.")
+            rowsA = []
+            for ix in _idx:
+                cell = {}
+                for oc in OUTCOME_COLS:
+                    s = team_style[[ix, oc]].dropna()
+                    r, p = pearsonr(s[ix], s[oc])
+                    cell[oc.replace("_against", " ag.")] = \
+                        f"{r:+.2f}{'**' if p < 0.01 else '*' if p < 0.05 else ''}"
+                rowsA.append(pd.Series(cell, name=_xopts[ix]))
+            st.table(pd.DataFrame(rowsA))
+
+            st.markdown("**Style index by stage** — median (knockout vs group-only) + "
                         "Mann–Whitney U p.")
             rowsB = []
-            for key, lab, z in _rows_def:
-                if key not in ts_t.columns:
-                    continue
-                a = ts_t[ts_t["reached_knockout"]][key].dropna()
-                b = ts_t[~ts_t["reached_knockout"]][key].dropna()
+            for ix in _idx:
+                a = team_style[team_style["reached_knockout"]][ix].dropna()
+                b = team_style[~team_style["reached_knockout"]][ix].dropna()
                 if len(a) > 2 and len(b) > 2:
-                    _, pp = mannwhitneyu(a, b)
-                    rowsB.append(dict(Index=lab, knockout_med=round(a.median(), 3),
-                                      group_med=round(b.median(), 3), p=round(pp, 3),
-                                      sig="*" if pp < 0.05 else ""))
+                    _, p = mannwhitneyu(a, b)
+                    rowsB.append(dict(Index=_xopts[ix], knockout_med=round(a.median(), 3),
+                                      group_med=round(b.median(), 3), p=round(p, 3),
+                                      sig="*" if p < 0.05 else ""))
             if rowsB:
                 st.table(pd.DataFrame(rowsB).set_index("Index"))
     _frag_tab_zone()
@@ -2645,20 +2363,13 @@ with tab_ztopo:
                 st.subheader("Spatial predictors of zone defensive success")
                 st.caption(
                     "Pearson r between each **spatial / network-geometry** metric and that "
-                    "zone's **defensive stop rate** (n_stop_def/n_actions) — of the passes "
-                    "the defence engaged (raw_involvement>0), the share it kept from "
-                    "completing; higher = better defending. This is the confound-cleaner "
-                    "target (the zone already conditions on press height) and uses a "
-                    "consistent denominator — it **replaces the earlier n_success/n_actions**, "
-                    "which divided completed passes (over *all* passes) by defended passes "
-                    "and was unbounded (>1). Each metric maps to a visual feature of the "
-                    "co-defending network drawn on the pitch (row labels name the feature). "
-                    "Red = higher metric ↔ more successful defending, blue = less. `*` p<0.05 "
-                    "· `†` survives BH-FDR (q<0.05). Edge unevenness is shown for every weight "
-                    "metric — each defines a different co-defending edge set. The **Whole "
-                    "network** column applies the same metrics to the full-match (non-zoned) "
-                    "co-defending network vs. the pooled match stop rate (Σstop/Σactions), "
-                    "for comparison against the per-zone cells. Built from "
+                    "zone's **defensive success rate** (n_success/n_actions) — the "
+                    "confound-cleaner target, since the zone already conditions on press "
+                    "height. Each metric maps to a visual feature of the co-defending "
+                    "network drawn on the pitch (row labels name the feature). Red = higher "
+                    "metric ↔ more successful defending, blue = less. `*` p<0.05 · `†` "
+                    "survives BH-FDR (q<0.05). Edge unevenness is shown for every weight "
+                    "metric — each defines a different co-defending edge set. Built from "
                     "`2026-06-24_zone_spatial_metrics.csv`.")
                 scorr = build_zone_spatial_corr(zone_spatial_df, zone_raw)
                 if scorr.empty:
@@ -2670,7 +2381,7 @@ with tab_ztopo:
                         f"**{n_q}** / {len(scorr)} predictor×zone cells survive BH-FDR · "
                         f"strongest: *{SPATIAL_VIS.get(tp['metric'], tp['metric'])}* in "
                         f"{ZONE_SHORT[tp['zone']]} (r={tp['r']:+.2f}, q={tp['q']:.3f})")
-                    zones_s = [z for z in ZONE_ORDER + ["all"] if z in set(scorr["zone"])]
+                    zones_s = [z for z in ZONE_ORDER if z in set(scorr["zone"])]
                     disp_rows = [m for m in SPATIAL_VIS if m in set(scorr["metric"])]
                     rmat, tmat, ylab = [], [], []
                     for mname in disp_rows:
@@ -2965,330 +2676,6 @@ with tab_reg:
                     fig_coef.update_layout(yaxis={"autorange": "reversed"}, height=40 * len(_coef_plot) + 120)
                     st.plotly_chart(fig_coef, use_container_width=True, key="reg_std_beta")
     _frag_tab_reg()
-
-# ── Edge-weight sensitivity ───────────────────────────────────────────────────
-# Headline KPI = corr(network metric, outcome), raw + passes_against-partial,
-# computed under all four edge-weight methods. Only the four weight-dependent
-# metric families can move; topology-only metrics are method-invariant by
-# construction (they use the method-independent edge-count threshold).
-_SENS_METHODS    = ["min", "average", "sum", "product"]
-_SENS_PRIMARY    = "min"
-_SENS_DEPENDENT  = {
-    "":                         "Total Strength",
-    "_gini":                    "Gini (strength inequality)",
-    "_cc_weighted":             "Clustering (weighted)",
-    "_centralization_weighted": "Freeman Centralization (weighted)",
-}
-
-
-def _sens_stars(p):
-    return "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else ""
-
-
-@st.cache_data
-def build_edge_weight_sensitivity(thr=1):
-    proc = {k: process(edge_dfs[k], thr) for k in _SENS_METHODS}
-    rows = []
-    for c in WEIGHT_COLS:
-        for suf, fam in _SENS_DEPENDENT.items():
-            col = c + suf
-            for t in OUTCOME_COLS:
-                for kind in ("raw", "partial"):
-                    rec = {"metric_family": fam, "node_metric": c,
-                           "outcome": t, "kind": kind}
-                    for k in _SENS_METHODS:
-                        d = proc[k]
-                        if kind == "raw":
-                            v = d[[col, t]].dropna()
-                            r, p = pearsonr(v[col], v[t])
-                        else:
-                            s = d[[col, t, "passes_against"]].dropna()
-                            a = _resid(s[col].values, s["passes_against"].values)
-                            b = _resid(s[t].values,   s["passes_against"].values)
-                            mk = ~(np.isnan(a) | np.isnan(b))
-                            r, p = pearsonr(a[mk], b[mk])
-                        rec[k] = r
-                        rec[k + "_sig"] = _sens_stars(p)
-                    rows.append(rec)
-    return pd.DataFrame(rows)
-
-
-def _safe_corr(fn, a, b):
-    """Pairwise correlation that returns NaN instead of raising on a constant
-    input (some metrics are all-zero under a given method)."""
-    a, b = np.asarray(a, float), np.asarray(b, float)
-    if len(a) < 3 or np.std(a) == 0 or np.std(b) == 0:
-        return np.nan
-    try:
-        return fn(a, b)[0]
-    except Exception:
-        return np.nan
-
-
-@st.cache_data
-def build_edge_weight_agreement(thr=1, methods=tuple(_SENS_METHODS)):
-    """Outcome-free sensitivity: do the combining operators produce the
-    *same metric values* (up to scale/rank)? For each weight-dependent metric
-    we align the `methods` on match_team_id and compute pairwise Pearson and
-    Spearman over the match-teams — no reference to any defensive outcome. If
-    the operators agree, every downstream result is robust to the choice by
-    construction. Note `average = sum/2` exactly, so sum-vs-average is 1.0 by
-    definition and acts as a built-in sanity check. `methods` lets the caller
-    drop an operator (e.g. the multiplicative `product`) from the comparison."""
-    methods = list(methods)
-    proc = {k: process(edge_dfs[k], thr).set_index("match_team_id")
-            for k in methods}
-    pairs = list(combinations(methods, 2))
-    rows = []
-    for c in WEIGHT_COLS:
-        for suf, fam in _SENS_DEPENDENT.items():
-            col = c + suf
-            M = pd.DataFrame({k: proc[k][col] for k in methods}).dropna()
-            rec = {"metric_family": fam, "node_metric": c, "n": len(M)}
-            for k in methods:                             # each method vs primary (min)
-                rec["p_" + k] = _safe_corr(pearsonr,  M[_SENS_PRIMARY], M[k]) if len(M) else np.nan
-                rec["s_" + k] = _safe_corr(spearmanr, M[_SENS_PRIMARY], M[k]) if len(M) else np.nan
-            pp = [_safe_corr(pearsonr,  M[a], M[b]) for a, b in pairs]
-            ss = [_safe_corr(spearmanr, M[a], M[b]) for a, b in pairs]
-            rec["p_min_pair"] = np.nanmin(pp) if np.any(~np.isnan(pp)) else np.nan
-            rec["s_min_pair"] = np.nanmin(ss) if np.any(~np.isnan(ss)) else np.nan
-            rec["p_sumavg"] = _safe_corr(pearsonr,  M["sum"], M["average"]) if len(M) else np.nan
-            rec["s_sumavg"] = _safe_corr(spearmanr, M["sum"], M["average"]) if len(M) else np.nan
-            rows.append(rec)
-    return pd.DataFrame(rows)
-
-
-def _sens_intrinsic_view(thr):
-    """Outcome-free view of the edge-weight sensitivity tab (option A)."""
-    st.markdown(
-        "Do the four operators produce the **same metric values**? For every "
-        "weight-dependent metric we align all four methods on the 128 "
-        "match-teams and correlate them pairwise — **no outcome involved**. "
-        "If the operators agree, every downstream result is robust to the "
-        "choice by construction. Pearson is scale/location-invariant and "
-        "Spearman is rank-only, so the differing scales (sum is 2× average, "
-        "etc.) don't distort the comparison.")
-    drop_product = st.checkbox(
-        "Exclude `product`",
-        value=False,
-        help="`product` is the only multiplicative operator — it squashes the "
-             "value scale so a few high-value edges dominate, which can depress "
-             "the linear (Pearson) agreement while leaving the rank order "
-             "intact. Tick this to compare only the additive/min operators.")
-    methods = [m for m in _SENS_METHODS if not (drop_product and m == "product")]
-    agr = build_edge_weight_agreement(thr, tuple(methods))
-    kind = st.radio("Correlation", ["Spearman (rank)", "Pearson"],
-                    horizontal=True, index=0)
-    pre = "s_" if kind.startswith("Spearman") else "p_"
-    label = "ρ" if pre == "s_" else "r"
-    others = [m for m in methods if m != _SENS_PRIMARY]
-    minpair = agr[pre + "min_pair"]
-    sumavg  = agr[pre + "sumavg"]
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("worst-case min pairwise", f"{np.nanmin(minpair):.3f}")
-    c2.metric("mean min pairwise", f"{np.nanmean(minpair):.3f}")
-    c3.metric("metrics with min pairwise < 0.95",
-              f"{int((minpair < 0.95).sum())} / {minpair.notna().sum()}")
-    # sum == average/2 exactly -> this must be 1.000; flags a pipeline bug if not
-    sa_ok = np.allclose(sumavg.dropna(), 1.0, atol=1e-6)
-    c4.metric("sum≡average sanity", "✓ 1.000" if sa_ok else "✗ BROKEN",
-              delta=None if sa_ok else f"min {np.nanmin(sumavg):.3f}",
-              delta_color="off" if sa_ok else "inverse")
-    st.caption(
-        f"High = robust: the operators rank/scale the match-teams the same way, "
-        f"so the choice of **min** is immaterial *regardless of any outcome*. "
-        f"`sum` and `average` are a monotone rescale of each other, so their "
-        f"correlation is exactly 1 by construction — a built-in pipeline check. "
-        f"Columns show {label}(min, method); **min pairwise** is the worst "
-        f"agreement over all six method pairs.")
-
-    disp = agr[["metric_family", "node_metric", "n"]].copy()
-    for m in others:
-        disp[f"{label}(min,{m})"] = agr[pre + m].round(3)
-    disp["min pairwise"] = minpair.round(3)
-    st.dataframe(
-        disp.style.background_gradient(
-            cmap="Greens", subset=["min pairwise"], vmin=0.8, vmax=1.0),
-        use_container_width=True, hide_index=True)
-    st.download_button(
-        "Download agreement table (CSV)",
-        agr.to_csv(index=False).encode(),
-        "edge_weight_agreement.csv", "text/csv")
-
-
-with tab_sens:
-    @st.fragment
-    def _frag_tab_sens():
-        st.subheader("Edge-weight method sensitivity")
-        st.markdown(
-            "Each co-defensive event's two endpoint values are combined into an "
-            "edge weight by one of four operators: **sum**, **average** (=sum/2), "
-            "**min** (weakest-link / conjunctive — *primary*), **product**. "
-            "Two ways to ask whether that arbitrary choice matters:")
-        view = st.radio(
-            "Robustness view",
-            ["vs. outcome (headline KPI)", "intrinsic agreement (outcome-free)"],
-            horizontal=True,
-            help="'vs. outcome' checks whether each metric's correlation with "
-                 "defensive outcomes moves across operators. 'intrinsic "
-                 "agreement' checks whether the operators produce the same "
-                 "metric values at all — independent of any outcome.")
-
-        if view.startswith("intrinsic"):
-            _sens_intrinsic_view(thr)
-            return
-
-        st.markdown(
-            "This re-runs every network metric under all four and compares the "
-            "headline KPI: each metric's correlation with defensive outcomes "
-            "(raw + partial, controlling `passes_against`).\n\n"
-            "Only the four **weight-dependent** families below can move — the "
-            "topology-only metrics (density, unweighted clustering / "
-            "centralization, assortativity, k-core, LCC) use the "
-            "method-independent edge-count threshold and are **identical across "
-            "methods by construction**.")
-
-        sens = build_edge_weight_sensitivity(thr)
-        other = st.selectbox("Compare primary (min) against",
-                             ["average", "sum", "product"], index=0)
-        dr_pair = (sens[_SENS_PRIMARY] - sens[other]).abs()
-        dr_all  = sens[_SENS_METHODS].max(axis=1) - sens[_SENS_METHODS].min(axis=1)
-        sig_flip = (sens[_SENS_PRIMARY + "_sig"].astype(bool)
-                    != sens[other + "_sig"].astype(bool))
-        n = len(sens)
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric(f"max |Δr|  min vs {other}", f"{dr_pair.max():.3f}")
-        c2.metric(f"mean |Δr|  min vs {other}", f"{dr_pair.mean():.3f}")
-        c3.metric("p<.05 verdict changes", f"{int(sig_flip.sum())} / {n}")
-        c4.metric("max |Δr| across all 4", f"{dr_all.max():.3f}")
-        st.caption(
-            "Small = robust: the primary choice (min) barely changes any "
-            "correlation. Sign flips at r≈0 are near-zero noise, not "
-            "substantive disagreement — read the significance-change count, "
-            "not raw sign flips.")
-
-        disp = sens.copy()
-        for k in _SENS_METHODS:
-            disp[k] = [f"{r:+.2f}{s}" for r, s in zip(sens[k], sens[k + "_sig"])]
-        disp[f"|Δr| min-{other}"] = dr_pair.round(3)
-        disp = disp[["metric_family", "node_metric", "outcome", "kind",
-                     *_SENS_METHODS, f"|Δr| min-{other}"]]
-        st.dataframe(
-            disp.style.background_gradient(
-                cmap="Reds", subset=[f"|Δr| min-{other}"], vmin=0, vmax=0.3),
-            use_container_width=True, hide_index=True)
-        st.download_button(
-            "Download sensitivity table (CSV)",
-            sens.to_csv(index=False).encode(),
-            "edge_weight_sensitivity.csv", "text/csv")
-    _frag_tab_sens()
-
-
-with tab_pstyle:
-    @st.fragment
-    def _frag_tab_pstyle():
-        st.subheader("Pressing-style fingerprint — role-pair co-defending pattern")
-        if zone_edge_avg is None or PRESS_ROLE_MAP is None:
-            st.info("Needs `scripts/2026-06-18_zone_network_edge(average).csv` and "
-                    "`scripts/2026-06-18_zone_network_positions.csv`.")
-            return
-        st.markdown(
-            "Projects the co-defending network onto **pitch roles** (line "
-            "B/M/F × channel L/C/R, by within-block tertiles) instead of player "
-            "identities, so a team's *pattern* of who-presses-with-whom is "
-            "comparable across matches with different line-ups. Each match-team's "
-            "role-pair weight vector is row-normalised — a **pattern**, not a "
-            "volume.\n\n"
-            "**Question:** is this pattern a *team trait* — are a team's matches "
-            "more similar to **each other** than to other teams? Measured by cosine "
-            "similarity, tested against a **team-label permutation** null (the "
-            "correct test for non-independent match-team pairs). This is the one "
-            "network signal that is **geometry-free** *and* survives as a "
-            "faint-but-real team trait — strongest in the **high press**. It is a "
-            "**style descriptor** (scouting), not a predictor of defensive success.")
-
-        c1, c2, c3 = st.columns(3)
-        weight = c1.selectbox("Edge weight", WEIGHT_COLS,
-                              index=WEIGHT_COLS.index("valued_involvement"))
-        zone = c2.selectbox("Zone", PRESS_ZONE_OPTIONS,
-                            index=PRESS_ZONE_OPTIONS.index("high_press"),
-                            format_func=lambda z: "full network (all zones)"
-                            if z == FULL_NETWORK else z)
-        nperm = c3.select_slider("Permutations", [500, 1000, 2000, 5000], value=2000)
-
-        s = pressing_style_stats(weight, zone, nperm)
-
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("within-team cos", f"{s['within']:.3f}")
-        m2.metric("between-team cos", f"{s['between']:.3f}")
-        m3.metric("Δ (within − between)", f"{s['delta']:+.3f}")
-        sig = s["perm_p"] < 0.05
-        m4.metric("permutation p", f"{s['perm_p']:.4f}",
-                  delta="team trait" if sig else "n.s.",
-                  delta_color="normal" if sig else "off")
-        st.caption(
-            f"{s['n_mt']} match-teams across {s['n_teams']} teams. A team's matches "
-            f"are {'**significantly** ' if sig else ''}more self-similar than under "
-            "random team labels. Read the effect as **small by design** (Δcos≈0.03 "
-            "in the high press): a *detectable* identity, not a strong fingerprint — "
-            "it wants club-season data to aggregate. Own-third / midfield patterns "
-            "are reactive (opponent-driven) and typically **not** significant.")
-
-        with st.expander("Formation-confound check"):
-            st.markdown(
-                "Not every role pair exists in every match-team (e.g. BC-BC needs ≥2 "
-                "central back-line players in the zone). Is the team-trait signal "
-                "driven by **which pairs exist** (= formation structure) or by **how "
-                "weight is distributed** across pairs (= pressing style)?")
-            f1, f2, f3 = st.columns(3)
-            sig_bin = s["bin_p"] < 0.05
-            f1.metric("binary (presence/absence)", f"Δ={s['bin_delta']:+.4f}",
-                      delta=f"p={s['bin_p']:.3f} — {'formation signal' if sig_bin else 'null'}",
-                      delta_color="normal" if sig_bin else "off")
-            f2.metric("full pattern (original)", f"Δ={s['delta']:+.4f}",
-                      delta=f"p={s['perm_p']:.4f}",
-                      delta_color="normal" if sig else "off")
-            sig_com = s["com_p"] < 0.05 if pd.notna(s["com_p"]) else False
-            f3.metric(f"common pairs only ({s['n_common']}/{s['n_total_pairs']})",
-                      f"Δ={s['com_delta']:+.4f}" if pd.notna(s["com_delta"]) else "n/a",
-                      delta=f"p={s['com_p']:.4f} — ≥80% presence" if pd.notna(s["com_p"]) else "too few pairs",
-                      delta_color="normal" if sig_com else "off")
-            st.caption(
-                "**Binary** tests whether which role pairs *exist* is team-consistent "
-                "(formation artifact). **Common pairs only** restricts to role pairs "
-                "present in ≥80% of match-teams and re-normalises — removes the "
-                "presence/absence layer entirely. If the signal survives in common "
-                "pairs but binary is null, it is **pressing style, not formation**.")
-
-        st.markdown("**Which role partnerships are most team-distinctive?** "
-                    "ICC across a team's matches — higher = more of a signature.")
-        icc = s["icc"].head(12)
-        if not icc.empty:
-            fig = px.bar(icc, x="icc", y="role_pair", orientation="h",
-                         labels={"icc": "ICC (team trait)", "role_pair": "role pair"})
-            fig.update_layout(yaxis=dict(autorange="reversed"), height=380,
-                              margin=dict(l=0, r=0, t=10, b=0))
-            st.plotly_chart(fig, use_container_width=True)
-        st.caption("Roles: line **B**ack/**M**id/**F**ront × channel **L**eft/"
-                   "**C**entre/**R**ight, e.g. **BC-BC** = two central back-line "
-                   "pressers; **FR-MR** = right-side forward + midfielder pressing "
-                   "together.")
-
-        st.markdown("**Team fingerprints** — mean role-pair share per team "
-                    "(rows = teams, columns = role pairs, ordered by prevalence).")
-        fp = s["fingerprint"]
-        fp = fp[fp.mean().sort_values(ascending=False).index]
-        fig2 = px.imshow(fp, aspect="auto", color_continuous_scale="Blues",
-                         labels=dict(color="share", x="role pair", y="team"))
-        fig2.update_layout(height=max(360, 18 * len(fp)),
-                           margin=dict(l=0, r=0, t=10, b=0))
-        st.plotly_chart(fig2, use_container_width=True)
-        st.download_button("Download fingerprints (CSV)", fp.to_csv().encode(),
-                           f"pressing_fingerprint_{weight}_{zone}.csv", "text/csv")
-    _frag_tab_pstyle()
-
 
 with tab_data:
     @st.fragment
