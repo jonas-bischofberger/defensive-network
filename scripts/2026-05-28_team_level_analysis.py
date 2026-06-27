@@ -136,13 +136,40 @@ PRESS_ZONE_OPTIONS = [FULL_NETWORK] + PRESS_ZONES
 _TEAM_BY_ID = (nodes.drop_duplicates("defending_team")
                .set_index("defending_team")["team_name"].to_dict())
 
+# Goalkeeper lookup for the optional GK-exclusion toggle. Keyed by
+# (match_id, defending_team, defender_name) from the enriched player file's
+# most_common_position. Dropping these from the role map both reassigns the
+# role tertiles among outfield players AND removes any edge touching the GK
+# (the role lookup misses -> the edge is filtered out downstream).
+try:
+    _gk_pos = pd.read_csv("scripts/2026-05-25_player_level_enriched_with_ratings.csv",
+                          usecols=["match_id", "defending_team", "defender_name",
+                                   "most_common_position"])
+    GK_KEYS = set(map(tuple,
+                      _gk_pos.loc[_gk_pos["most_common_position"] == "Goalkeeper",
+                                  ["match_id", "defending_team", "defender_name"]]
+                      .itertuples(index=False, name=None)))
+except (FileNotFoundError, ValueError):
+    GK_KEYS = set()
 
-def _build_press_role_map(pos_df):
+
+def _drop_gk_rows(p):
+    """Filter a positions frame to outfield players (drop goalkeepers)."""
+    if not GK_KEYS:
+        return p
+    keep = [(r.match_id, r.defending_team, r.defender_name) not in GK_KEYS
+            for r in p.itertuples()]
+    return p[keep]
+
+
+def _build_press_role_map(pos_df, drop_gk=False):
     """Assign each player a pitch role per (match, team, zone): line B/M/F ×
     channel L/C/R, by within-block tertiles of avg x and y. Position-*relative*,
     so the pattern is comparable across matches with different personnel and
     press heights."""
     p = pos_df.dropna(subset=["overall_avg_x", "overall_avg_y"]).copy()
+    if drop_gk:
+        p = _drop_gk_rows(p)
     gk = ["match_id", "defending_team", "zone"]
     p = p[p.groupby(gk)["defender_name"].transform("count") >= 4].copy()
 
@@ -160,12 +187,14 @@ def _build_press_role_map(pos_df):
     return p.set_index(gk + ["defender_name"])["role"].to_dict()
 
 
-def _build_press_role_map_full(pos_df):
+def _build_press_role_map_full(pos_df, drop_gk=False):
     """Like _build_press_role_map but for the *full* network: collapse the three
     pitch zones into one avg position per (match, team, player), so roles reflect
     the whole-match shape rather than a single press height. Keyed by
     (match_id, defending_team, defender_name)."""
     p = pos_df.dropna(subset=["overall_avg_x", "overall_avg_y"]).copy()
+    if drop_gk:
+        p = _drop_gk_rows(p)
     p = (p.groupby(["match_id", "defending_team", "defender_name"], as_index=False)
            [["overall_avg_x", "overall_avg_y"]].mean())
     gk = ["match_id", "defending_team"]
@@ -188,23 +217,31 @@ def _build_press_role_map_full(pos_df):
 PRESS_ROLE_MAP = _build_press_role_map(zone_pos_df) if zone_pos_df is not None else None
 PRESS_ROLE_MAP_FULL = (_build_press_role_map_full(zone_pos_df)
                        if zone_pos_df is not None else None)
+# Goalkeeper-excluded role maps (optional toggle). Tertiles are recomputed among
+# outfield players only; GK edges drop out for free (role lookup misses).
+PRESS_ROLE_MAP_NOGK = (_build_press_role_map(zone_pos_df, drop_gk=True)
+                       if zone_pos_df is not None else None)
+PRESS_ROLE_MAP_FULL_NOGK = (_build_press_role_map_full(zone_pos_df, drop_gk=True)
+                            if zone_pos_df is not None else None)
 
 
 @st.cache_data(show_spinner="Building pressing-style patterns…")
-def pressing_role_patterns(weight, zone):
+def pressing_role_patterns(weight, zone, drop_gk=False):
     """Per match-team: row-normalised role-pair co-defending weight vector (a
-    *pattern*, not a volume). Returns (matrix, mtids, team_names, role_pairs)."""
+    *pattern*, not a volume). Returns (matrix, mtids, team_names, role_pairs).
+    drop_gk=True uses the goalkeeper-excluded role map, so GK edges are removed
+    and roles are re-tertiled among outfield players."""
     if zone == FULL_NETWORK:
         # all zones combined: keep every edge, use the whole-match role map. The
         # pivot below sums across the (now multiple) zone rows per role pair.
         ed = zone_edge_avg[zone_edge_avg[weight] > 0].copy()
-        rm = PRESS_ROLE_MAP_FULL
+        rm = PRESS_ROLE_MAP_FULL_NOGK if drop_gk else PRESS_ROLE_MAP_FULL
         r1 = [rm.get((r.match_id, r.defending_team, r.player_1)) for r in ed.itertuples()]
         r2 = [rm.get((r.match_id, r.defending_team, r.player_2)) for r in ed.itertuples()]
     else:
         ed = zone_edge_avg[(zone_edge_avg[weight] > 0)
                            & (zone_edge_avg["zone"] == zone)].copy()
-        rm = PRESS_ROLE_MAP
+        rm = PRESS_ROLE_MAP_NOGK if drop_gk else PRESS_ROLE_MAP
         r1 = [rm.get((r.match_id, r.defending_team, zone, r.player_1)) for r in ed.itertuples()]
         r2 = [rm.get((r.match_id, r.defending_team, zone, r.player_2)) for r in ed.itertuples()]
     ed["_rp"] = ["-".join(sorted([a, b])) if (a and b) else None
@@ -214,6 +251,53 @@ def pressing_role_patterns(weight, zone):
     piv = piv.div(piv.sum(axis=1), axis=0)              # row-normalise -> pattern
     teams = [_TEAM_BY_ID.get(int(m.split("_")[1]), m.split("_")[1]) for m in piv.index]
     return piv.values.astype(float), list(piv.index), teams, list(piv.columns)
+
+
+def _bh_fdr(pvals):
+    """Benjamini–Hochberg q-values. NaNs are excluded from the family and stay
+    NaN. BH is valid under positive dependence (PRDS), which the correlated edge
+    weights satisfy, so it is the right (not over-conservative) family correction
+    here. Returns an array aligned to the input."""
+    p = np.asarray(pvals, dtype=float)
+    q = np.full(p.shape, np.nan)
+    ok = np.where(~np.isnan(p))[0]
+    m = len(ok)
+    if m == 0:
+        return q
+    order = ok[np.argsort(p[ok])]
+    qv = p[order] * m / np.arange(1, m + 1)
+    qv = np.minimum.accumulate(qv[::-1])[::-1]      # enforce monotonicity
+    q[order] = np.clip(qv, 0.0, 1.0)
+    return q
+
+
+def _meff_li_ji(corr):
+    """Li & Ji (2005) effective number of independent tests from a correlation
+    matrix: Σ [1(λ≥1) + (λ − ⌊λ⌋)] over its (clipped) eigenvalues."""
+    ev = np.clip(np.linalg.eigvalsh(np.nan_to_num(corr, nan=0.0)), 0.0, None)
+    return float(np.sum((ev >= 1).astype(float) + (ev - np.floor(ev))))
+
+
+@st.cache_data(show_spinner="Effective # tests…")
+def pressing_weight_meff(zone, drop_gk=False):
+    """Effective number of independent tests among the 6 edge weights for a zone.
+    The weights (raw/valued × involvement/fault/contribution) are highly
+    correlated, so the 6 columns carry far fewer than 6 independent comparisons;
+    computed from the correlation of their (match-team × role-pair) pattern
+    matrices, aligned on the common rows/columns. Used to make the family-wise
+    penalty gracious instead of treating all 24 weight×zone cells as independent."""
+    mats = {}
+    for w in WEIGHT_COLS:
+        V, mtids, teams, cols = pressing_role_patterns(w, zone, drop_gk)
+        mats[w] = pd.DataFrame(V, index=mtids, columns=cols)
+    idx = cols = None
+    for w in WEIGHT_COLS:
+        idx = mats[w].index if idx is None else idx.intersection(mats[w].index)
+        cols = mats[w].columns if cols is None else cols.intersection(mats[w].columns)
+    if len(idx) < 3 or len(cols) < 2:
+        return float(len(WEIGHT_COLS))
+    F = pd.DataFrame({w: mats[w].loc[idx, cols].values.flatten() for w in WEIGHT_COLS})
+    return _meff_li_ji(F.corr().values)
 
 
 def _cos_sim_matrix(V):
@@ -257,12 +341,12 @@ def _perm_delta(C, teams, nperm, rng):
 
 
 @st.cache_data(show_spinner="Permuting team labels…")
-def pressing_style_stats(weight, zone, nperm=2000, seed=20260625):
+def pressing_style_stats(weight, zone, nperm=2000, seed=20260625, drop_gk=False):
     """Within- vs between-team cosine similarity of the role-pair pattern, with a
     team-label permutation null (correct for non-independent match-team pairs).
     Also runs a formation-confound check: binary presence/absence vs continuous
     weight, and a common-pairs-only (>=80% presence) re-test."""
-    V, mtids, teams, cols = pressing_role_patterns(weight, zone)
+    V, mtids, teams, cols = pressing_role_patterns(weight, zone, drop_gk)
     teams = np.array(teams)
     rng = np.random.default_rng(seed)
 
@@ -294,6 +378,153 @@ def pressing_style_stats(weight, zone, nperm=2000, seed=20260625):
             "bin_delta": obs_bin, "bin_p": p_bin,
             "com_delta": obs_com, "com_p": p_com, "n_common": n_common,
             "n_total_pairs": len(cols)}
+
+
+def _unit_rows(V):
+    """Row-normalise to unit L2 norm (cosine space)."""
+    nrm = np.linalg.norm(V, axis=1, keepdims=True)
+    return V / np.where(nrm == 0, 1.0, nrm)
+
+
+def _loo_topk_acc(U, codes, K):
+    """Leave-one-match-out nearest-centroid team identification, fully vectorised.
+
+    U: (n,d) unit-norm role-pair patterns. codes: (n,) integer team labels in
+    0..K-1. For each row i, assign it to the team whose mean fingerprint (cosine)
+    is closest; the row's OWN team centroid excludes row i (leave-one-out), every
+    other team uses its full mean. A row is *eligible* only if its team has ≥2
+    matches (else there is no LOO centroid for the true team). Returns
+    (top1, top3, n_eligible, correct1_mask, eligible_mask)."""
+    n = U.shape[0]
+    Y = np.zeros((n, K))
+    Y[np.arange(n), codes] = 1.0
+    S = Y.T @ U                                   # (K,d) per-team sums
+    c = Y.sum(0)                                  # (K,) per-team counts
+    cb_norm = np.linalg.norm(np.divide(S, np.where(c[:, None] == 0, 1.0, c[:, None])), axis=1)
+    D = U @ S.T                                   # (n,K) Uᵢ·S_t
+    denom = c[None, :] * cb_norm[None, :]
+    M = np.divide(D, denom, out=np.full((n, K), -1.0), where=denom > 0)  # cosine to base centroid
+    # replace the own-team column with the leave-one-out cosine (Uᵢ unit norm):
+    #   cos(Uᵢ, S_own − Uᵢ) = (Uᵢ·S_own − 1) / ‖S_own − Uᵢ‖
+    own = codes
+    cc = c[own]
+    UdotSown = D[np.arange(n), own]
+    Snorm_own = cb_norm[own] * c[own]             # ‖S_own‖
+    loo_norm = np.sqrt(np.maximum(Snorm_own ** 2 - 2 * UdotSown + 1.0, 0.0))
+    loo_cos = np.where(loo_norm > 0, (UdotSown - 1.0) / np.where(loo_norm == 0, 1.0, loo_norm), -1.0)
+    M[np.arange(n), own] = loo_cos
+    own_cos = M[np.arange(n), own]
+    greater = (M > own_cos[:, None]).sum(1)       # 0 = own team ranked first
+    elig = cc >= 2
+    correct1 = (greater == 0) & elig
+    correct3 = (greater < 3) & elig
+    return int(correct1.sum()), int(correct3.sum()), int(elig.sum()), correct1, elig
+
+
+@st.cache_data(show_spinner="Leave-one-match-out team ID…")
+def pressing_loo_identification(weight, zone, nperm=2000, seed=20260627, drop_gk=False):
+    """#1 — robustness as identifiability. Can the role-pair pattern alone *name
+    the team*? Each held-out match is classified to the nearest team by its LOO
+    mean fingerprint; accuracy is tested against a team-label permutation null
+    (chance = mean permuted accuracy). A multivariate, intuitive alternative to
+    per-pair ICC. Returns accuracies, perm-p, empirical chance, per-team table."""
+    V, mtids, teams, cols = pressing_role_patterns(weight, zone, drop_gk)
+    teams = np.asarray(teams)
+    U = _unit_rows(V)
+    codes, uniq = pd.factorize(teams)
+    K = len(uniq)
+    t1, t3, total, correct1, elig = _loo_topk_acc(U, codes, K)
+    if total == 0:
+        return {"total": 0}
+    rng = np.random.default_rng(seed)
+    perm_t1 = np.empty(nperm)
+    for p in range(nperm):
+        perm_t1[p] = _loo_topk_acc(U, rng.permutation(codes), K)[0]
+    perm_p = (int((perm_t1 >= t1).sum()) + 1) / (nperm + 1)
+    chance = float(perm_t1.mean() / total)
+    per_team = (pd.DataFrame({"team": teams, "correct": correct1.astype(float), "elig": elig})
+                .query("elig").groupby("team")
+                .agg(acc=("correct", "mean"), n=("correct", "size"))
+                .reset_index())
+    return {"top1": t1 / total, "top3": t3 / total, "total": total,
+            "perm_p": perm_p, "chance": chance,
+            "n_teams": int(pd.Series(teams)[elig].nunique()), "per_team": per_team}
+
+
+@st.cache_data(show_spinner="Within-team deviation vs outcome…")
+def pressing_deviation_outcome(weight, zone, scheme="thirds", nperm=2000, seed=20260627,
+                               drop_gk=False):
+    """#2 — trait → outcome, dominance-controlled. Per match-team: cosine DISTANCE
+    between its role-pair pattern and its team's LOO mean fingerprint. Does
+    deviating from a team's own pressing identity cost zone defensive success
+    (stop_rate) *that match*? Tested WITHIN team (each team is its own baseline,
+    so squad-quality / dominance confounds cancel) via team-demeaned correlation
+    with a within-team permutation null. Raw (uncontrolled) r returned for
+    contrast. Outcome = stop_rate in the matching pitch zone; for the full network
+    it is pooled across zones (Σ stops / Σ actions)."""
+    if zone_raw is None:
+        return {"n": 0}
+    V, mtids, teams, cols = pressing_role_patterns(weight, zone, drop_gk)
+    teams = np.asarray(teams)
+    U = _unit_rows(V)
+    codes, uniq = pd.factorize(teams)
+    K = len(uniq)
+    Y = np.zeros((len(U), K)); Y[np.arange(len(U)), codes] = 1.0
+    S = Y.T @ U; c = Y.sum(0)
+    own = codes; cc = c[own]
+    D_own = (U * S[own]).sum(1)                    # Uᵢ·S_own
+    loo_norm = np.sqrt(np.maximum(np.linalg.norm(S[own], axis=1) ** 2 - 2 * D_own + 1.0, 0.0))
+    cos = np.where((loo_norm > 0) & (cc >= 2),
+                   (D_own - 1.0) / np.where(loo_norm == 0, 1.0, loo_norm), np.nan)
+    deviation = 1.0 - cos                          # cosine distance to own identity
+
+    zr = zone_raw[zone_raw["scheme"] == scheme]
+    if zone == FULL_NETWORK:
+        g = zr.groupby("match_team_id").agg(ns=("n_stop_def", "sum"), na=("n_actions", "sum"))
+        success = g["ns"] / g["na"].replace(0, np.nan)
+    else:
+        success = (zr[zr["zone"] == zone].drop_duplicates("match_team_id")
+                   .set_index("match_team_id")["stop_rate"])
+    succ = np.array([success.get(m, np.nan) for m in mtids])
+
+    df = pd.DataFrame({"mtid": mtids, "team": teams, "deviation": deviation, "success": succ})
+    df = df.dropna(subset=["deviation", "success"])
+    df = df[df.groupby("team")["team"].transform("size") >= 2]
+    if len(df) < 8:
+        return {"n": len(df)}
+    df["dev_demean"] = df["deviation"] - df.groupby("team")["deviation"].transform("mean")
+    df["suc_demean"] = df["success"] - df.groupby("team")["success"].transform("mean")
+    r_within, _ = pearsonr(df["dev_demean"], df["suc_demean"])
+    n, nt = len(df), df["team"].nunique()
+    dof = max(n - nt - 1, 1)
+    tstat = r_within * np.sqrt(dof / max(1 - r_within ** 2, 1e-12))
+    p_within_param = float(2 * t_dist.sf(abs(tstat), dof))
+
+    # within-team permutation null: shuffle stop_rate within each team (preserves
+    # each team's baseline → team means, hence the demeaning, are unchanged).
+    rng = np.random.default_rng(seed)
+    dev_d = df["dev_demean"].values
+    team_mean = df.groupby("team")["success"].transform("mean").values
+    suc = df["success"].values
+    grp_pos = [np.array([df.index.get_loc(i) for i in g.index])
+               for _, g in df.groupby("team")]
+    obs, ge = abs(r_within), 0
+    for _ in range(nperm):
+        sd = suc.copy()
+        for gp in grp_pos:
+            sd[gp] = rng.permutation(sd[gp])
+        rp = np.corrcoef(dev_d, sd - team_mean)[0, 1]
+        if abs(rp) >= obs:
+            ge += 1
+    p_within_perm = (ge + 1) / (nperm + 1)
+
+    r_raw, p_raw = pearsonr(df["deviation"], df["success"])
+    rho_raw, p_rho = spearmanr(df["deviation"], df["success"])
+    return {"n": n, "n_teams": nt, "r_within": r_within,
+            "p_within_perm": p_within_perm, "p_within_param": p_within_param,
+            "r_raw": r_raw, "p_raw": p_raw, "rho_raw": rho_raw, "p_rho_raw": p_rho,
+            "df": df, "zone": zone, "scheme": scheme}
+
 
 GROUPS = {
     "Total Network Strength":              WEIGHT_COLS,
@@ -893,13 +1124,25 @@ def icc_tbl(df, cols):
 
 # ── Axis Selection & Quadrant Analysis ───────────────────────────────────────
 
-def eta_sq_tbl(df, only_from=None):
+def eta_sq_tbl(df, only_from=None, nperm=0, seed=20260627):
+    """η² (between-team variance share) per metric.
+
+    With nperm>0, add a **team-label permutation** test: η² is a *biased*
+    variance-share estimator whose null is not 0 but ≈(k−1)/(n−1) (≈0.25 here),
+    so a raw η² is uninterpretable on its own. The permutation rebuilds the null
+    η² distribution by shuffling team labels and reports:
+        floor = mean null η² (the chance level for this metric's n,k)
+        p     = P(null η² ≥ observed)   [team identity ↑ separates teams]
+    ss_tot is invariant under label permutation, so only ss_bet is recomputed —
+    vectorised as (Yᵀ·Xperm)² / nₜ via an indicator matrix.
+    """
     skip = {"match_team_id", "team_name", "competition_stage", "passes_against"} | set(OUTCOME_COLS)
     if only_from is not None:
         cols = [c for c in df.columns if c not in skip
                 and any(c == p or c.startswith(p + "_") for p in only_from)]
     else:
         cols = [c for c in df.columns if c not in skip]
+    rng = np.random.default_rng(seed)
     rows = []
     for m in cols:
         s = df[["team_name", m]].dropna()
@@ -909,11 +1152,38 @@ def eta_sq_tbl(df, only_from=None):
         ss_tot = ((s[m] - grand) ** 2).sum()
         if ss_tot == 0:
             continue
-        ss_bet = s.groupby("team_name")[m].apply(
-            lambda x: len(x) * (x.mean() - grand) ** 2
-        ).sum()
-        rows.append({"metric": m, "η²": round(ss_bet / ss_tot, 3)})
-    return pd.DataFrame(rows).sort_values("η²", ascending=False).reset_index(drop=True)
+        x = s[m].to_numpy(dtype=float)
+        codes = pd.factorize(s["team_name"])[0]
+        n, k = len(x), codes.max() + 1
+        n_t = np.bincount(codes, minlength=k).astype(float)        # (k,)
+        const = x.sum() ** 2 / n                                    # n·grand²
+        ss_bet = (np.bincount(codes, weights=x, minlength=k) ** 2 / n_t).sum() - const
+        rec = {"metric": m, "η²": round(ss_bet / ss_tot, 3), "n": n, "teams": int(k)}
+        if nperm > 0:
+            Y = np.zeros((n, k)); Y[np.arange(n), codes] = 1.0      # indicator (n,k)
+            Xp = rng.permuted(np.broadcast_to(x, (nperm, n)), axis=1).T   # (n, nperm)
+            GS = Y.T @ Xp                                           # (k, nperm) group sums
+            eta_perm = ((GS ** 2 / n_t[:, None]).sum(0) - const) / ss_tot
+            obs = ss_bet / ss_tot
+            rec["floor"] = round(float(eta_perm.mean()), 3)
+            rec["p"] = round((int((eta_perm >= obs).sum()) + 1) / (nperm + 1), 4)
+            rec["sig"] = ("***" if rec["p"] < 0.001 else "**" if rec["p"] < 0.01
+                          else "*" if rec["p"] < 0.05 else "ns")
+        rows.append(rec)
+    out = pd.DataFrame(rows).sort_values("η²", ascending=False).reset_index(drop=True)
+    if nperm > 0 and len(out):
+        # Benjamini-Hochberg FDR across the metric family (q), so the table is
+        # honest about multiple comparisons — only small q is a defensible trait.
+        order = out["p"].to_numpy().argsort()
+        ranked = out["p"].to_numpy()[order]
+        m = len(ranked)
+        q = ranked * m / (np.arange(1, m + 1))
+        q = np.minimum.accumulate(q[::-1])[::-1].clip(max=1.0)
+        qcol = np.empty(m); qcol[order] = q
+        out["q"] = qcol.round(4)
+        out["sig"] = np.where(out["q"] < 0.001, "***", np.where(out["q"] < 0.01, "**",
+                              np.where(out["q"] < 0.05, "*", "ns")))
+    return out
 
 
 def quadrant_analysis(df, x_col, y_col, outcome_cols=None):
@@ -1873,22 +2143,62 @@ with tab_conc:
         st.caption(
             "η² = proportion of total variance explained by team identity.  "
             "**Higher → this metric better differentiates teams.**  "
-            "Pick two metrics with high η² *and* low mutual correlation as quadrant axes."
+            "Pick two metrics with high η² *and* low mutual correlation as quadrant axes.  \n"
+            "⚠️ η² is *biased upward*: under no team effect its null is **≈(k−1)/(n−1) ≈ 0.25** here, "
+            "not 0. Enable the permutation test below to see each metric's chance **floor** and a "
+            "**p**-value (H₀: team labels carry no information) and a BH-FDR **q** across the metric "
+            "family. **sig** is based on q — only metrics with η² clearly above their floor *and* small q "
+            "are defensible team traits."
         )
-        eta_df = eta_sq_tbl(df_corr, only_from=INV_COLS)
-        st.dataframe(
-            eta_df.style.background_gradient(cmap="YlOrRd", subset=["η²"], vmin=0, vmax=1),
-            use_container_width=True, height=320,
-        )
+        _eta_nperm = st.select_slider(
+            "η² permutation test (team-label shuffles; 0 = off)",
+            options=[0, 500, 1000, 2000, 5000], value=2000, key="eta_nperm")
+        eta_df = eta_sq_tbl(df_corr, only_from=INV_COLS, nperm=_eta_nperm)
+        _eta_sty = eta_df.style.background_gradient(cmap="YlOrRd", subset=["η²"], vmin=0, vmax=1)
+        if "floor" in eta_df.columns:
+            _eta_sty = _eta_sty.background_gradient(cmap="YlOrRd", subset=["floor"], vmin=0, vmax=1)
+        st.dataframe(_eta_sty, use_container_width=True, height=360)
         all_eta_metrics = eta_df["metric"].tolist()
         if len(all_eta_metrics) >= 2:
             with st.expander("Pairwise correlations — all metrics"):
-                st.caption("Lower correlation = more independent dimensions — better for a 2-axis quadrant plot.")
+                st.caption(
+                    "Lower correlation = more independent dimensions — better for a 2-axis quadrant plot. "
+                    "The table below gives each pair's Pearson **r**, two-sided **p** (H₀: ρ=0) and a "
+                    "BH-FDR **q** across all unique pairs; **sig** is based on q."
+                )
                 corr_all = df_corr[all_eta_metrics].corr().round(2)
                 st.dataframe(
                     corr_all.style.background_gradient(cmap="RdYlGn_r", vmin=-1, vmax=1),
                     use_container_width=True,
                 )
+                _pair_rows = []
+                for _a_m, _b_m in combinations(all_eta_metrics, 2):
+                    _pv = df_corr[[_a_m, _b_m]].dropna()
+                    if len(_pv) < 3:
+                        continue
+                    _r, _p = pearsonr(_pv[_a_m], _pv[_b_m])
+                    _pair_rows.append({"metric A": _a_m, "metric B": _b_m,
+                                       "r": round(_r, 3), "n": len(_pv), "p": _p})
+                if _pair_rows:
+                    pair_df = pd.DataFrame(_pair_rows)
+                    _order = pair_df["p"].to_numpy().argsort()
+                    _ranked = pair_df["p"].to_numpy()[_order]
+                    _m = len(_ranked)
+                    _q = _ranked * _m / np.arange(1, _m + 1)
+                    _q = np.minimum.accumulate(_q[::-1])[::-1].clip(max=1.0)
+                    _qcol = np.empty(_m); _qcol[_order] = _q
+                    pair_df["q"] = _qcol
+                    pair_df["sig"] = np.where(pair_df["q"] < 0.001, "***",
+                                     np.where(pair_df["q"] < 0.01, "**",
+                                     np.where(pair_df["q"] < 0.05, "*", "ns")))
+                    pair_df["p"] = pair_df["p"].round(4)
+                    pair_df["q"] = pair_df["q"].round(4)
+                    pair_df = (pair_df.reindex(pair_df["r"].abs().sort_values(ascending=False).index)
+                               .reset_index(drop=True))
+                    st.dataframe(
+                        pair_df.style.background_gradient(cmap="RdYlGn_r", subset=["r"], vmin=-1, vmax=1),
+                        use_container_width=True, height=360,
+                    )
     _frag_tab_conc()
 
 with tab_self:
@@ -3188,6 +3498,119 @@ with tab_sens:
 
 with tab_pstyle:
     @st.fragment
+    def _frag_pstyle_overview():
+        st.subheader("Results overview — all weights × zones")
+        if zone_edge_avg is None or PRESS_ROLE_MAP is None:
+            return
+        st.caption(
+            "One row per **edge-weight × zone** combination, summarising the three "
+            "estimators below: **self-similarity** (is the pattern a team trait?), "
+            "**LOO identification** (does the pattern name the team?), and "
+            "**deviation → outcome** (does straying from your identity cost stop "
+            "rate, within-team?). Generation runs the full permutation sweep, so it "
+            "is **off by default** — flip the toggle to compute it.")
+        if not st.toggle("Generate overview table", value=False,
+                         key="pstyle_overview_on"):
+            return
+        _oc1, _oc2 = st.columns(2)
+        _nperm = _oc1.select_slider("Permutations (overview)", [500, 1000, 2000],
+                                    value=1000, key="pstyle_overview_nperm")
+        _drop_gk = _oc2.toggle("Exclude goalkeeper", value=False,
+                               key="pstyle_overview_drop_gk", disabled=not GK_KEYS,
+                               help="Recompute the whole sweep with goalkeeper edges "
+                                    "removed and roles re-tertiled among outfielders.")
+
+        _combos = [(w, z) for w in WEIGHT_COLS for z in PRESS_ZONE_OPTIONS]
+        _rows, _bar = [], st.progress(0.0, "Sweeping weight × zone…")
+        for _i, (_w, _z) in enumerate(_combos):
+            _zlabel = "full" if _z == FULL_NETWORK else _z
+            _s = pressing_style_stats(_w, _z, _nperm, drop_gk=_drop_gk)
+            _loo = pressing_loo_identification(_w, _z, _nperm, drop_gk=_drop_gk)
+            _dev = pressing_deviation_outcome(_w, _z, nperm=_nperm, drop_gk=_drop_gk)
+            _has_loo = _loo.get("total", 0) > 0
+            _has_dev = _dev.get("n", 0) >= 8
+            _mult = (_loo["top1"] / _loo["chance"]
+                     if _has_loo and _loo["chance"] > 0 else np.nan)
+            _rows.append({
+                "weight": _w, "zone": _zlabel, "n_mt": _s["n_mt"],
+                "Δcos": round(_s["delta"], 3), "self p": _s["perm_p"],
+                "LOO top-1": _loo["top1"] if _has_loo else np.nan,
+                "chance": _loo["chance"] if _has_loo else np.nan,
+                "×chance": round(_mult, 2) if pd.notna(_mult) else np.nan,
+                "LOO p": _loo["perm_p"] if _has_loo else np.nan,
+                "within-r": round(_dev["r_within"], 3) if _has_dev else np.nan,
+                "within p": _dev["p_within_perm"] if _has_dev else np.nan,
+                "n dev": _dev.get("n", 0),
+            })
+            _bar.progress((_i + 1) / len(_combos), f"{_w} × {_zlabel}")
+        _bar.empty()
+
+        ov = pd.DataFrame(_rows)
+
+        # --- multiple-comparisons correction --------------------------------
+        # BH-FDR q-values per estimator across the 24 weight×zone cells. The 6
+        # edge weights are highly correlated, so the *effective* family is far
+        # smaller than 24 — reported below via Li & Ji M_eff so a Bonferroni-24
+        # penalty is not applied blindly.
+        ov["self q"] = _bh_fdr(ov["self p"].values)
+        ov["LOO q"] = _bh_fdr(ov["LOO p"].values)
+        ov["within q"] = _bh_fdr(ov["within p"].values)
+
+        _meff_by_zone = {z: pressing_weight_meff(z, _drop_gk) for z in PRESS_ZONE_OPTIONS}
+        _m_eff = float(sum(_meff_by_zone.values()))      # zones ~indep, weights collapse
+        _nominal = int(ov["self p"].notna().sum())
+        _alpha_eff = 1.0 - (1.0 - 0.05) ** (1.0 / _m_eff) if _m_eff > 0 else 0.05
+
+        mc1, mc2, mc3 = st.columns(3)
+        mc1.metric("nominal tests / estimator", _nominal)
+        mc2.metric("effective tests (M_eff)", f"{_m_eff:.1f}",
+                   help="Σ over zones of Li & Ji effective # among the 6 correlated "
+                        "weights. The 6 weights collapse to ~2–3 independent tests "
+                        "per zone, so the real family is far below 24.")
+        mc3.metric("Šidák α (effective)", f"{_alpha_eff:.4f}",
+                   help="Family-wise α threshold using M_eff effective tests: "
+                        "1−(1−0.05)^(1/M_eff). More gracious than Bonferroni-24 "
+                        f"(α={0.05/max(_nominal,1):.4f}).")
+
+        def _stars(p):
+            if pd.isna(p):
+                return ""
+            return "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else ""
+        # stars now reflect BH-FDR q (corrected significance)
+        ov["self"] = ov["self q"].map(_stars)
+        ov["LOO"] = ov["LOO q"].map(_stars)
+        ov["dev"] = ov["within q"].map(_stars)
+        for _pc in ("self p", "LOO p", "within p", "self q", "LOO q", "within q"):
+            ov[_pc] = ov[_pc].round(4)
+        ov = ov[["weight", "zone", "n_mt", "Δcos", "self p", "self q", "self",
+                 "LOO top-1", "chance", "×chance", "LOO p", "LOO q", "LOO",
+                 "within-r", "within p", "within q", "dev", "n dev"]]
+
+        def _hi_q(col):
+            return ["background-color:#c7e9c0" if (pd.notna(v) and v < 0.05) else ""
+                    for v in col]
+        sty = (ov.style
+               .apply(_hi_q, subset=["self q", "LOO q", "within q"])
+               .background_gradient(cmap="Greens", subset=["Δcos"])
+               .format({"LOO top-1": "{:.1%}", "chance": "{:.1%}"}, na_rep="—"))
+        st.dataframe(sty, use_container_width=True, height=min(40 + 28 * len(ov), 760))
+        st.caption(
+            ("**Goalkeeper excluded.** " if _drop_gk else "") +
+            "Green / stars = **BH-FDR q<0.05** (multiple-comparisons-corrected); raw "
+            "permutation p shown alongside. **Δcos** = within− between-team cosine "
+            "similarity; **×chance** = LOO top-1 ÷ permuted chance; **within-r** "
+            "negative = deviating from identity lowers stop rate. The 6 edge weights "
+            "are strongly correlated (M_eff ≈ 2–3 per zone), so BH-FDR — valid under "
+            "positive dependence — is used rather than a Bonferroni over 24 cells, "
+            "and the effective family (M_eff above) is what a Šidák threshold should "
+            "use. Blanks (—) = too few eligible match-teams.")
+        _fname = ("pressing_style_overview_nogk.csv" if _drop_gk
+                  else "pressing_style_overview.csv")
+        st.download_button("Download overview (CSV)", ov.to_csv(index=False).encode(),
+                           _fname, "text/csv", key="pstyle_overview_dl")
+    _frag_pstyle_overview()
+
+    @st.fragment
     def _frag_tab_pstyle():
         st.subheader("Pressing-style fingerprint — role-pair co-defending pattern")
         if zone_edge_avg is None or PRESS_ROLE_MAP is None:
@@ -3217,8 +3640,17 @@ with tab_pstyle:
                             format_func=lambda z: "full network (all zones)"
                             if z == FULL_NETWORK else z)
         nperm = c3.select_slider("Permutations", [500, 1000, 2000, 5000], value=2000)
+        drop_gk = st.toggle(
+            "Exclude goalkeeper", value=False, key="pstyle_drop_gk",
+            help="Drop the goalkeeper from the role map: GK edges are removed and "
+                 "the B/M/F × L/C/R role tertiles are recomputed among outfield "
+                 "players only. Tests whether the team-trait signal is carried by "
+                 "the keeper or by the outfield pressing shape.",
+            disabled=not GK_KEYS)
+        if not GK_KEYS:
+            st.caption("⚠️ Goalkeeper labels unavailable — exclusion toggle disabled.")
 
-        s = pressing_style_stats(weight, zone, nperm)
+        s = pressing_style_stats(weight, zone, nperm, drop_gk=drop_gk)
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("within-team cos", f"{s['within']:.3f}")
@@ -3287,6 +3719,93 @@ with tab_pstyle:
         st.plotly_chart(fig2, use_container_width=True)
         st.download_button("Download fingerprints (CSV)", fp.to_csv().encode(),
                            f"pressing_fingerprint_{weight}_{zone}.csv", "text/csv")
+
+        # ── #1 Leave-one-match-out team identification ─────────────────────────
+        st.divider()
+        st.markdown("### 1 · Leave-one-match-out team identification")
+        st.markdown(
+            "A stronger, more intuitive robustness test than per-pair ICC: can the "
+            "pattern alone **name the team**? Each match is assigned to the team "
+            "whose **leave-one-out** mean fingerprint — built *only* from that "
+            "team's other matches — it most resembles (cosine, nearest-centroid). "
+            "Accuracy well above chance means the co-defending pattern carries a "
+            "real, **multivariate** team identity, even where any single role pair "
+            "is only faintly stable.")
+        loo = pressing_loo_identification(weight, zone, nperm, drop_gk=drop_gk)
+        if loo.get("total", 0) == 0:
+            st.info("No teams with ≥2 matches in this zone — cannot leave one out.")
+        else:
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("top-1 accuracy", f"{loo['top1']:.1%}")
+            k2.metric("top-3 accuracy", f"{loo['top3']:.1%}")
+            k3.metric("chance (perm mean)", f"{loo['chance']:.1%}")
+            sig_loo = loo["perm_p"] < 0.05
+            k4.metric("permutation p", f"{loo['perm_p']:.4f}",
+                      delta="identifiable" if sig_loo else "n.s.",
+                      delta_color="normal" if sig_loo else "off")
+            _mult = loo["top1"] / loo["chance"] if loo["chance"] > 0 else float("nan")
+            st.caption(
+                f"{loo['total']} held-out matches across {loo['n_teams']} teams with "
+                f"≥2 matches. Chance = mean top-1 accuracy under {nperm} team-label "
+                f"permutations ({loo['chance']:.1%}); observed top-1 is "
+                f"**{_mult:.1f}× chance**. With only 3–7 matches per team this is a "
+                "lower bound — the identity aggregates further on club-season data.")
+            pt = loo["per_team"]
+            if not pt.empty:
+                figL = px.bar(pt.sort_values("acc"), x="acc", y="team", orientation="h",
+                              labels={"acc": "top-1 accuracy", "team": ""},
+                              title="How identifiable is each team by its pressing pattern?")
+                figL.add_vline(x=loo["chance"], line_dash="dash", line_color="grey")
+                figL.update_layout(height=max(360, 16 * len(pt)),
+                                   margin=dict(l=0, r=0, t=30, b=0))
+                st.plotly_chart(figL, use_container_width=True)
+
+        # ── #2 Deviation from own identity vs match outcome ────────────────────
+        st.divider()
+        st.markdown("### 2 · Deviation from own identity vs match outcome")
+        st.markdown(
+            "Turns the descriptive trait into an **outcome** signal while "
+            "controlling for team strength. For each match, the **cosine distance** "
+            "between its pattern and the team's leave-one-out mean fingerprint — how "
+            "far the team strayed from its own pressing identity. Does straying cost "
+            "defensive success **that match**? The test is **within team** (each "
+            "team is its own baseline), so squad-quality and dominance confounds — "
+            "which sank every cross-sectional model — cancel. Outcome = **stop "
+            "rate** in the matching pitch zone (scheme: pitch thirds).")
+        if zone_raw is None:
+            st.info("Needs `scripts/2026-06-08_team_zone_metrics.csv`.")
+        else:
+            dev = pressing_deviation_outcome(weight, zone, nperm=nperm, drop_gk=drop_gk)
+            if dev.get("n", 0) < 8:
+                st.info("Too few within-team observations for this zone "
+                        "(need teams with ≥2 matches that also have zone stop-rate).")
+            else:
+                d1, d2, d3 = st.columns(3)
+                sig_w = dev["p_within_perm"] < 0.05
+                d1.metric("within-team r (deviation vs stop rate)",
+                          f"{dev['r_within']:+.3f}",
+                          delta=f"perm p={dev['p_within_perm']:.4f}",
+                          delta_color="normal" if sig_w else "off")
+                d2.metric("raw r (no team control)", f"{dev['r_raw']:+.3f}",
+                          delta=f"p={dev['p_raw']:.3f} — confounded",
+                          delta_color="off")
+                d3.metric("obs / teams", f"{dev['n']} / {dev['n_teams']}")
+                st.caption(
+                    "**Negative** within-team r = deviating from the team's usual "
+                    "pressing pattern goes with a **lower** stop rate (imposing your "
+                    "identity helps defend). The within-team p permutes stop rate "
+                    "**within each team**, preserving every team's baseline. The raw "
+                    "r ignores team identity and is dominance-confounded — shown only "
+                    "for contrast; the within-team estimate is the clean test.")
+                figD = px.scatter(
+                    dev["df"], x="dev_demean", y="suc_demean", hover_name="team",
+                    hover_data=["deviation", "success"],
+                    trendline="ols", trendline_color_override="black",
+                    title="Within-team: deviation from identity vs zone stop rate",
+                    labels={"dev_demean": "deviation from own fingerprint (team-demeaned)",
+                            "suc_demean": "zone stop rate (team-demeaned)"})
+                _add_quadrant_lines(figD, dev["df"], "dev_demean", "suc_demean", opacity=0.4)
+                st.plotly_chart(figD, use_container_width=True)
     _frag_tab_pstyle()
 
 
