@@ -98,12 +98,34 @@ except FileNotFoundError:
 # signal that is geometry-free AND a (faint) team trait, strongest in the high
 # press (validated by team-label permutation). Optional.
 try:
-    zone_edge_avg = pd.read_csv("scripts/2026-06-18_zone_network_edge(average).csv")
-    zone_pos_df   = pd.read_csv("scripts/2026-06-18_zone_network_positions.csv")
-    zone_edge_avg["mtid"] = (zone_edge_avg["match_id"].astype(str) + "_"
-                             + zone_edge_avg["defending_team"].astype(str))
+    zone_pos_df = pd.read_csv("scripts/2026-06-18_zone_network_positions.csv")
+    # one zone-edge file per edge-weight method — the sidebar `method` selection
+    # picks which one every pressing-style estimator reads (loaded lazily).
+    ZONE_EDGE_METHODS = tuple(
+        k for k in ("average", "min", "product", "sum")
+        if _os.path.exists(f"scripts/2026-06-18_zone_network_edge({k}).csv"))
+    if not ZONE_EDGE_METHODS:
+        raise FileNotFoundError
 except FileNotFoundError:
-    zone_edge_avg = zone_pos_df = None
+    zone_pos_df = None
+    ZONE_EDGE_METHODS = ()
+
+
+@st.cache_data(show_spinner="Loading zone co-defending edges…")
+def zone_edges(method):
+    """Zone co-defending edge list for one edge-weight method."""
+    df = pd.read_csv(f"scripts/2026-06-18_zone_network_edge({method}).csv")
+    df["mtid"] = (df["match_id"].astype(str) + "_"
+                  + df["defending_team"].astype(str))
+    return df
+
+
+def zone_edge_method(method):
+    """Resolve the sidebar method to an available zone-edge file, falling back to
+    the first available one if that variant was never generated."""
+    if not ZONE_EDGE_METHODS:
+        return None
+    return method if method in ZONE_EDGE_METHODS else ZONE_EDGE_METHODS[0]
 
 match_mins   = nodes.groupby("match_team_id")["mins_played"].max().rename("match_mins")
 squad_size   = nodes.groupby("match_team_id")["defender_id"].count().rename("n_players")
@@ -162,12 +184,145 @@ def _drop_gk_rows(p):
     return p[keep]
 
 
+# ── Pitch orientation ─────────────────────────────────────────────────────────
+# The parquet pipeline aligns coordinates across `section` (see
+# 2026-03-30_player_position.py align_coordinates), which yields one consistent
+# frame per MATCH. It does not orient them per TEAM: the two sides defend
+# opposite ends, so their x and y are negatives of each other. Verified on this
+# data — the deepest player of a match-team (always the keeper, |x| >= 34.5 in
+# all 128) is negative for one side and positive for the other in 64 of 64
+# matches.
+#
+# Left uncorrected this makes every *mean* position uncomparable across
+# match-teams: player-identity ICC of match-mean x is -0.078 and of y -0.063.
+# After flipping, 0.930 and 0.711. Dispersion statistics (SD, range) are
+# invariant to the flip and were unaffected either way.
+#
+# The anchor is abs(x).idxmax() rather than GK_KEYS: the keeper lookup misses a
+# handful of match-teams, while the deepest-player rule is exact here and needs
+# no external file. The sign is a property of the match-team, so it is resolved
+# once at that level and reused for every zone (a per-zone anchor agrees 98.7%
+# of the time; the match-team one is the more stable of the two).
+@st.cache_data(show_spinner=False)
+def _orient_sign():
+    """{(match_id, defending_team): +1/-1} to put each team's own goal at -x."""
+    d = nodes.dropna(subset=["overall_avg_x"])
+    ext = d.loc[d.groupby(["match_id", "defending_team"])["overall_avg_x"]
+                .apply(lambda s: s.abs().idxmax())]
+    return {(r.match_id, r.defending_team): (-1.0 if r.overall_avg_x > 0 else 1.0)
+            for r in ext.itertuples()}
+
+
+def _orient(p, xcol="overall_avg_x", ycol="overall_avg_y"):
+    """Return `p` with x and y flipped into the defending team's own frame.
+
+    Rows whose match-team has no resolvable sign are dropped — leaving them at an
+    arbitrary orientation is worse than losing them, since they would silently
+    contaminate every cross-match mean."""
+    sgn = _orient_sign()
+    s = pd.Series([sgn.get((r_mid, r_team), np.nan)
+                   for r_mid, r_team in zip(p["match_id"], p["defending_team"])],
+                  index=p.index)
+    p = p[s.notna()].copy()
+    s = s[s.notna()]
+    p[xcol] = p[xcol] * s
+    p[ycol] = p[ycol] * s
+    return p
+
+
+# ── Block geometry (positional, network-free) ─────────────────────────────────
+# A candidate style dimension that does not come from the co-defending graph at
+# all: the shape of the defensive block, from each player's mean defensive-action
+# position (overall_avg_x/y in the node file).
+#
+# Two restrictions, both fixed a priori rather than tuned:
+#   starting XI only — squad size is then exactly 11 in every match-team, so
+#     rotation and substitutions cannot change the point cloud. This is the same
+#     confound that inflates whole-squad Freeman centralization (subs enter as
+#     low-strength nodes and mechanically raise it).
+#   outfield only    — the keeper sits ~35 m behind the block and would dominate
+#     any depth statistic; GK_KEYS comes from the enriched player file.
+#
+# Positions are oriented per match-team (see _orient) before anything is
+# computed, so *means* are comparable across matches and not only dispersions.
+# That matters: before the fix block_line_height was a scrambled sign and looked
+# dead (ICC -0.096), which was misread as "means are unmeasurable here" and it
+# was used as a negative control. Oriented, it is the single most reproducible
+# metric in this dashboard (ICC 0.370, above block_x_spread at 0.287).
+#
+# block_centre_y stays as the family's negative control, and is now a valid one:
+# there is no reason a team should consistently sit left or right of centre, and
+# oriented it is still null (ICC 0.073), as is lateral asymmetry (|mean y|,
+# -0.010). Left/right overload is genuinely not a team trait in this data.
+GEOM_COLS = ["block_x_spread", "block_y_spread", "block_area", "block_aspect",
+             "block_x_range", "block_y_range", "block_line_height", "block_centre_y"]
+
+GEOM_LABEL = {
+    "block_x_spread":    "Block depth (SD of avg x)",
+    "block_y_spread":    "Block width (SD of avg y)",
+    "block_area":        "Block area (depth × width)",
+    "block_aspect":      "Block aspect (depth / width)",
+    "block_x_range":     "Block depth range (max−min x)",
+    "block_y_range":     "Block width range (max−min y)",
+    "block_line_height": "Line height (mean x, oriented)",
+    "block_centre_y":    "Lateral centre (mean y) — control",
+}
+
+
+@st.cache_data(show_spinner=False)
+def build_block_geometry(starters_only=True, drop_gk=True, block_size=10, min_players=5):
+    """Per match-team shape statistics of the starting XI's mean positions."""
+    cols = ["match_id", "defending_team", "defender_name", "match_team_id",
+            "overall_avg_x", "overall_avg_y"]
+    p = nodes[cols + (["starter"] if "starter" in nodes.columns else [])].dropna(
+        subset=["overall_avg_x", "overall_avg_y"])
+    p = _orient(p)                      # own goal at -x, before any statistic
+    if starters_only and "starter" in p.columns:
+        p = p[p["starter"] == 1]
+    if drop_gk:
+        p = _drop_gk_rows(p)
+        # GK_KEYS comes from a separate enriched file that does not cover every
+        # match-team, so a keeper survives in a handful of blocks — and one of
+        # them alone doubles block_x_range. Cap every block at the same size by
+        # dropping the rows furthest from the block's own median x. For a
+        # surviving keeper that is unambiguous (median gap to the next-deepest
+        # starter is ~15 m); for the few blocks that genuinely list 11 outfield
+        # starters it trims the single most positionally extreme player, which
+        # slightly shrinks their spread. Either way n is then constant, which is
+        # what the spread statistics need.
+        dev = (p["overall_avg_x"]
+               - p.groupby("match_team_id")["overall_avg_x"].transform("median")).abs()
+        p = (p.assign(_dev=dev).sort_values("_dev")
+             .groupby("match_team_id", sort=False).head(block_size)
+             .drop(columns="_dev"))
+    g = p.groupby("match_team_id")
+    out = pd.DataFrame({
+        "block_x_spread":    g["overall_avg_x"].std(),
+        "block_y_spread":    g["overall_avg_y"].std(),
+        "block_x_range":     g["overall_avg_x"].max() - g["overall_avg_x"].min(),
+        "block_y_range":     g["overall_avg_y"].max() - g["overall_avg_y"].min(),
+        "block_line_height": g["overall_avg_x"].mean(),
+        "block_centre_y":    g["overall_avg_y"].mean(),
+        "n_block":           g.size(),
+    })
+    out = out[out["n_block"] >= min_players]
+    out["block_area"]   = out["block_x_spread"] * out["block_y_spread"]
+    out["block_aspect"] = out["block_x_spread"] / out["block_y_spread"].replace(0, np.nan)
+    return out[GEOM_COLS]
+
+
 def _build_press_role_map(pos_df, drop_gk=False):
     """Assign each player a pitch role per (match, team, zone): line B/M/F ×
     channel L/C/R, by within-block tertiles of avg x and y. Position-*relative*,
     so the pattern is comparable across matches with different personnel and
-    press heights."""
+    press heights.
+
+    Orientation matters here even though the tertiles are within-block: a sign
+    flip reverses the *order*, so B and F (and L and R) swap. Un-oriented, the
+    labels agreed with the oriented ones only 52.7% of the time — i.e. roughly
+    half the match-teams had their lines and channels mirrored."""
     p = pos_df.dropna(subset=["overall_avg_x", "overall_avg_y"]).copy()
+    p = _orient(p)
     if drop_gk:
         p = _drop_gk_rows(p)
     gk = ["match_id", "defending_team", "zone"]
@@ -193,6 +348,7 @@ def _build_press_role_map_full(pos_df, drop_gk=False):
     the whole-match shape rather than a single press height. Keyed by
     (match_id, defending_team, defender_name)."""
     p = pos_df.dropna(subset=["overall_avg_x", "overall_avg_y"]).copy()
+    p = _orient(p)                      # before the cross-zone mean, not after
     if drop_gk:
         p = _drop_gk_rows(p)
     p = (p.groupby(["match_id", "defending_team", "defender_name"], as_index=False)
@@ -226,21 +382,23 @@ PRESS_ROLE_MAP_FULL_NOGK = (_build_press_role_map_full(zone_pos_df, drop_gk=True
 
 
 @st.cache_data(show_spinner="Building pressing-style patterns…")
-def pressing_role_patterns(weight, zone, drop_gk=False):
+def pressing_role_patterns(method, weight, zone, drop_gk=False):
     """Per match-team: row-normalised role-pair co-defending weight vector (a
     *pattern*, not a volume). Returns (matrix, mtids, team_names, role_pairs).
+    `method` is the sidebar edge-weight method and selects the zone-edge file.
     drop_gk=True uses the goalkeeper-excluded role map, so GK edges are removed
     and roles are re-tertiled among outfield players."""
+    zone_edge = zone_edges(method)
     if zone == FULL_NETWORK:
         # all zones combined: keep every edge, use the whole-match role map. The
         # pivot below sums across the (now multiple) zone rows per role pair.
-        ed = zone_edge_avg[zone_edge_avg[weight] > 0].copy()
+        ed = zone_edge[zone_edge[weight] > 0].copy()
         rm = PRESS_ROLE_MAP_FULL_NOGK if drop_gk else PRESS_ROLE_MAP_FULL
         r1 = [rm.get((r.match_id, r.defending_team, r.player_1)) for r in ed.itertuples()]
         r2 = [rm.get((r.match_id, r.defending_team, r.player_2)) for r in ed.itertuples()]
     else:
-        ed = zone_edge_avg[(zone_edge_avg[weight] > 0)
-                           & (zone_edge_avg["zone"] == zone)].copy()
+        ed = zone_edge[(zone_edge[weight] > 0)
+                       & (zone_edge["zone"] == zone)].copy()
         rm = PRESS_ROLE_MAP_NOGK if drop_gk else PRESS_ROLE_MAP
         r1 = [rm.get((r.match_id, r.defending_team, zone, r.player_1)) for r in ed.itertuples()]
         r2 = [rm.get((r.match_id, r.defending_team, zone, r.player_2)) for r in ed.itertuples()]
@@ -269,35 +427,6 @@ def _bh_fdr(pvals):
     qv = np.minimum.accumulate(qv[::-1])[::-1]      # enforce monotonicity
     q[order] = np.clip(qv, 0.0, 1.0)
     return q
-
-
-def _meff_li_ji(corr):
-    """Li & Ji (2005) effective number of independent tests from a correlation
-    matrix: Σ [1(λ≥1) + (λ − ⌊λ⌋)] over its (clipped) eigenvalues."""
-    ev = np.clip(np.linalg.eigvalsh(np.nan_to_num(corr, nan=0.0)), 0.0, None)
-    return float(np.sum((ev >= 1).astype(float) + (ev - np.floor(ev))))
-
-
-@st.cache_data(show_spinner="Effective # tests…")
-def pressing_weight_meff(zone, drop_gk=False):
-    """Effective number of independent tests among the 6 edge weights for a zone.
-    The weights (raw/valued × involvement/fault/contribution) are highly
-    correlated, so the 6 columns carry far fewer than 6 independent comparisons;
-    computed from the correlation of their (match-team × role-pair) pattern
-    matrices, aligned on the common rows/columns. Used to make the family-wise
-    penalty gracious instead of treating all 24 weight×zone cells as independent."""
-    mats = {}
-    for w in WEIGHT_COLS:
-        V, mtids, teams, cols = pressing_role_patterns(w, zone, drop_gk)
-        mats[w] = pd.DataFrame(V, index=mtids, columns=cols)
-    idx = cols = None
-    for w in WEIGHT_COLS:
-        idx = mats[w].index if idx is None else idx.intersection(mats[w].index)
-        cols = mats[w].columns if cols is None else cols.intersection(mats[w].columns)
-    if len(idx) < 3 or len(cols) < 2:
-        return float(len(WEIGHT_COLS))
-    F = pd.DataFrame({w: mats[w].loc[idx, cols].values.flatten() for w in WEIGHT_COLS})
-    return _meff_li_ji(F.corr().values)
 
 
 def _cos_sim_matrix(V):
@@ -341,12 +470,12 @@ def _perm_delta(C, teams, nperm, rng):
 
 
 @st.cache_data(show_spinner="Permuting team labels…")
-def pressing_style_stats(weight, zone, nperm=2000, seed=20260625, drop_gk=False):
+def pressing_style_stats(method, weight, zone, nperm=2000, seed=20260625, drop_gk=False):
     """Within- vs between-team cosine similarity of the role-pair pattern, with a
     team-label permutation null (correct for non-independent match-team pairs).
     Also runs a formation-confound check: binary presence/absence vs continuous
     weight, and a common-pairs-only (>=80% presence) re-test."""
-    V, mtids, teams, cols = pressing_role_patterns(weight, zone, drop_gk)
+    V, mtids, teams, cols = pressing_role_patterns(method, weight, zone, drop_gk)
     teams = np.array(teams)
     rng = np.random.default_rng(seed)
 
@@ -422,13 +551,14 @@ def _loo_topk_acc(U, codes, K):
 
 
 @st.cache_data(show_spinner="Leave-one-match-out team ID…")
-def pressing_loo_identification(weight, zone, nperm=2000, seed=20260627, drop_gk=False):
+def pressing_loo_identification(method, weight, zone, nperm=2000, seed=20260627,
+                                drop_gk=False):
     """#1 — robustness as identifiability. Can the role-pair pattern alone *name
     the team*? Each held-out match is classified to the nearest team by its LOO
     mean fingerprint; accuracy is tested against a team-label permutation null
     (chance = mean permuted accuracy). A multivariate, intuitive alternative to
     per-pair ICC. Returns accuracies, perm-p, empirical chance, per-team table."""
-    V, mtids, teams, cols = pressing_role_patterns(weight, zone, drop_gk)
+    V, mtids, teams, cols = pressing_role_patterns(method, weight, zone, drop_gk)
     teams = np.asarray(teams)
     U = _unit_rows(V)
     codes, uniq = pd.factorize(teams)
@@ -452,8 +582,8 @@ def pressing_loo_identification(weight, zone, nperm=2000, seed=20260627, drop_gk
 
 
 @st.cache_data(show_spinner="Within-team deviation vs outcome…")
-def pressing_deviation_outcome(weight, zone, scheme="thirds", nperm=2000, seed=20260627,
-                               drop_gk=False):
+def pressing_deviation_outcome(method, weight, zone, scheme="thirds", nperm=2000,
+                               seed=20260627, drop_gk=False):
     """#2 — trait → outcome, dominance-controlled. Per match-team: cosine DISTANCE
     between its role-pair pattern and its team's LOO mean fingerprint. Does
     deviating from a team's own pressing identity cost zone defensive success
@@ -464,7 +594,7 @@ def pressing_deviation_outcome(weight, zone, scheme="thirds", nperm=2000, seed=2
     it is pooled across zones (Σ stops / Σ actions)."""
     if zone_raw is None:
         return {"n": 0}
-    V, mtids, teams, cols = pressing_role_patterns(weight, zone, drop_gk)
+    V, mtids, teams, cols = pressing_role_patterns(method, weight, zone, drop_gk)
     teams = np.asarray(teams)
     U = _unit_rows(V)
     codes, uniq = pd.factorize(teams)
@@ -526,6 +656,182 @@ def pressing_deviation_outcome(weight, zone, scheme="thirds", nperm=2000, seed=2
             "df": df, "zone": zone, "scheme": scheme}
 
 
+# ── Westfall–Young family-wise correction for the weight × zone sweep ─────────
+def _wy_stepdown(obs, null):
+    """Westfall & Young (1993) free step-down min-p adjusted p-values.
+
+    obs  : (m,) observed statistics; larger = more extreme.
+    null : (B, m) null statistics where row b comes from the *same* permutation
+           in every column. That shared resampling is the whole point: the
+           adjustment absorbs the family's real dependence structure exactly,
+           instead of approximating it with an effective-test count (Li & Ji /
+           Nyholt) and then applying a Šidák threshold.
+
+    Returns (p_raw, p_adj, alpha_fwer, m_eff_implied), where alpha_fwer is the
+    single-step min-p threshold that actually holds FWER at 5% and m_eff_implied
+    is the Šidák-equivalent family size log(0.95)/log(1−alpha) — reported for
+    interpretation only, never used to correct anything."""
+    B, m = null.shape
+    p_raw = (np.sum(null >= obs[None, :], axis=0) + 1.0) / (B + 1.0)
+    # p-value of every null draw inside its own column's null distribution, on the
+    # SAME scale as p_raw: each candidate is ranked against the B−1 others plus
+    # itself, so both can reach the 1/(B+1) resolution floor and neither is
+    # systematically shifted by one count.
+    P = np.empty((B, m))
+    for j in range(m):
+        s = np.sort(null[:, j])
+        P[:, j] = (B - np.searchsorted(s, null[:, j], side="left")) / (B + 1.0)
+    order = np.argsort(p_raw)                       # most significant first
+    q = np.empty((B, m))
+    running = np.full(B, np.inf)
+    for k in range(m - 1, -1, -1):                  # successive minima, step-down
+        running = np.minimum(running, P[:, order[k]])
+        q[:, k] = running
+    adj = np.array([(np.sum(q[:, k] <= p_raw[order[k]]) + 1.0) / (B + 1.0)
+                    for k in range(m)])
+    adj = np.maximum.accumulate(adj)                # enforce monotonicity
+    p_adj = np.empty(m)
+    p_adj[order] = adj
+    alpha = float(np.quantile(P.min(axis=1), 0.05))
+    m_eff = float(np.log(0.95) / np.log(1 - alpha)) if 0 < alpha < 1 else float(m)
+    return p_raw, p_adj, alpha, m_eff
+
+
+@st.cache_data(show_spinner="Westfall–Young resampling…")
+def pressing_wy_family(method, nperm=1000, drop_gk=False, seed=20260710, scheme="thirds"):
+    """Exact FWER correction across the 6 edge-weights × 3 zones pressing family.
+
+    The composite `full` network is deliberately NOT part of the family: it is
+    own+mid+high_press re-aggregated, so it is a restatement of the three zone
+    hypotheses rather than an 18th/19th independent one.
+
+    Every cell is resampled under the SAME permutations, computed on the match-
+    teams common to all cells (so one permutation is meaningful everywhere).
+    Two of the three estimators share a team-label null; the deviation→outcome
+    estimator keeps its own within-team shuffle of the outcome, shared across
+    cells the same way. Returns raw + WY-adjusted p per cell per estimator."""
+    cells = [(w, z) for w in WEIGHT_COLS for z in PRESS_ZONES]
+    pats = {c: pressing_role_patterns(method, c[0], c[1], drop_gk) for c in cells}
+    idx = None
+    for c in cells:                                  # match-teams present in all cells
+        s = pd.Index(pats[c][1])
+        idx = s if idx is None else idx.intersection(s)
+    idx = list(idx)
+    n = len(idx)
+    if n < 6:
+        return None
+    teams = np.array([_TEAM_BY_ID.get(int(m.split("_")[1]), m.split("_")[1]) for m in idx])
+    codes, uniq = pd.factorize(teams)
+    K = len(uniq)
+    U = {c: _unit_rows(pd.DataFrame(pats[c][0], index=pats[c][1],
+                                    columns=pats[c][3]).loc[idx].values)
+         for c in cells}
+
+    rng = np.random.default_rng(seed)
+    perm = np.array([rng.permutation(n) for _ in range(nperm)])
+    mc = len(cells)
+
+    # ---- estimator 1: within − between cosine gap ----------------------------
+    iu = np.triu_indices(n, 1)
+    npairs = len(iu[0])
+    obs_same = codes[iu[0]] == codes[iu[1]]
+    k_obs = int(obs_same.sum())
+    if k_obs == 0 or k_obs == npairs:
+        return None
+    def _gap(cv, tot, mask, k):
+        if k == 0 or k == npairs:
+            return -1e18                             # degenerate split -> never extreme
+        s = float(cv[mask].sum())
+        return s / k - (tot - s) / (npairs - k)
+
+    cvs = [(U[c] @ U[c].T)[iu] for c in cells]        # pairwise cosines, per cell
+    tots = [float(cv.sum()) for cv in cvs]
+    self_obs = np.array([_gap(cv, t, obs_same, k_obs) for cv, t in zip(cvs, tots)])
+
+    # ---- estimator 2: leave-one-match-out identification ---------------------
+    loo_obs = np.array([float(_loo_topk_acc(U[c], codes, K)[0]) for c in cells])
+    loo_total = _loo_topk_acc(U[cells[0]], codes, K)[2]
+
+    # permutations outer, cells inner: one relabelling drives every cell, and the
+    # pair-mask is built once per permutation instead of once per (perm, cell)
+    self_null = np.empty((nperm, mc))
+    loo_null = np.empty((nperm, mc))
+    for b in range(nperm):
+        pc = codes[perm[b]]
+        sm = pc[iu[0]] == pc[iu[1]]
+        k = int(sm.sum())
+        for j in range(mc):
+            self_null[b, j] = _gap(cvs[j], tots[j], sm, k)
+            loo_null[b, j] = _loo_topk_acc(U[cells[j]], pc, K)[0]
+
+    # ---- estimator 3: within-team deviation → stop rate ----------------------
+    Y = np.zeros((n, K))
+    Y[np.arange(n), codes] = 1.0
+    cnt = Y.sum(0)
+    dev = {}
+    for c in cells:                                  # cosine distance to LOO identity
+        S = Y.T @ U[c]
+        d_own = (U[c] * S[codes]).sum(1)
+        ln = np.sqrt(np.maximum(np.linalg.norm(S[codes], axis=1) ** 2 - 2 * d_own + 1.0, 0.0))
+        cos = np.where((ln > 0) & (cnt[codes] >= 2),
+                       (d_own - 1.0) / np.where(ln == 0, 1.0, ln), np.nan)
+        dev[c] = 1.0 - cos
+    succ = {}
+    if zone_raw is not None:
+        zr = zone_raw[zone_raw["scheme"] == scheme]
+        for z in PRESS_ZONES:
+            s = (zr[zr["zone"] == z].drop_duplicates("match_team_id")
+                 .set_index("match_team_id")["stop_rate"])
+            succ[z] = np.array([s.get(m, np.nan) for m in idx], dtype=float)
+
+    dev_res = None
+    if len(succ) == len(PRESS_ZONES):
+        ok = np.ones(n, bool)
+        for c in cells:
+            ok &= np.isfinite(dev[c])
+        for z in PRESS_ZONES:
+            ok &= np.isfinite(succ[z])
+        tc = pd.Series(codes[ok]).value_counts()     # ≥2 surviving matches per team
+        ok &= np.array([tc.get(cd, 0) >= 2 for cd in codes])
+        rows = np.where(ok)[0]
+        if len(rows) >= 8:
+            cd = codes[rows]
+            cd = pd.factorize(cd)[0]
+            cnts = np.bincount(cd)
+            wperm = np.tile(np.arange(len(rows)), (nperm, 1))
+            for t in range(cnts.size):               # shuffle WITHIN team only
+                g = np.where(cd == t)[0]
+                if len(g) > 1:
+                    for b in range(nperm):
+                        wperm[b, g] = rng.permutation(g)
+
+            def _demean(v):
+                m_ = np.bincount(cd, weights=v) / cnts
+                return v - m_[cd], m_
+
+            dev_obs = np.empty(mc)
+            dev_null = np.empty((nperm, mc))
+            for j, c in enumerate(cells):
+                d, _ = _demean(dev[c][rows])
+                sv = succ[c[1]][rows]
+                sc, smean = _demean(sv)
+                dn = np.linalg.norm(d)
+                dev_obs[j] = (abs(float(sc @ d) / (dn * np.linalg.norm(sc)))
+                              if dn > 0 and np.linalg.norm(sc) > 0 else 0.0)
+                SP = sv[wperm] - smean[cd][None, :]  # within-team shuffle keeps means
+                den = np.linalg.norm(SP, axis=1) * dn
+                dev_null[:, j] = np.abs(np.divide(SP @ d, den,
+                                                  out=np.zeros(nperm), where=den > 0))
+            dev_res = (*_wy_stepdown(dev_obs, dev_null), len(rows))
+
+    out = {"cells": cells, "n_mt": n, "n_teams": K, "nperm": nperm,
+           "loo_total": loo_total,
+           "self": _wy_stepdown(self_obs, self_null),
+           "loo": _wy_stepdown(loo_obs, loo_null),
+           "dev": dev_res}
+    return out
+
+
 GROUPS = {
     "Total Network Strength":              WEIGHT_COLS,
     "Network Density":                     [c + "_density"                  for c in WEIGHT_COLS],
@@ -537,7 +843,26 @@ GROUPS = {
     "Degree Assortativity":                [c + "_assortativity"           for c in WEIGHT_COLS],
     "Max K-core":                          [c + "_kcore_max"               for c in WEIGHT_COLS],
     "LCC Ratio":                           [c + "_lcc_ratio"               for c in WEIGHT_COLS],
+    "Block Geometry (positional)":         GEOM_COLS,
 }
+
+# Robustness (ICC) tab shows only these three families: volume, its inequality, and
+# its concentration on one hub. The rest are topology-only (density, k-core, LCC,
+# unweighted clustering/centralization, assortativity) or a near-duplicate of one of
+# the three. Topology-only means driven by the edge-*count* threshold rather than the
+# weights — note that is not the same as constant across WEIGHT_COLS: the six
+# *_edge_count columns differ (r = 0.93–0.999), since a pair can clear the threshold
+# on involvement but not on contribution.
+#
+# "Block Geometry" is added as a fourth family and is deliberately NOT a network
+# metric: it is the only candidate second axis in this dashboard that does not
+# reduce to co-defending volume. Including it in the same WY family means it is
+# priced against the network cells rather than tested in isolation.
+ICC_GROUPS = ["Total Network Strength",
+              "Gini (player strength inequality)",
+              "Freeman Centralization (weighted)",
+              "Block Geometry (positional)"]
+ICC_FAMILY_COLS = [c for g in ICC_GROUPS for c in GROUPS[g]]
 
 GROUP_DESC = {
     "Total Network Strength":
@@ -577,6 +902,17 @@ GROUP_DESC = {
         "Proportion of squad players belonging to the largest connected component at the given threshold. "
         "High = defense operates as one unified, interconnected group; "
         "low = fragmented into isolated sub-units with little cross-group collaboration. Topology-only.",
+    "Block Geometry (positional)":
+        "Shape of the defensive block from players' mean defensive-action positions — "
+        "**not a network metric**. Starting XI only (squad size fixed at 11, so rotation "
+        "cannot move the point cloud) and outfield only (the keeper sits ~35 m behind the "
+        "block and would dominate any depth statistic). Positions are **oriented per "
+        "match-team** (own goal at −x) before anything is computed: the source frame is "
+        "pitch-fixed, so the two sides of a match have opposite sign, and without the flip "
+        "every mean-based row is scrambled. *Line height* was previously a negative "
+        "control for exactly that reason and is now the strongest cell in the whole ICC "
+        "sweep. *Lateral centre* remains the control, and is now a valid one — there is no "
+        "reason a team should sit consistently left or right, and oriented it is still null.",
 }
 
 # ── Stage constants ───────────────────────────────────────────────────────────
@@ -649,6 +985,7 @@ def build_conc_match(edge_df, metric, thr=1):
     df = (_join_outcomes(pd.concat([strength, cent_w, kcore_s, density_s], axis=1))
           .join(match_labels)
           .join(match_mins)
+          .join(build_block_geometry())   # positional Y-axis options
           .dropna(subset=["strength"]))
     df["strength_per90"]    = df["strength"] / (df["match_mins"] / 90)
     df["strength_per_pass"] = df["strength"] / df["passes_against"]
@@ -659,15 +996,24 @@ def build_conc_match(edge_df, metric, thr=1):
 
 def build_conc_team(df):
     _pp_oc = [oc + "_per_pass" for oc in OUTCOME_COLS if oc + "_per_pass" in df.columns]
+    _geom  = [c for c in GEOM_COLS if c in df.columns]
     agg = df.groupby("team_name")[
         ["strength", "strength_per90", "strength_per_pass",
-         "centralization_w", "kcore_max", "network_density"] + OUTCOME_COLS + _pp_oc
+         "centralization_w", "kcore_max", "network_density"] + _geom + OUTCOME_COLS + _pp_oc
     ].mean().reset_index()
     return agg.merge(_furthest_stage(df), on="team_name")
 
 
-_Y_HIGH = {"centralization_w": "Centralized", "kcore_max": "Dense core",    "network_density": "Dense"}
-_Y_LOW  = {"centralization_w": "Distributed", "kcore_max": "Sparse core", "network_density": "Sparse"}
+_Y_HIGH = {"centralization_w": "Centralized", "kcore_max": "Dense core",    "network_density": "Dense",
+           "block_x_spread": "Stretched (deep block)", "block_y_spread": "Wide block",
+           "block_area": "Large block",  "block_aspect": "Depth-dominant shape",
+           "block_x_range": "Long front-to-back", "block_y_range": "Wide side-to-side",
+           "block_line_height": "High line (pushed up)", "block_centre_y": "Right-shifted"}
+_Y_LOW  = {"centralization_w": "Distributed", "kcore_max": "Sparse core", "network_density": "Sparse",
+           "block_x_spread": "Compact (flat block)", "block_y_spread": "Narrow block",
+           "block_area": "Small block", "block_aspect": "Width-dominant shape",
+           "block_x_range": "Short front-to-back", "block_y_range": "Narrow side-to-side",
+           "block_line_height": "Deep block (sits back)", "block_centre_y": "Left-shifted"}
 
 
 def plot_conc_match(df, outcome_col, strength_col="strength", x_label="Total Strength",
@@ -983,7 +1329,9 @@ def process(edge_df, thr=1):
         extra[c + "_kcore_max"]               = pd.Series(kcore_max)
         extra[c + "_lcc_ratio"]               = pd.Series(lcc_ratio)
     outcome_cols = ["match_team_id", "team_name", "competition_stage"] + OUTCOME_COLS + ["passes_against"]
-    return out.join(pd.DataFrame(extra)).reset_index().merge(outcomes[outcome_cols], on="match_team_id")
+    return (out.join(pd.DataFrame(extra))
+               .join(build_block_geometry())      # network-free positional block shape
+               .reset_index().merge(outcomes[outcome_cols], on="match_team_id"))
 
 
 def _resid(y, z):
@@ -1111,15 +1459,89 @@ def compute_icc_rows(df, cols):
     return rows
 
 
-def icc_tbl(df, cols):
+@st.cache_data(show_spinner="Westfall–Young resampling (ICC)…")
+def icc_wy_family(df, cols, nperm=2000, seed=20260725):
+    """Westfall & Young step-down min-p over a family of ICC(1,1) cells.
+
+    Null: ICC = 0 everywhere, i.e. the team label carries no information, so the
+    match-team rows are exchangeable across teams. **One** permutation of the team
+    label vector is applied to *every* metric at once — that shared resampling is
+    what lets the step-down absorb the family's real dependence (the six weight
+    variants of a metric correlate at r≈0.9) instead of treating the cells as
+    independent, the way Bonferroni/Šidák would.
+
+    Statistic = the same ANOVA F = MSB/MSW that backs the displayed F-test p, so
+    the permutation p is a distribution-free version of the same test (no
+    normality / balanced-design assumption). Complete cases over `cols` only —
+    every cell must be built on the identical row set for a shared permutation to
+    mean anything.
+
+    Returns None if unusable, else a dict with per-cell `p_perm` / `p_WY` plus the
+    calibrated FWER threshold and its Šidák-equivalent family size."""
+    use = [c for c in cols if c in df.columns]
+    if len(use) < 2:
+        return None
+    d = df[["team_name"] + use].dropna()
+    codes, teams = pd.factorize(d["team_name"])
+    ng, nt = len(teams), len(d)
+    if ng < 2 or nt - ng < 1:
+        return None
+    X = d[use].to_numpy(float)
+    keep = X.std(axis=0) > 0                     # a constant column has no F
+    if keep.sum() < 2:
+        return None
+    use = [c for c, k in zip(use, keep) if k]
+    X = X[:, keep]
+    m = X.shape[1]
+
+    G = np.zeros((nt, ng))
+    G[np.arange(nt), codes] = 1.0
+    counts = G.sum(axis=0)
+    tot    = X.sum(axis=0)
+    tss    = ((X - X.mean(axis=0)) ** 2).sum(axis=0)
+
+    def _f(gmat):
+        S   = gmat.T @ X                                     # (ng, m) group sums
+        ssb = (S ** 2 / counts[:, None]).sum(axis=0) - tot ** 2 / nt
+        ssw = np.maximum(tss - ssb, 0.0)
+        msb, msw = ssb / (ng - 1), ssw / (nt - ng)
+        return np.divide(msb, msw, out=np.full(m, np.inf), where=msw > 0)
+
+    obs  = _f(G)
+    rng  = np.random.default_rng(seed)
+    null = np.empty((nperm, m))
+    for b in range(nperm):
+        null[b] = _f(G[rng.permutation(nt)])                 # shuffle team labels
+
+    p_raw, p_adj, alpha, m_eff = _wy_stepdown(obs, null)
+    return {"cells": use, "F": obs, "p_perm": p_raw, "p_WY": p_adj,
+            "alpha_fwer": alpha, "m_eff": m_eff,
+            "n_obs": nt, "n_teams": ng, "nperm": nperm}
+
+
+def icc_tbl(df, cols, wy=None):
+    """`wy` = the icc_wy_family() dict; when given, BH q/sig are replaced by the
+    permutation raw p and the Westfall–Young adjusted p (family = the whole sweep,
+    not this one table)."""
     rows = compute_icc_rows(df, cols)
     if not rows:
         st.caption("Not enough replicated data for ICC on this group.")
         return
-    st.dataframe(
-        pd.DataFrame(rows).style.background_gradient(cmap="RdYlGn", subset=["ICC"], vmin=0, vmax=1),
-        use_container_width=True,
-    )
+    tbl = pd.DataFrame(rows)
+    if wy is not None:
+        pos = {c: i for i, c in enumerate(wy["cells"])}
+        tbl = tbl.drop(columns=["q", "sig"])
+        tbl.insert(4, "p_perm", [round(float(wy["p_perm"][pos[c]]), 4) if c in pos else np.nan
+                                 for c in tbl["metric"]])
+        tbl.insert(5, "p_WY",   [round(float(wy["p_WY"][pos[c]]), 4) if c in pos else np.nan
+                                 for c in tbl["metric"]])
+        tbl.insert(6, "sig", [("***" if q < 0.001 else "**" if q < 0.01 else "*" if q < 0.05 else "")
+                              if pd.notna(q) else "" for q in tbl["p_WY"]])
+    sty = tbl.style.background_gradient(cmap="RdYlGn", subset=["ICC"], vmin=0, vmax=1)
+    if wy is not None:
+        sty = sty.map(lambda v: "background-color: #9ecae1; font-weight: bold"
+                                if pd.notna(v) and v < 0.05 else "", subset=["p_WY"])
+    st.dataframe(sty, use_container_width=True)
 
 
 # ── Axis Selection & Quadrant Analysis ───────────────────────────────────────
@@ -1253,6 +1675,51 @@ def quadrant_analysis(df, x_col, y_col, outcome_cols=None):
     else:
         stage_dist = pd.DataFrame()
     return d, summary, pd.DataFrame(kw_rows), (pd.DataFrame(mw_rows) if mw_rows else pd.DataFrame()), stage_dist
+
+
+@st.cache_data(show_spinner="Split-half quadrant stability…")
+def quadrant_stability(df, x_col, y_col, nrep=2000, seed=20260725):
+    """Would a team keep its quadrant label on a different set of matches?
+
+    Split each team's match-teams at random into two disjoint halves, average each
+    half, re-derive the median split *within each half* (exactly as the dashboard
+    does), and check whether the two halves land in the same quadrant. 25% is
+    chance on a 2x2 grid. This is the number the four narrative labels actually
+    rest on — η² and ICC say an axis separates teams, this says whether the *pair*
+    of axes reproduces a label.
+
+    Also reports the same thing per axis (2 cells, so chance is 50%), which
+    separates "one axis is noise" from "both are fine but their errors interact".
+
+    `x_tie`/`y_tie` = share of rows sitting exactly on the median. A coarse integer
+    metric (kcore_max) ties heavily, and `>=` sends every tied row to the same side
+    in both halves, so agreement is high for free. High tie share means the number
+    is degenerate, not stable — the UI warns on it.
+    """
+    d = df[[x_col, y_col, "team_name"]].dropna()
+    groups = [v[[x_col, y_col]].to_numpy(float)
+              for _, v in d.groupby("team_name") if len(v) >= 2]
+    if len(groups) < 4:
+        return None
+    rng = np.random.default_rng(seed)
+    quad = np.empty(nrep); ax = np.empty((nrep, 2))
+    A = np.empty((len(groups), 2)); B = np.empty((len(groups), 2))
+    for b in range(nrep):
+        for i, v in enumerate(groups):
+            idx = rng.permutation(len(v)); h = len(v) // 2
+            A[i] = v[idx[:h]].mean(0); B[i] = v[idx[h:]].mean(0)
+        sa = A >= np.median(A, axis=0)
+        sb = B >= np.median(B, axis=0)
+        ax[b] = (sa == sb).mean(axis=0)
+        quad[b] = (sa == sb).all(axis=1).mean()
+    return {"agreement": float(quad.mean()),
+            "lo": float(np.quantile(quad, 0.025)),
+            "hi": float(np.quantile(quad, 0.975)),
+            "x_agreement": float(ax[:, 0].mean()),
+            "y_agreement": float(ax[:, 1].mean()),
+            "x_tie": float((d[x_col] == d[x_col].median()).mean()),
+            "y_tie": float((d[y_col] == d[y_col].median()).mean()),
+            "n_teams": len(groups)}
 
 
 def _style_mw(mw: pd.DataFrame):
@@ -1924,13 +2391,17 @@ st.set_page_config(layout="wide")
 st.title("Defensive Network Analysis — Team Level")
 
 with st.sidebar:
-    method  = st.selectbox("Edge weight method", list(edge_dfs))
+    method  = st.selectbox("Edge weight method", list(edge_dfs), index=1)
     st.subheader("Concentrated vs Balanced")
     metric_conc_inv   = st.selectbox("Involvement", INV_COLS, key="metric_conc_inv")
     metric_conc_fault = st.selectbox("Fault", FAULT_COLS, key="metric_conc_fault")
     metric_conc_cont  = st.selectbox("Contribution", CONTRIBUTION_COLS, key="metric_conc_cont")
+    # Network Y axes first, then the positional block-geometry ones. The latter are
+    # the only options here that are independent of co-defending volume (the X axis);
+    # block_x_spread is the most team-stable metric in the whole dashboard.
     _y_opts = {"centralization_w": "Centralization (weighted)", "kcore_max": "Max K-core",
                "network_density": "Network Density"}
+    _y_opts.update({c: "▸ " + GEOM_LABEL[c] for c in GEOM_COLS})
     y_conc = st.selectbox("Y axis", list(_y_opts), format_func=_y_opts.__getitem__, key="y_conc")
     st.subheader("Self vs Shared")
     metric_self  = st.selectbox("Metric", WEIGHT_COLS, key="metric_self")
@@ -2001,6 +2472,45 @@ _QUAD_EXPLAIN = {
                     "Tight but small core, limited overall defensive coverage"),
         "LX / LY": ("Low X",  "Sparse/no tight nucleus (low k-core)",
                     "Passive and fragmented — no coherent defensive structure"),
+    },
+    "block_x_spread": {
+        "HX / HY": ("High X", "Stretched block (players spread front-to-back)",
+                    "High-volume defending across a long block — pressure applied at "
+                    "several depths rather than in one line"),
+        "HX / LY": ("High X", "Compact block (players at similar depth)",
+                    "High-volume defending from a flat, tightly banked block — the "
+                    "classic organised low/mid block"),
+        "LX / HY": ("Low X",  "Stretched block (players spread front-to-back)",
+                    "Little co-defending and no shared depth — stretched and passive, "
+                    "the shape teams get when they are pulled apart"),
+        "LX / LY": ("Low X",  "Compact block (players at similar depth)",
+                    "Compact but inactive — holds shape without contesting much"),
+    },
+    "block_line_height": {
+        "HX / HY": ("High X", "High line (block pushed up the pitch)",
+                    "High-volume defending started early and far from goal — pressing "
+                    "team that engages up the pitch"),
+        "HX / LY": ("High X", "Deep block (block sits close to own goal)",
+                    "High-volume defending concentrated deep — absorbs pressure and "
+                    "defends its own box a lot"),
+        "LX / HY": ("Low X",  "High line (block pushed up the pitch)",
+                    "Holds a high line without much co-defending — the shape of a team "
+                    "controlling the game and rarely having to defend"),
+        "LX / LY": ("Low X",  "Deep block (block sits close to own goal)",
+                    "Deep and inactive — sits back without contesting; note this pairing "
+                    "is the rarest, since a deep block usually forces volume"),
+    },
+    "block_y_spread": {
+        "HX / HY": ("High X", "Wide block (players spread side-to-side)",
+                    "High-volume defending across the full width — covers the flanks "
+                    "but concedes the centre"),
+        "HX / LY": ("High X", "Narrow block",
+                    "High-volume defending funnelled through the middle — protects the "
+                    "centre, invites wide play"),
+        "LX / HY": ("Low X",  "Wide block (players spread side-to-side)",
+                    "Spread thin — wide but not engaging"),
+        "LX / LY": ("Low X",  "Narrow block",
+                    "Narrow and passive — sits centrally without contesting"),
     },
 }
 
@@ -2128,6 +2638,18 @@ with tab_conc:
         _y_label_conc = _y_opts[y_conc]
         if y_conc == "centralization_w":
             st.caption("Centralization (weighted) is scale-invariant — y axis values are identical across all normalisation sections; only quadrant *boundaries* shift as x changes.")
+        if y_conc in GEOM_COLS:
+            st.caption(
+                f"**{GEOM_LABEL[y_conc]}** is a *positional* metric — it is built from where "
+                "the starting XI defended, not from the co-defending graph, so it does not "
+                "depend on the edge-weight method, the threshold, or the involvement / fault / "
+                "contribution choice. The y values are therefore **identical in all three "
+                "sections below and in every normalisation**; only the x axis and the quadrant "
+                "boundaries move. That independence is the point: it is the one y axis here "
+                "that is not another view of co-defending volume. Definition and controls are "
+                "in the Robustness (ICC) tab; split-half stability for any pair is in "
+                "*Quadrant Analysis — free axes* at the bottom of this tab."
+            )
 
         for _group, _mdf, _tdf in [
             ("Involvement",  df_conc_inv_match,   df_conc_inv_team),
@@ -2148,12 +2670,16 @@ with tab_conc:
             "not 0. Enable the permutation test below to see each metric's chance **floor** and a "
             "**p**-value (H₀: team labels carry no information) and a BH-FDR **q** across the metric "
             "family. **sig** is based on q — only metrics with η² clearly above their floor *and* small q "
-            "are defensible team traits."
+            "are defensible team traits.  \n"
+            f"The `block_*` rows are **positional, not network** metrics ({len(GEOM_COLS)} of them, see the "
+            "Robustness (ICC) tab for the definition). They are here because every network metric that "
+            "separates teams does so by measuring co-defending *volume*, which is already the X axis — "
+            "a usable second axis has to come from outside the graph."
         )
         _eta_nperm = st.select_slider(
             "η² permutation test (team-label shuffles; 0 = off)",
             options=[0, 500, 1000, 2000, 5000], value=2000, key="eta_nperm")
-        eta_df = eta_sq_tbl(df_corr, only_from=INV_COLS, nperm=_eta_nperm)
+        eta_df = eta_sq_tbl(df_corr, only_from=INV_COLS + GEOM_COLS, nperm=_eta_nperm)
         _eta_sty = eta_df.style.background_gradient(cmap="YlOrRd", subset=["η²"], vmin=0, vmax=1)
         if "floor" in eta_df.columns:
             _eta_sty = _eta_sty.background_gradient(cmap="YlOrRd", subset=["floor"], vmin=0, vmax=1)
@@ -2199,6 +2725,121 @@ with tab_conc:
                         pair_df.style.background_gradient(cmap="RdYlGn_r", subset=["r"], vmin=-1, vmax=1),
                         use_container_width=True, height=360,
                     )
+
+        # ── free-axis quadrant analysis ───────────────────────────────────────
+        st.divider()
+        st.subheader("Quadrant Analysis — free axes")
+        st.caption(
+            "Every plot above is locked to *strength × Y*, so one axis is always "
+            "co-defending volume. This one takes any two metrics from the η² table, "
+            "which is the only way to test a pair that excludes volume — e.g. "
+            "**block depth × block width**, the two positional traits that are close to "
+            "uncorrelated at team level.  \n"
+            "**Split-half stability** below is the number the four narrative labels rest "
+            "on: split each team's matches in two, place both halves on the grid, and see "
+            "how often the label survives. **25% is chance.** η² and ICC only say an axis "
+            "separates teams; this says whether a *label* reproduces."
+        )
+        if len(all_eta_metrics) >= 2:
+            _qa_opts = list(all_eta_metrics)
+
+            def _qa_lbl(c):
+                return GEOM_LABEL.get(c, c)
+
+            def _qa_idx(pref, fallback):
+                return _qa_opts.index(pref) if pref in _qa_opts else fallback
+
+            _qc1, _qc2, _qc3 = st.columns([2, 2, 1])
+            qx = _qc1.selectbox("X axis", _qa_opts, index=_qa_idx("block_x_spread", 0),
+                                format_func=_qa_lbl, key="free_qx")
+            qy = _qc2.selectbox("Y axis", _qa_opts,
+                                index=_qa_idx("block_y_spread", min(1, len(_qa_opts) - 1)),
+                                format_func=_qa_lbl, key="free_qy")
+            _q_level = _qc3.selectbox("Level", ["Match-team", "Team mean"], key="free_qlevel")
+
+            if qx == qy:
+                st.warning("Pick two different metrics.")
+            else:
+                _num = [c for c in df_corr.columns
+                        if c not in ("match_team_id", "team_name", "competition_stage")]
+                if _q_level == "Team mean":
+                    df_q_free = (df_corr.groupby("team_name")[_num].mean().reset_index())
+                else:
+                    df_q_free = df_corr
+
+                _stab = quadrant_stability(df_corr[[qx, qy, "team_name"]], qx, qy)
+                if _stab is None:
+                    st.caption("Not enough replicated match-teams for a stability estimate.")
+                else:
+                    s1, s2, s3 = st.columns(3)
+                    s1.metric("Quadrant stability", f"{_stab['agreement']:.1%}",
+                              delta=f"{_stab['agreement'] - 0.25:+.1%} vs chance")
+                    s2.metric(f"{_qa_lbl(qx)} alone", f"{_stab['x_agreement']:.1%}",
+                              delta=f"{_stab['x_agreement'] - 0.5:+.1%} vs chance")
+                    s3.metric(f"{_qa_lbl(qy)} alone", f"{_stab['y_agreement']:.1%}",
+                              delta=f"{_stab['y_agreement'] - 0.5:+.1%} vs chance")
+                    st.caption(
+                        f"95% split-half interval {_stab['lo']:.1%}–{_stab['hi']:.1%} over "
+                        f"{_stab['n_teams']} teams with ≥2 match-teams. Chance is 25% for the "
+                        "quadrant, 50% per single axis. Below ~50% quadrant stability, most "
+                        "teams would be labelled differently on a different set of matches — "
+                        "read positions as indicative, not as a typology."
+                    )
+                    _tied = [(_qa_lbl(c), _stab[k]) for c, k in
+                             [(qx, "x_tie"), (qy, "y_tie")] if _stab[k] > 0.15]
+                    if _tied:
+                        st.warning(
+                            "Degenerate median split: "
+                            + " · ".join(f"**{lab}** has {v:.0%} of rows sitting exactly on "
+                                         "its median" for lab, v in _tied)
+                            + ". `>=` sends every tied row to the same side in both halves, "
+                            "so the agreement above is inflated for free. This is what a "
+                            "coarse integer metric (e.g. Max K-core) does — treat its "
+                            "stability as unmeasured, not high."
+                        )
+                    if (_stab["agreement"] <
+                            0.85 * _stab["x_agreement"] * _stab["y_agreement"]):
+                        st.info(
+                            "Quadrant stability is well *below* the product of the two "
+                            "single-axis rates, i.e. the axes' measurement errors are "
+                            "negatively coupled. This is what residualising one axis on the "
+                            "other produces: the residual carries the negative of the other "
+                            "axis's noise. Forcing orthogonality makes the 2-D label less "
+                            "stable, not more."
+                        )
+
+                _dfree = df_q_free[[qx, qy, "team_name"]].dropna()
+                _r_free = (pearsonr(_dfree[qx], _dfree[qy]) if len(_dfree) >= 3
+                           else (np.nan, np.nan))
+                st.caption(f"Axis correlation at this level: r = {_r_free[0]:.3f} "
+                           f"(p = {_r_free[1]:.4f}, n = {len(_dfree)}). Highly correlated axes "
+                           "inflate quadrant agreement — teams pile onto the diagonal into two "
+                           "easy quadrants — so a high stability with |r| near 1 is degeneracy, "
+                           "not a finding.")
+
+                _fig_free = px.scatter(
+                    df_q_free.dropna(subset=[qx, qy]), x=qx, y=qy,
+                    color=outcome_col, size=outcome_col, hover_name="team_name",
+                    color_continuous_scale="RdYlGn_r",
+                    title=f"{_qa_lbl(qx)} vs {_qa_lbl(qy)} — {_q_level.lower()}",
+                    labels={qx: _qa_lbl(qx), qy: _qa_lbl(qy)})
+                _add_quadrant_lines(_fig_free, df_q_free, qx, qy)
+                st.plotly_chart(_fig_free, use_container_width=True)
+
+                _, _sm_f, _kw_f, _mw_f, _ = quadrant_analysis(df_q_free, qx, qy)
+                st.markdown("**Outcome means per quadrant**")
+                st.dataframe(_sm_f, use_container_width=True)
+                if not _kw_f.empty:
+                    st.markdown("**Kruskal-Wallis**")
+                    st.dataframe(_style_kw(_kw_f), use_container_width=True)
+                if not _mw_f.empty:
+                    st.markdown("**Pairwise Mann-Whitney U** (p = raw · p_bonf = Bonferroni "
+                                "· sig based on p_bonf)")
+                    st.dataframe(_style_mw(_mw_f), use_container_width=True)
+                _mg_f = marginal_analysis(df_q_free, qx, qy)
+                if not _mg_f.empty:
+                    st.markdown("**Marginal analysis** (High vs Low on each axis alone)")
+                    st.dataframe(_mg_f, use_container_width=True)
     _frag_tab_conc()
 
 with tab_self:
@@ -3180,20 +3821,65 @@ with tab_icc:
     def _frag_tab_icc():
         st.markdown(
             "**ICC(1,1)**: >0.75 stable trait · 0.5–0.75 moderate · <0.5 match-driven  \n"
-            "**p** = raw F-test (H₀: ICC = 0) · **q** = Benjamini-Hochberg FDR-adjusted "
-            "across the 6 weight metrics in each table  \n"
-            "**sig** (based on **q**): \\* q<0.05 · \\*\\* q<0.01 · \\*\\*\\* q<0.001"
+            "**p** = raw F-test (H₀: ICC = 0)  \n"
+            "Reduced to the three network families that are not topology-only and not "
+            "redundant with one another: **total strength** (volume), **Gini** (how "
+            "unevenly that volume is spread) and **weighted Freeman centralization** "
+            "(how far one hub towers above the rest), plus **block geometry** — "
+            "positional, network-free, and the only candidate here that does not reduce "
+            "to co-defending volume."
         )
-        stage = st.selectbox("Competition stage",
-                             ["All"] + sorted(df_corr["competition_stage"].dropna().unique().tolist()))
+        st.caption(f"Edge method: **{method}** · threshold **{thr}** (both from the sidebar).")
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            stage = st.selectbox("Competition stage",
+                                 ["All"] + sorted(df_corr["competition_stage"].dropna().unique().tolist()))
+        with c2:
+            corr_meth = st.selectbox(
+                "Multiplicity correction",
+                ["Benjamini-Hochberg FDR (per table)",
+                 "Westfall-Young step-down min-p (whole sweep)"],
+                key="icc_corr_meth")
+        wy_mode = corr_meth.startswith("Westfall")
+        _nperm = st.slider("WY permutations", 1000, 20000, 5000, 1000, key="icc_wy_np") \
+            if wy_mode else 0
+
         dff = df_corr if stage == "All" else df_corr[df_corr["competition_stage"] == stage]
         if stage != "All":
             st.caption(f"{len(dff)} obs · {dff['team_name'].nunique()} teams")
-        for name, cols in GROUPS.items():
+
+        wy = None
+        if wy_mode:
+            wy = icc_wy_family(dff, ICC_FAMILY_COLS, _nperm)
+            if wy is None:
+                st.warning("Not enough replicated data for the Westfall-Young family here — "
+                           "falling back to BH per table.")
+            else:
+                st.caption(
+                    f"**Westfall-Young step-down min-p** over the whole sweep — "
+                    f"{len(wy['cells'])} cells ({len(ICC_GROUPS)} families), "
+                    f"{wy['nperm']} shared team-label permutations, n={wy['n_obs']} "
+                    f"match-teams / {wy['n_teams']} teams. The same permutation drives "
+                    f"every cell, so the correction absorbs the real dependence between "
+                    f"the weight variants (r~0.9) instead of assuming independence. "
+                    f"Calibrated 5% FWER threshold alpha={wy['alpha_fwer']:.4f} => "
+                    f"effective family **{wy['m_eff']:.1f} of {len(wy['cells'])}**. "
+                    f"**p_perm** = distribution-free raw p (replaces the F-test's "
+                    f"normality assumption); **p_WY** = FWER-adjusted. Adjusted p cannot "
+                    f"resolve below ~{(len(wy['cells']) + 1) / (wy['nperm'] + 1):.4f} at "
+                    f"this permutation count. **sig** is based on **p_WY**."
+                )
+        if not wy_mode or wy is None:
+            st.caption("**q** = Benjamini-Hochberg FDR across the cells of each table "
+                       "(6 weight metrics for the network families, "
+                       f"{len(GEOM_COLS)} for block geometry) · **sig** based on **q**: "
+                       "\\* <0.05 · \\*\\* <0.01 · \\*\\*\\* <0.001")
+
+        for name in ICC_GROUPS:
             st.subheader(name)
             if name in GROUP_DESC:
                 st.caption(GROUP_DESC[name])
-            icc_tbl(dff, cols)
+            icc_tbl(dff, GROUPS[name], wy=wy)
     _frag_tab_icc()
 
 with tab_reg:
@@ -3499,34 +4185,53 @@ with tab_sens:
 with tab_pstyle:
     @st.fragment
     def _frag_pstyle_overview():
-        st.subheader("Results overview — all weights × zones")
-        if zone_edge_avg is None or PRESS_ROLE_MAP is None:
+        st.subheader("Results overview — all weights × pitch zones")
+        if not ZONE_EDGE_METHODS or PRESS_ROLE_MAP is None:
             return
+        _meth = zone_edge_method(method)          # sidebar edge-weight method
+        if _meth != method:
+            st.warning(f"No zone-edge file for edge method **{method}** — falling "
+                       f"back to **{_meth}**. Regenerate with "
+                       f"`2026-06-18_zone_network_edges.py` to use {method}.")
         st.caption(
+            f"Edge method: **{_meth}** (sidebar). "
             "One row per **edge-weight × zone** combination, summarising the three "
             "estimators below: **self-similarity** (is the pattern a team trait?), "
             "**LOO identification** (does the pattern name the team?), and "
             "**deviation → outcome** (does straying from your identity cost stop "
-            "rate, within-team?). Generation runs the full permutation sweep, so it "
-            "is **off by default** — flip the toggle to compute it.")
+            "rate, within-team?). The family is the **18 cells** 6 weights × "
+            "{own, mid, high_press}; the composite `full` network is excluded — it "
+            "is those three zones re-aggregated, i.e. a restatement of the same "
+            "hypotheses rather than an extra one (it is still available in the "
+            "explorer below for description). Generation runs the full permutation "
+            "sweep, so it is **off by default** — flip the toggle to compute it.")
         if not st.toggle("Generate overview table", value=False,
                          key="pstyle_overview_on"):
             return
-        _oc1, _oc2 = st.columns(2)
-        _nperm = _oc1.select_slider("Permutations (overview)", [500, 1000, 2000],
-                                    value=1000, key="pstyle_overview_nperm")
-        _drop_gk = _oc2.toggle("Exclude goalkeeper", value=False,
+        _oc1, _oc2, _oc3 = st.columns(3)
+        _nperm = _oc1.select_slider("Permutations (per-cell estimates)",
+                                    [500, 1000, 2000], value=1000,
+                                    key="pstyle_overview_nperm")
+        _wynp = _oc2.select_slider("Permutations (Westfall–Young)",
+                                   [1000, 2000, 5000, 10000], value=5000,
+                                   key="pstyle_overview_wynp",
+                                   help="Drives every p-value in the table. An adjusted "
+                                        "p cannot resolve below roughly (#cells+1)/(B+1), "
+                                        "so B=1000 bottoms out near 0.02 — use 5000+ "
+                                        "before reading a small adjusted p literally.")
+        _drop_gk = _oc3.toggle("Exclude goalkeeper", value=False,
                                key="pstyle_overview_drop_gk", disabled=not GK_KEYS,
                                help="Recompute the whole sweep with goalkeeper edges "
                                     "removed and roles re-tertiled among outfielders.")
 
-        _combos = [(w, z) for w in WEIGHT_COLS for z in PRESS_ZONE_OPTIONS]
+        _combos = [(_w, _z) for _w in WEIGHT_COLS for _z in PRESS_ZONES]
         _rows, _bar = [], st.progress(0.0, "Sweeping weight × zone…")
         for _i, (_w, _z) in enumerate(_combos):
-            _zlabel = "full" if _z == FULL_NETWORK else _z
-            _s = pressing_style_stats(_w, _z, _nperm, drop_gk=_drop_gk)
-            _loo = pressing_loo_identification(_w, _z, _nperm, drop_gk=_drop_gk)
-            _dev = pressing_deviation_outcome(_w, _z, nperm=_nperm, drop_gk=_drop_gk)
+            _zlabel = _z
+            _s = pressing_style_stats(_meth, _w, _z, _nperm, drop_gk=_drop_gk)
+            _loo = pressing_loo_identification(_meth, _w, _z, _nperm, drop_gk=_drop_gk)
+            _dev = pressing_deviation_outcome(_meth, _w, _z, nperm=_nperm,
+                                              drop_gk=_drop_gk)
             _has_loo = _loo.get("total", 0) > 0
             _has_dev = _dev.get("n", 0) >= 8
             _mult = (_loo["top1"] / _loo["chance"]
@@ -3548,64 +4253,102 @@ with tab_pstyle:
         ov = pd.DataFrame(_rows)
 
         # --- multiple-comparisons correction --------------------------------
-        # BH-FDR q-values per estimator across the 24 weight×zone cells. The 6
-        # edge weights are highly correlated, so the *effective* family is far
-        # smaller than 24 — reported below via Li & Ji M_eff so a Bonferroni-24
-        # penalty is not applied blindly.
+        # Westfall–Young step-down min-p across the 18 weight×zone cells, per
+        # estimator. All cells are resampled under the SAME permutations, so the
+        # correction absorbs the real dependence between the (highly correlated)
+        # edge weights exactly — no effective-test approximation involved. BH-FDR
+        # q is kept alongside as the more powerful, weaker (FDR) criterion.
+        _wy = pressing_wy_family(_meth, _wynp, _drop_gk)
+        # display label -> (result key, column whose NaN means "cell not testable")
+        _key = {"self": ("self", "Δcos"), "LOO": ("loo", "LOO top-1"),
+                "within": ("dev", "within-r")}
+        _name = {"self": "self-similarity", "LOO": "LOO ID", "within": "deviation"}
+        _pos = ({(w, z): i for i, (w, z) in enumerate(_wy["cells"])}
+                if _wy is not None else {})
+        for _lbl, (_k, _guard) in _key.items():
+            _res = _wy[_k] if _wy is not None else None
+            if _res is None:
+                ov[f"{_lbl} p_WY"] = np.nan
+                continue
+            _rp = [_pos[(r.weight, r.zone)] for r in ov.itertuples()]
+            _ok = ov[_guard].notna().values
+            # one coherent resampling drives both the raw and the adjusted p
+            ov[f"{_lbl} p"] = np.where(_ok, _res[0][_rp], np.nan)
+            ov[f"{_lbl} p_WY"] = np.where(_ok, _res[1][_rp], np.nan)
+
         ov["self q"] = _bh_fdr(ov["self p"].values)
         ov["LOO q"] = _bh_fdr(ov["LOO p"].values)
         ov["within q"] = _bh_fdr(ov["within p"].values)
 
-        _meff_by_zone = {z: pressing_weight_meff(z, _drop_gk) for z in PRESS_ZONE_OPTIONS}
-        _m_eff = float(sum(_meff_by_zone.values()))      # zones ~indep, weights collapse
-        _nominal = int(ov["self p"].notna().sum())
-        _alpha_eff = 1.0 - (1.0 - 0.05) ** (1.0 / _m_eff) if _m_eff > 0 else 0.05
-
-        mc1, mc2, mc3 = st.columns(3)
-        mc1.metric("nominal tests / estimator", _nominal)
-        mc2.metric("effective tests (M_eff)", f"{_m_eff:.1f}",
-                   help="Σ over zones of Li & Ji effective # among the 6 correlated "
-                        "weights. The 6 weights collapse to ~2–3 independent tests "
-                        "per zone, so the real family is far below 24.")
-        mc3.metric("Šidák α (effective)", f"{_alpha_eff:.4f}",
-                   help="Family-wise α threshold using M_eff effective tests: "
-                        "1−(1−0.05)^(1/M_eff). More gracious than Bonferroni-24 "
-                        f"(α={0.05/max(_nominal,1):.4f}).")
+        _nominal = len(_combos)
+        mc1, mc2, mc3, mc4 = st.columns(4)
+        mc1.metric("nominal tests / estimator", _nominal,
+                   help=f"6 edge weights × {len(PRESS_ZONES)} pitch zones. The "
+                        "composite `full` network is not part of the family.")
+        for _col, (_lbl, (_k, _g)) in zip((mc2, mc3, mc4), _key.items()):
+            _res = _wy[_k] if _wy is not None else None
+            if _res is None:
+                _col.metric(f"WY α — {_name[_lbl]}", "—")
+                continue
+            _a, _m = _res[2], _res[3]
+            _col.metric(f"WY α — {_name[_lbl]}", f"{_a:.4f}",
+                        help="Permutation-calibrated family-wise threshold: the 5% "
+                             "quantile of the smallest p-value across all "
+                             f"{_nominal} cells under the shared null. Equivalent "
+                             f"to a Šidák correction over **{_m:.1f}** independent "
+                             f"tests (Bonferroni-{_nominal} would use "
+                             f"α={0.05/_nominal:.4f}).")
 
         def _stars(p):
             if pd.isna(p):
                 return ""
             return "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else ""
-        # stars now reflect BH-FDR q (corrected significance)
-        ov["self"] = ov["self q"].map(_stars)
-        ov["LOO"] = ov["LOO q"].map(_stars)
-        ov["dev"] = ov["within q"].map(_stars)
-        for _pc in ("self p", "LOO p", "within p", "self q", "LOO q", "within q"):
+        # stars = Westfall–Young adjusted p (FWER); green = BH-FDR q (FDR)
+        ov["self"] = ov["self p_WY"].map(_stars)
+        ov["LOO"] = ov["LOO p_WY"].map(_stars)
+        ov["dev"] = ov["within p_WY"].map(_stars)
+        for _pc in ("self p", "LOO p", "within p", "self p_WY", "LOO p_WY",
+                    "within p_WY", "self q", "LOO q", "within q"):
             ov[_pc] = ov[_pc].round(4)
-        ov = ov[["weight", "zone", "n_mt", "Δcos", "self p", "self q", "self",
-                 "LOO top-1", "chance", "×chance", "LOO p", "LOO q", "LOO",
-                 "within-r", "within p", "within q", "dev", "n dev"]]
+        ov = ov[["weight", "zone", "n_mt",
+                 "Δcos", "self p", "self q", "self p_WY", "self",
+                 "LOO top-1", "chance", "×chance", "LOO p", "LOO q", "LOO p_WY", "LOO",
+                 "within-r", "within p", "within q", "within p_WY", "dev", "n dev"]]
 
         def _hi_q(col):
             return ["background-color:#c7e9c0" if (pd.notna(v) and v < 0.05) else ""
                     for v in col]
+
+        def _hi_wy(col):
+            return ["background-color:#9ecae1;font-weight:bold"
+                    if (pd.notna(v) and v < 0.05) else "" for v in col]
         sty = (ov.style
                .apply(_hi_q, subset=["self q", "LOO q", "within q"])
+               .apply(_hi_wy, subset=["self p_WY", "LOO p_WY", "within p_WY"])
                .background_gradient(cmap="Greens", subset=["Δcos"])
                .format({"LOO top-1": "{:.1%}", "chance": "{:.1%}"}, na_rep="—"))
         st.dataframe(sty, use_container_width=True, height=min(40 + 28 * len(ov), 760))
+        _wy_n = _wy["n_mt"] if _wy is not None else 0
         st.caption(
             ("**Goalkeeper excluded.** " if _drop_gk else "") +
-            "Green / stars = **BH-FDR q<0.05** (multiple-comparisons-corrected); raw "
-            "permutation p shown alongside. **Δcos** = within− between-team cosine "
-            "similarity; **×chance** = LOO top-1 ÷ permuted chance; **within-r** "
-            "negative = deviating from identity lowers stop rate. The 6 edge weights "
-            "are strongly correlated (M_eff ≈ 2–3 per zone), so BH-FDR — valid under "
-            "positive dependence — is used rather than a Bonferroni over 24 cells, "
-            "and the effective family (M_eff above) is what a Šidák threshold should "
-            "use. Blanks (—) = too few eligible match-teams.")
-        _fname = ("pressing_style_overview_nogk.csv" if _drop_gk
-                  else "pressing_style_overview.csv")
+            "**Blue / stars = Westfall–Young adjusted p<0.05** — family-wise error "
+            f"controlled across all {_nominal} cells by resampling every cell under "
+            "the *same* permutations, so the correction is exact under the real "
+            "dependence between the six (strongly correlated) edge weights rather "
+            "than an effective-test approximation. **Green = BH-FDR q<0.05** — a "
+            "different criterion (expected share of false positives among the "
+            "flagged cells, not \"any false positive at all\"). Note WY is often "
+            "the *smaller* number here despite controlling the stricter criterion: "
+            "BH's p·m/rank ignores the correlation between cells, while WY exploits "
+            "it. Raw permutation p comes from the same shared "
+            f"resampling (N={_wy_n} match-teams common to all cells, B={_wynp} "
+            f"permutations → adjusted p cannot resolve below ≈{(_nominal+1)/(_wynp+1):.4f}). "
+            "**Δcos** = "
+            "within− between-team cosine similarity; **×chance** = LOO top-1 ÷ "
+            "permuted chance; **within-r** negative = deviating from identity "
+            "lowers stop rate. Blanks (—) = too few eligible match-teams.")
+        _fname = (f"pressing_style_overview_{_meth}"
+                  + ("_nogk" if _drop_gk else "") + ".csv")
         st.download_button("Download overview (CSV)", ov.to_csv(index=False).encode(),
                            _fname, "text/csv", key="pstyle_overview_dl")
     _frag_pstyle_overview()
@@ -3613,10 +4356,14 @@ with tab_pstyle:
     @st.fragment
     def _frag_tab_pstyle():
         st.subheader("Pressing-style fingerprint — role-pair co-defending pattern")
-        if zone_edge_avg is None or PRESS_ROLE_MAP is None:
-            st.info("Needs `scripts/2026-06-18_zone_network_edge(average).csv` and "
+        if not ZONE_EDGE_METHODS or PRESS_ROLE_MAP is None:
+            st.info("Needs `scripts/2026-06-18_zone_network_edge(<method>).csv` and "
                     "`scripts/2026-06-18_zone_network_positions.csv`.")
             return
+        _meth = zone_edge_method(method)          # sidebar edge-weight method
+        if _meth != method:
+            st.warning(f"No zone-edge file for edge method **{method}** — falling "
+                       f"back to **{_meth}**.")
         st.markdown(
             "Projects the co-defending network onto **pitch roles** (line "
             "B/M/F × channel L/C/R, by within-block tertiles) instead of player "
@@ -3632,13 +4379,19 @@ with tab_pstyle:
             "faint-but-real team trait — strongest in the **high press**. It is a "
             "**style descriptor** (scouting), not a predictor of defensive success.")
 
+        st.caption(f"Edge method: **{_meth}** (sidebar).")
         c1, c2, c3 = st.columns(3)
         weight = c1.selectbox("Edge weight", WEIGHT_COLS,
                               index=WEIGHT_COLS.index("valued_involvement"))
         zone = c2.selectbox("Zone", PRESS_ZONE_OPTIONS,
                             index=PRESS_ZONE_OPTIONS.index("high_press"),
                             format_func=lambda z: "full network (all zones)"
-                            if z == FULL_NETWORK else z)
+                            if z == FULL_NETWORK else z,
+                            help="The full network is the three pitch zones "
+                                 "re-aggregated. It is shown here for description "
+                                 "only — it is excluded from the corrected family "
+                                 "in the overview above, where it would just restate "
+                                 "the three zone hypotheses.")
         nperm = c3.select_slider("Permutations", [500, 1000, 2000, 5000], value=2000)
         drop_gk = st.toggle(
             "Exclude goalkeeper", value=False, key="pstyle_drop_gk",
@@ -3650,7 +4403,7 @@ with tab_pstyle:
         if not GK_KEYS:
             st.caption("⚠️ Goalkeeper labels unavailable — exclusion toggle disabled.")
 
-        s = pressing_style_stats(weight, zone, nperm, drop_gk=drop_gk)
+        s = pressing_style_stats(_meth, weight, zone, nperm, drop_gk=drop_gk)
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("within-team cos", f"{s['within']:.3f}")
@@ -3718,7 +4471,8 @@ with tab_pstyle:
                            margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig2, use_container_width=True)
         st.download_button("Download fingerprints (CSV)", fp.to_csv().encode(),
-                           f"pressing_fingerprint_{weight}_{zone}.csv", "text/csv")
+                           f"pressing_fingerprint_{_meth}_{weight}_{zone}.csv",
+                           "text/csv")
 
         # ── #1 Leave-one-match-out team identification ─────────────────────────
         st.divider()
@@ -3731,7 +4485,7 @@ with tab_pstyle:
             "Accuracy well above chance means the co-defending pattern carries a "
             "real, **multivariate** team identity, even where any single role pair "
             "is only faintly stable.")
-        loo = pressing_loo_identification(weight, zone, nperm, drop_gk=drop_gk)
+        loo = pressing_loo_identification(_meth, weight, zone, nperm, drop_gk=drop_gk)
         if loo.get("total", 0) == 0:
             st.info("No teams with ≥2 matches in this zone — cannot leave one out.")
         else:
@@ -3775,7 +4529,8 @@ with tab_pstyle:
         if zone_raw is None:
             st.info("Needs `scripts/2026-06-08_team_zone_metrics.csv`.")
         else:
-            dev = pressing_deviation_outcome(weight, zone, nperm=nperm, drop_gk=drop_gk)
+            dev = pressing_deviation_outcome(_meth, weight, zone, nperm=nperm,
+                                             drop_gk=drop_gk)
             if dev.get("n", 0) < 8:
                 st.info("Too few within-team observations for this zone "
                         "(need teams with ≥2 matches that also have zone stop-rate).")
