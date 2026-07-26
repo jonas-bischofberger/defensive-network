@@ -1,0 +1,24 @@
+block,label,metric,ICC,F,p,p_perm,p_WY
+Total network strength,Raw involvement,raw_involvement,0.248,2.31,0.001,0.001,0.016
+Total network strength,Raw fault,raw_fault,0.242,2.27,0.0013,0.0013,0.0192
+Total network strength,Raw contribution,raw_contribution,0.227,2.17,0.0022,0.0028,0.0386
+Total network strength,Valued involvement,valued_involvement,0.257,2.38,0.0007,0.001,0.016
+Total network strength,Valued contribution,valued_contribution,0.108,1.48,0.0765,0.08,0.4711
+Total network strength,Valued fault,valued_fault,0.261,2.41,0.0006,0.0007,0.0113
+Gini coefficient (player strength inequality),Raw involvement,raw_involvement_gini,-0.055,0.79,0.7683,0.769,0.9928
+Gini coefficient (player strength inequality),Raw fault,raw_fault_gini,-0.096,0.65,0.912,0.911,0.9985
+Gini coefficient (player strength inequality),Raw contribution,raw_contribution_gini,-0.156,0.46,0.9919,0.9914,0.9985
+Gini coefficient (player strength inequality),Valued involvement,valued_involvement_gini,-0.068,0.75,0.8207,0.8205,0.9959
+Gini coefficient (player strength inequality),Valued contribution,valued_contribution_gini,-0.138,0.52,0.981,0.9793,0.9985
+Gini coefficient (player strength inequality),Valued fault,valued_fault_gini,-0.102,0.63,0.9274,0.9244,0.9985
+Freeman centralization (weighted),Raw involvement,raw_involvement_centralization_weighted,0.074,1.32,0.1563,0.1614,0.5915
+Freeman centralization (weighted),Raw fault,raw_fault_centralization_weighted,0.096,1.42,0.0986,0.1039,0.4711
+Freeman centralization (weighted),Raw contribution,raw_contribution_centralization_weighted,-0.085,0.69,0.8822,0.879,0.9985
+Freeman centralization (weighted),Valued involvement,valued_involvement_centralization_weighted,0.137,1.63,0.037,0.0341,0.27
+Freeman centralization (weighted),Valued contribution,valued_contribution_centralization_weighted,-0.007,0.97,0.5157,0.5124,0.9446
+Freeman centralization (weighted),Valued fault,valued_fault_centralization_weighted,0.143,1.67,0.0315,0.0301,0.2525
+"Block geometry (positional, network-free)",Block depth (SD of avg x),block_x_spread,0.287,2.6,0.0002,0.0004,0.0071
+"Block geometry (positional, network-free)",Block width (SD of avg y),block_y_spread,0.106,1.47,0.0786,0.0795,0.4711
+"Block geometry (positional, network-free)",Block area (depth × width),block_area,0.203,2.02,0.005,0.0055,0.0672
+"Block geometry (positional, network-free)",Block aspect (depth / width),block_aspect,0.179,1.87,0.0111,0.0093,0.0996
+"Block geometry (positional, network-free)","Line height (mean x, oriented)",block_line_height,0.37,3.34,0.0,0.0001,0.0021

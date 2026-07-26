@@ -6,6 +6,13 @@ Mirrors the full-match topology engine in 2026-05-28_team_level_analysis.py
 zone*, using the zone-filtered edge files produced by
 2026-06-18_zone_network_edges.py.
 
+NB (2026-07-26): the dashboard's `process()` no longer computes density, clustering,
+unweighted centralization, assortativity, k-core or LCC ratio — those families were
+removed from the analysis entirely, and its per-zone sweep (`TOPO_METRICS`) now reads
+only <metric>, <metric>_gini and <metric>_centralization_weighted from the CSVs
+below. This generator is left as-is so the existing CSVs stay reproducible; the extra
+columns it writes are simply unread.
+
 For each edge-weight method we read
     scripts/2026-06-18_zone_network_edge(<method>).csv
 and, for every (match_team_id, zone, weight-metric), build the co-defending

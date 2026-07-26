@@ -1,0 +1,66 @@
+\begin{table}[ht]
+\centering
+\caption{Between-match stability of network volume, network topology and
+defensive-block geometry. ICC(1,1) with team identity as the grouping factor,
+all six network variants ($n=128$ match-teams, 32 teams, minimum
+edge aggregation). Total network strength is reproducible in five of its six
+variants and line height and block depth are reproducible, whereas no
+topology metric (Gini, Freeman centralization) survives family-wise correction:
+what recurs about a team is how much it co-defends and where, not how that
+volume is distributed over the network.}
+\label{tab:net_iccs}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Metric} & \textbf{ICC} & \textbf{F} & \textbf{p} & \textbf{$p_{\mathrm{WY}}$} \\
+\midrule
+\multicolumn{5}{l}{\textit{Total network strength}} \\
+\quad Raw involvement & 0.248 & 2.31 & 0.0010 & 0.0160$^{*}$ \\
+\quad Raw fault & 0.242 & 2.27 & 0.0013 & 0.0192$^{*}$ \\
+\quad Raw contribution & 0.227 & 2.17 & 0.0022 & 0.0386$^{*}$ \\
+\quad Valued involvement & 0.257 & 2.38 & 0.0007 & 0.0160$^{*}$ \\
+\quad Valued contribution & 0.108 & 1.48 & 0.0765 & 0.4711 \\
+\quad Valued fault & 0.261 & 2.41 & 0.0006 & 0.0113$^{*}$ \\
+\midrule
+\multicolumn{5}{l}{\textit{Gini coefficient (player strength inequality)}} \\
+\quad Raw involvement & $-$0.055 & 0.79 & 0.7683 & 0.9928 \\
+\quad Raw fault & $-$0.096 & 0.65 & 0.9120 & 0.9985 \\
+\quad Raw contribution & $-$0.156 & 0.46 & 0.9919 & 0.9985 \\
+\quad Valued involvement & $-$0.068 & 0.75 & 0.8207 & 0.9959 \\
+\quad Valued contribution & $-$0.138 & 0.52 & 0.9810 & 0.9985 \\
+\quad Valued fault & $-$0.102 & 0.63 & 0.9274 & 0.9985 \\
+\midrule
+\multicolumn{5}{l}{\textit{Freeman centralization (weighted)}} \\
+\quad Raw involvement & 0.074 & 1.32 & 0.1563 & 0.5915 \\
+\quad Raw fault & 0.096 & 1.42 & 0.0986 & 0.4711 \\
+\quad Raw contribution & $-$0.085 & 0.69 & 0.8822 & 0.9985 \\
+\quad Valued involvement & 0.137 & 1.63 & 0.0370 & 0.2700 \\
+\quad Valued contribution & $-$0.007 & 0.97 & 0.5157 & 0.9446 \\
+\quad Valued fault & 0.143 & 1.67 & 0.0315 & 0.2525 \\
+\midrule
+\multicolumn{5}{l}{\textit{Block geometry (positional, network-free)}} \\
+\quad Block depth (SD of mean $x$) & 0.287 & 2.60 & 0.0002 & 0.0071$^{**}$ \\
+\quad Block width (SD of mean $y$) & 0.106 & 1.47 & 0.0786 & 0.4711 \\
+\quad Block area (depth $\times$ width) & 0.203 & 2.02 & 0.0050 & 0.0672 \\
+\quad Block aspect (depth / width) & 0.179 & 1.87 & 0.0111 & 0.0996 \\
+\quad Line height (mean $x$, oriented) & 0.370 & 3.34 & $<$0.0001 & 0.0021$^{**}$ \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.9ex}
+\begin{minipage}{0.96\linewidth}
+\footnotesize
+\textit{Note:} ICC = intraclass correlation coefficient ICC(1,1);
+F = ANOVA $F=\mathrm{MSB}/\mathrm{MSW}$ testing $H_0$: ICC $=0$;
+p = uncorrected parametric p-value; $p_{\mathrm{WY}}$ = Westfall--Young step-down
+min-P p-value from 10,000 permutations of the team-label vector, family-wise over
+all 23 cells of the table -- every cell that enters the correction is
+reported. One permutation is applied to every cell simultaneously, so the
+correction absorbs the dependence between the six network variants
+($r\approx0.9$) rather than treating the cells as independent (effective family
+size $m_{\mathrm{eff}}=17.1$ of 23).
+Block geometry is computed from the starting XI's mean defensive-action positions
+(outfield players only, oriented so each team defends the $-x$ end).
+\par\smallskip
+$^{*}p_{\mathrm{WY}}<0.05$, $^{**}p_{\mathrm{WY}}<0.01$, $^{***}p_{\mathrm{WY}}<0.001$.
+\end{minipage}
+\end{table}
