@@ -3058,9 +3058,14 @@ with tab_zone:
                 "pooled across all of a team's matches."
             )
             zsplit, zones = build_zone_split(zone_raw, zone_scheme, zone_weight)
-            zsplit["Zone"] = zsplit["zone"].map(ZONE_LABEL)
-            zone_label_order = [ZONE_LABEL[z] for z in zones]
-            zone_color = {ZONE_LABEL[z]: ZONE_COLOR[z] for z in zones}
+            # legend names + left→right stacking order local to this chart:
+            # high press (left) → mid block → low block (right).
+            _comp_label = {"own": "Low block", "mid": "Mid block",
+                           "high_press": "High press"}
+            _comp_stack = ["high_press", "mid", "own"]
+            zsplit["Zone"] = zsplit["zone"].map(_comp_label)
+            zone_label_order = [_comp_label[z] for z in _comp_stack if z in zones]
+            zone_color = {_comp_label[z]: ZONE_COLOR[z] for z in zones}
             team_order = (zsplit[zsplit["zone"] == zones[-1]]
                           .groupby("defending_team_name")["share"].sum()
                           .sort_values(ascending=False).index.tolist())

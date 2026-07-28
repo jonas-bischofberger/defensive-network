@@ -120,8 +120,11 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
                            min_edge_count=1, cmap_name="magma_r",
                            node_size_option="self_inv", node_size=100,
                            zone_label=None, zone_pos_df=None,
-                           vmin=None, vmax=None):
+                           vmin=None, vmax=None, color_metric=None):
 
+    # width / position / node size come from `metric`; only the edge COLOUR
+    # comes from `color_metric` (defaults to `metric`).
+    color_metric = color_metric or metric
     edge_count_col = f"{_base_metric(metric)}_edge_count"
     df_plot = edge_df[
         (edge_df["match_id"] == match_id) &
@@ -142,7 +145,7 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
     s = df_plot[edge_count_col].astype(float)
     width_values = 1.5 + (s - s.min()) / (s.max() - s.min() + 1e-9) * (8.0 - 1.5)
 
-    color_values = df_plot[metric].astype(float)
+    color_values = df_plot[color_metric].astype(float)
     _vmin = vmin if vmin is not None else color_values.min()
     _vmax = vmax if vmax is not None else color_values.max()
     norm = Normalize(vmin=_vmin - 1e-6, vmax=_vmax + 1e-6) if _vmin == _vmax else Normalize(vmin=_vmin, vmax=_vmax)
@@ -158,7 +161,7 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
         x1, y1 = player_pos[row["player_1"]][:2]
         x2, y2 = player_pos[row["player_2"]][:2]
         ax.plot([x1, x2], [y1, y2],
-                color=sm.to_rgba(row[metric]),
+                color=sm.to_rgba(row[color_metric]),
                 linewidth=lw, alpha=0.75, zorder=1)
 
     xs = [player_pos[p][0] for p in players]
@@ -200,14 +203,15 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
         ax.text(x, y, p, ha="center", va="center", fontsize=9, zorder=3)
 
     cbar = plt.colorbar(sm, ax=ax, shrink=0.75)
-    cbar.set_label(metric, fontsize=11)
+    cbar.set_label(color_metric, fontsize=11)
 
     zone_str = f" | Zone: {zone_label}" if zone_label else ""
     ax.set_title(
         f"Shared Defensive Network{zone_str}\n"
         f"Match {match_id} | Team {defending_team}\n"
-        f"Position = {metric} | Width = {metric} | Color = {metric}",
-        fontsize=14)
+        f"Position = avg. position | Node size = self-involvement | "
+        f"Width = co-defended passes (count) | Color = {color_metric}",
+        fontsize=12)
 
     return fig
 
@@ -215,7 +219,7 @@ def plot_defensive_network(edge_df, player_df, match_id, defending_team, metric,
 # 5. Sidebar
 st.sidebar.header("Filters")
 
-edge_method = st.sidebar.selectbox("Edge weight method", ["average", "min", "product", "sum"], index=2)
+edge_method = st.sidebar.selectbox("Edge weight method", ["average", "min", "product", "sum"], index=1)
 edge_df     = edge_dfs[edge_method]
 
 node_size_option = st.sidebar.selectbox("Node size", ["self_inv", "inv_number"], index=0)
@@ -234,10 +238,21 @@ metric_options = [
     "valued_involvement", "valued_contribution", "valued_fault",
     "raw_responsibility", "raw_fault_r", "raw_contribution_r",
     "valued_responsibility", "valued_contribution_r", "valued_fault_r", "respon-inv",
-] + [f"{m}_per_pass" for m in BASE_METRICS]
+]
 selected_metric = st.sidebar.selectbox("Metric", metric_options, index=0)
 
-edge_count_col = f"{selected_metric}_edge_count"
+# Edge COLOUR aggregation. Edge *width* always encodes the co-defended pass
+# COUNT; colour can encode either the metric summed over all co-defended passes
+# ("all_pass sum") or its per-pass average ("per_pass average"). The per-pass
+# view strips out the volume component, so we can check whether colour is driven
+# by how strongly a pair co-defended rather than merely how often.
+color_agg = st.sidebar.selectbox("Edge colour aggregation",
+                                 ["all_pass sum", "per_pass average"], index=0)
+color_col = f"{selected_metric}_per_pass" if color_agg == "per_pass average" else selected_metric
+if color_col not in edge_df.columns:          # responsibility metrics have no per-pass column
+    color_col = selected_metric
+
+edge_count_col = f"{_base_metric(selected_metric)}_edge_count"
 max_count      = int(edge_df[edge_count_col].fillna(0).max())
 min_edge_count = st.sidebar.slider("Minimum edge count", 1, max_count, 1)
 
@@ -247,7 +262,8 @@ cmap_name = st.sidebar.selectbox("Color map", ["magma_r", "viridis", "plasma", "
 # 6. Main display — tabs: full match + one per zone
 
 def _scale_for(df, metric):
-    """Global vmin/vmax across the entire dataset for this metric."""
+    """vmin/vmax for `metric` over the rows in `df` (pre-filter it to the scope
+    you want the colour scale shared across)."""
     vals = df[metric].dropna()
     return (float(vals.min()), float(vals.max())) if not vals.empty else (0.0, 1.0)
 
@@ -255,13 +271,20 @@ def _scale_for(df, metric):
 tab_labels = ["Full match"] + [ZONE_LABELS[z] for z in ZONE_KEYS]
 tabs = st.tabs(tab_labels)
 
-_full_vmin, _full_vmax = _scale_for(edge_df, selected_metric)
+# Single-match shared colour scale: computed only from THIS match + team, on the
+# selected colour column, so the colour range is actually used and the darkest
+# end appears in-figure. Changing the edge method or the colour aggregation
+# recomputes it. The full-match panel and the three zone panels get their own
+# single-match range (the full network's sums dwarf any single zone's).
+_full_match_edges = edge_df[(edge_df["match_id"] == selected_match) &
+                            (edge_df["defending_team"] == selected_team)]
+_full_vmin, _full_vmax = _scale_for(_full_match_edges, color_col)
 
 with tabs[0]:
     fig = plot_defensive_network(
         edge_df=edge_df, player_df=player_df,
         match_id=selected_match, defending_team=selected_team,
-        metric=selected_metric, min_edge_count=min_edge_count,
+        metric=selected_metric, color_metric=color_col, min_edge_count=min_edge_count,
         cmap_name=cmap_name, node_size_option=node_size_option,
         vmin=_full_vmin, vmax=_full_vmax,
     )
@@ -280,17 +303,20 @@ if not has_zone_data:
             )
 else:
     zone_edge_df = zone_edge_dfs[edge_method]
+    # one colour scale shared across all three zone panels of this match + team
+    _match_team_zone_edges = zone_edge_df[(zone_edge_df["match_id"] == selected_match) &
+                                          (zone_edge_df["defending_team"] == selected_team)]
+    _zone_vmin, _zone_vmax = _scale_for(_match_team_zone_edges, color_col)
     for i, zone_key in enumerate(ZONE_KEYS):
         with tabs[i + 1]:
             df_zone_edges = zone_edge_df[zone_edge_df["zone"] == zone_key]
             df_zone_pos = (
                 zone_pos_df[zone_pos_df["zone"] == zone_key] if has_zone_pos else None
             )
-            _zone_vmin, _zone_vmax = _scale_for(df_zone_edges, selected_metric)
             fig = plot_defensive_network(
                 edge_df=df_zone_edges, player_df=player_df,
                 match_id=selected_match, defending_team=selected_team,
-                metric=selected_metric, min_edge_count=min_edge_count,
+                metric=selected_metric, color_metric=color_col, min_edge_count=min_edge_count,
                 cmap_name=cmap_name, node_size_option=node_size_option,
                 zone_label=ZONE_LABELS[zone_key],
                 zone_pos_df=df_zone_pos,
