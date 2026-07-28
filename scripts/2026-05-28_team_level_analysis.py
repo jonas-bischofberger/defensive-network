@@ -1948,6 +1948,112 @@ def build_zone_corr(zone_df, scheme, outcomes_df, outcome_cols,
     return pd.DataFrame(rows)
 
 
+# the three correlation modes of the zone × outcome sweep, in the order they occupy
+# the first axis of `zone_corr_wy_family`'s cell array
+ZONE_CORR_MODES = ("raw", "total", "zone")
+ZONE_MODE_LABEL = {"raw": "raw", "total": "partial · total passes",
+                   "zone": "partial · zone passes"}
+
+
+@st.cache_data(show_spinner="Westfall–Young resampling (zone × outcome correlations)…")
+def zone_corr_wy_family(zone_df, scheme, outcomes_df, nperm=2000, seed=20260727):
+    """Westfall–Young step-down min-p over the whole zone × outcome correlation sweep.
+
+    Family = mode × metric × zone × outcome, i.e. 3 × 6 × 3 × 3 = 162 cells with the
+    thirds scheme. The mode axis (raw / partial on total passes_against / partial on
+    that zone's own faced-pass count) is **inside** the family on purpose: the three
+    modes are three looks at the same 54 correlations, and the radio in the UI lets
+    you take all three. Correcting only within the displayed mode would let the mode
+    switch buy significance for free, so the adjusted p of a cell here does not change
+    when you flick the radio.
+
+    Statistic = |r|. Null: the metric carries no information about what the team
+    concedes, so the outcome rows are exchangeable. **One** permutation of the row
+    order is applied to every cell at once — all metrics, all zones, all outcomes, all
+    three modes — so the correction absorbs the family's real dependence rather than
+    paying for 162 independent tests. The dependence is heavy on four axes: raw and
+    valued versions of a metric (r≈0.9), involvement vs contribution/fault (they share
+    the same actions), the three outcomes (shots/xG r≈0.7–0.9), and above all the three
+    modes, which are near-duplicates of each other.
+
+    Partial modes residualise both sides once, Freedman–Lane style, and the permutation
+    then acts on the residuals. For `zone` the covariate differs per zone (that zone's
+    n_passes), so both X's zone block *and* the outcome matrix are residualised
+    separately within each zone.
+
+    Complete cases over every metric × zone, every outcome, passes_against and every
+    zone's n_passes, so one permutation is meaningful in all 162 cells. `cells` is a
+    list of (mode, metric, zone, outcome) tuples in the same order as the returned
+    arrays. Returns None if unusable."""
+    d = zone_df[zone_df["scheme"] == scheme]
+    o = outcomes_df.set_index("match_team_id")
+    ocs = [c for c in OUTCOME_COLS if c in o.columns]
+    if not len(d) or not ocs or "passes_against" not in o.columns:
+        return None
+    npass = d.pivot_table(index="match_team_id", columns="zone", values="n_passes",
+                          aggfunc="sum", fill_value=0)
+    zones = [z for z in ZONE_ORDER if z in npass.columns]
+    pairs, wide = [], {}
+    for m in ZONE_CORR_METRICS:
+        w = d.pivot_table(index="match_team_id", columns="zone",
+                          values=f"{m}_sum", aggfunc="sum", fill_value=0)
+        for z in zones:
+            if z in w.columns:
+                pairs.append((m, z))
+                wide[f"{m}|{z}"] = w[z]
+    if not pairs:
+        return None
+    frame = pd.concat([pd.DataFrame(wide),
+                       npass[zones].rename(columns=lambda z: f"npass|{z}"),
+                       o[ocs + ["passes_against"]]], axis=1).dropna()
+    n = len(frame)
+    if n < 6:
+        return None
+    X = frame[[f"{m}|{z}" for m, z in pairs]].to_numpy(float)
+    keep = X.std(axis=0) > 0                      # a constant zone metric has no r
+    if not keep.any():
+        return None
+    pairs = [pz for pz, k in zip(pairs, keep) if k]
+    X     = X[:, keep]
+    Y     = frame[ocs].to_numpy(float)
+    zt    = frame["passes_against"].to_numpy(float)
+
+    Xs,  Ys  = _std_cols(X), _std_cols(Y)
+    Xts, Yts = _std_cols(_resid_cols(X, zt)), _std_cols(_resid_cols(Y, zt))
+    zblocks = []                                  # per-zone control: own covariate
+    for z in zones:
+        idx = np.array([i for i, (_, zz) in enumerate(pairs) if zz == z])
+        if not len(idx):
+            continue
+        npz = frame[f"npass|{z}"].to_numpy(float)
+        zblocks.append((idx, _std_cols(_resid_cols(X[:, idx], npz)),
+                        _std_cols(_resid_cols(Y, npz))))
+    p, k = len(pairs), len(ocs)
+
+    def _r(perm):
+        """(3, p, k) correlation array — axis 0 follows ZONE_CORR_MODES."""
+        out = np.empty((3, p, k))
+        out[0] = Xs.T  @ Ys[perm]  / n
+        out[1] = Xts.T @ Yts[perm] / n
+        for idx, Xb, Yb in zblocks:
+            out[2, idx] = Xb.T @ Yb[perm] / n
+        return out
+
+    r_obs = _r(np.arange(n))
+    obs   = np.abs(r_obs).reshape(-1)              # order: mode, (metric, zone), outcome
+    rng   = np.random.default_rng(seed)
+    null  = np.empty((nperm, 3 * p * k))
+    for b in range(nperm):
+        null[b] = np.abs(_r(rng.permutation(n))).reshape(-1)
+
+    p_raw, p_adj, alpha, m_eff = _wy_stepdown(obs, null)
+    cells = [(mode, m, z, oc) for mode in ZONE_CORR_MODES for (m, z) in pairs
+             for oc in ocs]
+    return {"cells": cells, "r": r_obs.reshape(-1), "p_perm": p_raw, "p_WY": p_adj,
+            "alpha_fwer": alpha, "m_eff": m_eff, "n_obs": n, "nperm": nperm,
+            "zones": zones, "modes": list(ZONE_CORR_MODES)}
+
+
 def build_zone_ratio_corr(zone_df, scheme, outcomes_df, outcome_cols,
                           partial=False, control="passes_against"):
     """Correlation between per-zone contribution/fault RATIO and outcomes, match-team level.
@@ -2036,18 +2142,123 @@ def build_team_style(zone_df, scheme, outcomes_df, kind="raw"):
         for z in ZONE_ORDER:
             if z in sh.columns:
                 t[f"{pre}{z}_share"] = sh[z]
-    # team-level faced-pass totals per zone (control variable for zone-pass partial)
-    npz = (d.groupby(["team_name", "zone"], observed=True)["n_passes"].sum()
-             .unstack().fillna(0))
-    for z in ZONE_ORDER:
-        if z in npz.columns:
-            t[f"npass_{z}"] = npz[z]
+    # NB (2026-07-27): the per-zone faced-pass totals that used to be emitted here
+    # ('npass_{zone}') are gone with the zone-pass partial control they served.
     perf = outcomes_df.groupby("team_name").agg(
         shots_against=("shots_against", "mean"), xg_against=("xg_against", "mean"),
         goals_against=("goals_against", "mean"),
         passes_against=("passes_against", "mean"),
         reached_knockout=("reached_knockout", "first"))
     return t.join(perf)
+
+
+# axes of the team-level style-proportion sweep (see `style_corr_wy_family`)
+STYLE_KINDS    = ("raw", "valued")
+STYLE_PREFIX   = (("", "inv"), ("con_", "con"), ("fault_", "fault"))
+# NB (2026-07-27): the two pass-volume controls (total opponent passes, and that zone's
+# own faced-pass count) were removed from this analysis. A zone *share* is already
+# scale-free, so volume is not the confound it is for the match-level zone-sum sweep,
+# and passes_against is partly a consequence of a deep style — controlling it removes
+# the effect being measured. FIFA rating (exogenous opponent strength) is the only
+# covariate this analysis checks.
+STYLE_CONTROLS  = (("raw", None),)
+STYLE_FIFA_CTRL = ("ctrl FIFA", "fifa_rating")
+
+
+@st.cache_data(show_spinner="Westfall–Young resampling (style proportion × outcome)…")
+def style_corr_wy_family(zone_df, scheme, outcomes_df, fifa=None, nperm=2000,
+                         seed=20260727):
+    """Westfall–Young step-down min-p over the team-level style-proportion sweep.
+
+    A **separate** family from `zone_corr_wy_family`: different unit of analysis
+    (32 teams, pooled over their matches — not 128 match-teams) and a different
+    predictor (each zone's *share* of the team's total, which is scale-free, rather
+    than the zone's raw sum). Mixing the two would correct a compositional team-level
+    statistic against a volume-driven match-level one, so they are kept apart.
+
+    Family = control × kind × metric × zone × outcome, i.e. 2 × 2 × 3 × 3 × 3 = 108
+    cells with FIFA available (54 without). Both selector axes of the UI table — the
+    raw/valued radio and the unadjusted/FIFA control columns — sit *inside* the family,
+    for the same reason as in the zone sweep: they are repeated looks at the same nine
+    proportions, so the adjusted p must not depend on which one you are looking at.
+
+    Statistic = |r| over teams. Null: a team's style proportions say nothing about
+    what it concedes, so the team rows of the outcome matrix are exchangeable; **one**
+    permutation of those rows drives every cell at once. The dependence being absorbed
+    is extreme here — the three zone shares of one metric sum to 1 (so they are
+    mechanically negatively correlated), inv/con/fault overlap by construction, raw and
+    valued track each other at r≈0.9, and the FIFA-controlled cell is a second view of
+    the unadjusted one.
+
+    The FIFA control residualises both sides once (Freedman–Lane) and the permutation
+    then acts on the residuals.
+
+    Complete cases over all shares, all outcomes and (if used) fifa_rating. `cells` =
+    (control_label, kind, metric, zone, outcome) tuples in the order of the returned
+    arrays. Returns None if unusable."""
+    frames = {k: build_team_style(zone_df, scheme, outcomes_df, kind=k)
+              for k in STYLE_KINDS}
+    base  = frames[STYLE_KINDS[0]]
+    zones = [z for z in ZONE_ORDER if f"{z}_share" in base.columns]
+    ocs   = [c for c in OUTCOME_COLS if c in base.columns]
+    if not zones or not ocs:
+        return None
+    pairs, cols = [], {}
+    for kind in STYLE_KINDS:
+        for pre, ml in STYLE_PREFIX:
+            for z in zones:
+                key = f"{pre}{z}_share"
+                if key in frames[kind].columns:
+                    pairs.append((kind, ml, z))
+                    cols[f"{kind}|{ml}|{z}"] = frames[kind][key]
+    if not pairs:
+        return None
+    frame = pd.concat([pd.DataFrame(cols), base[ocs]], axis=1)
+    controls = list(STYLE_CONTROLS)
+    if fifa is not None:
+        frame["fifa_rating"] = frame.index.map(fifa)
+        controls.append(STYLE_FIFA_CTRL)
+    frame = frame.dropna()
+    n = len(frame)
+    if n < 6:
+        return None
+    X = frame[[f"{k}|{ml}|{z}" for k, ml, z in pairs]].to_numpy(float)
+    keep = X.std(axis=0) > 0
+    if not keep.any():
+        return None
+    pairs = [pz for pz, kp in zip(pairs, keep) if kp]
+    X     = X[:, keep]
+    Y     = frame[ocs].to_numpy(float)
+    p, k  = len(pairs), len(ocs)
+
+    blocks = []            # one standardised (X, Y) pair per control
+    for _clab, ctrl in controls:
+        if ctrl is None:
+            blocks.append((_std_cols(X), _std_cols(Y)))
+        else:
+            c = frame[ctrl].to_numpy(float)
+            blocks.append((_std_cols(_resid_cols(X, c)), _std_cols(_resid_cols(Y, c))))
+
+    def _r(perm):
+        """(n_controls, p, k) correlation array; axis 0 follows `controls`."""
+        out = np.empty((len(blocks), p, k))
+        for ci, (Xb, Yb) in enumerate(blocks):
+            out[ci] = Xb.T @ Yb[perm] / n
+        return out
+
+    r_obs = _r(np.arange(n))
+    obs   = np.abs(r_obs).reshape(-1)          # order: control, (kind, metric, zone), outcome
+    rng   = np.random.default_rng(seed)
+    null  = np.empty((nperm, len(blocks) * p * k))
+    for b in range(nperm):
+        null[b] = np.abs(_r(rng.permutation(n))).reshape(-1)
+
+    p_raw, p_adj, alpha, m_eff = _wy_stepdown(obs, null)
+    cells = [(clab, kind, ml, z, oc) for clab, _ in controls
+             for (kind, ml, z) in pairs for oc in ocs]
+    return {"cells": cells, "r": r_obs.reshape(-1), "p_perm": p_raw, "p_WY": p_adj,
+            "alpha_fwer": alpha, "m_eff": m_eff, "n_obs": n, "nperm": nperm,
+            "controls": [c for c, _ in controls], "zones": zones}
 
 
 def build_team_zone_ratio(zone_df, scheme, kind, mode):
@@ -3095,23 +3306,79 @@ with tab_zone:
 
             # ── Correlation: zone metric vs outcomes ──────────────────────────────
             st.subheader("Zone metric × outcome correlation")
-            _zc_modes = {"Raw": (False, "total"),
-                         "Partial — control total passes against": (True, "total"),
-                         "Partial — control this zone's passes faced": (True, "zone")}
-            zc_mode = st.radio("Correlation", list(_zc_modes), horizontal=True,
-                               key="zone_corr_partial")
-            zc_partial, zc_control = _zc_modes[zc_mode]
+            _zc_modes = {"Raw": (False, "total", "raw"),
+                         "Partial — control total passes against": (True, "total", "total"),
+                         "Partial — control this zone's passes faced": (True, "zone", "zone")}
+            _zm1, _zm2 = st.columns([2, 1])
+            with _zm1:
+                zc_mode = st.radio("Correlation", list(_zc_modes), horizontal=True,
+                                   key="zone_corr_partial")
+            zc_partial, zc_control, zc_key = _zc_modes[zc_mode]
+            with _zm2:
+                zc_meth = st.selectbox(
+                    "Correction",
+                    ["Westfall–Young (family-wise, whole sweep)",
+                     "BH-FDR (this view only)", "Uncorrected"],
+                    index=0, key="zone_corr_meth")
+            zc_wy = None
+            if zc_meth.startswith("Westfall"):
+                zc_np = st.slider("Permutations (WY)", 1000, 20000, 5000, 1000,
+                                  key="zone_corr_wy_np")
+                zc_wy = zone_corr_wy_family(zone_raw, zone_scheme, outcomes, nperm=zc_np)
+            corr_df = build_zone_corr(zone_raw, zone_scheme, outcomes, OUTCOME_COLS,
+                                      partial=zc_partial, control=zc_control)
+            _nv = len(corr_df)                                  # cells in this view
+            _nf = len(zc_wy["cells"]) if zc_wy else _nv * len(_zc_modes)   # whole sweep
+            if zc_wy:
+                _wy_at = {c: (rr, pp, qq) for c, rr, pp, qq in
+                          zip(zc_wy["cells"], zc_wy["r"], zc_wy["p_perm"], zc_wy["p_WY"])}
+                corr_df["p_perm"] = [_wy_at.get((zc_key, m, z, oc), (np.nan,) * 3)[1]
+                                     for m, z, oc in zip(corr_df["metric"], corr_df["zone"],
+                                                         corr_df["outcome"])]
+                corr_df["q"] = [_wy_at.get((zc_key, m, z, oc), (np.nan,) * 3)[2]
+                                for m, z, oc in zip(corr_df["metric"], corr_df["zone"],
+                                                    corr_df["outcome"])]
+            elif not zc_meth.startswith("Uncorrected"):
+                if zc_meth.startswith("Westfall"):
+                    st.warning(
+                        "Not enough complete cases for the Westfall–Young family — "
+                        f"falling back to BH-FDR across the {_nv} cells of this view.")
+                corr_df["q"] = _bh_fdr(corr_df["p"].values)
+            else:
+                corr_df["q"] = corr_df["p"]
+            zc_applied = "WY" if zc_wy else ("none" if zc_meth.startswith("Uncorrected")
+                                             else "BH")
             st.caption(
                 "Correlation between each zone metric **sum** (rows: raw/val × inv/con/fault) "
                 "and each outcome (cols), at **match-team level** (one point per team per "
                 "match). One heatmap per zone. Red = positive (more ↔ conceding more, worse); "
-                "blue = negative (↔ conceding less). `*` = p<0.05. "
-                + {"total": "Partial = residualised on the match's **total** passes_against.",
-                   "zone": "Partial = residualised on **this zone's** faced-pass count "
-                           "(n_passes)."}[zc_control] if zc_partial else ""
+                "blue = negative (↔ conceding less). "
+                + ({"total": "Partial = residualised on the match's **total** passes_against. ",
+                    "zone": "Partial = residualised on **this zone's** faced-pass count "
+                            "(n_passes). "}[zc_control] if zc_partial else "")
+                + {"WY":
+                       f"Stars = **Westfall–Young** family-wise adjusted p over the *entire* "
+                       f"sweep — all {len(_zc_modes)} correlation modes × {_nv} cells = {_nf} "
+                       "cells in one shared-permutation family, so switching the mode radio "
+                       "cannot buy significance.",
+                   "BH":
+                       f"Stars = **BH-FDR** q across the {_nv} cells shown for *this* mode. "
+                       "Weaker than WY (controls the false-discovery rate, not the family-wise "
+                       "error) and it re-corrects each time you switch mode.",
+                   "none":
+                       f"Stars = raw p, **no multiplicity correction** — with {_nf} cells in "
+                       f"the full sweep, expect ~{round(_nf * 0.05)} spurious `*` by chance. "
+                       "Diagnostic view only."}[zc_applied]
+                + " `*` p<.05, `**` p<.01, `***` p<.001."
             )
-            corr_df = build_zone_corr(zone_raw, zone_scheme, outcomes, OUTCOME_COLS,
-                                      partial=zc_partial, control=zc_control)
+            if zc_wy:
+                st.caption(
+                    f"WY: {zc_wy['nperm']:,} shared permutations · {_nf} cells · "
+                    f"N={zc_wy['n_obs']} match-teams · single-step 5% threshold "
+                    f"α_FWER={zc_wy['alpha_fwer']:.4f} "
+                    f"(Šidák-equivalent m_eff≈{zc_wy['m_eff']:.1f} of {_nf} — "
+                    "that gap is the dependence the shared permutation absorbs)."
+                )
             zones_c = [z for z in ZONE_ORDER if z in set(corr_df["zone"])]
             ocl = [c.replace("_against", " ag.") for c in OUTCOME_COLS]
             cols = st.columns(len(zones_c))
@@ -3123,8 +3390,9 @@ with tab_zone:
                         sel = corr_df[(corr_df["metric"] == m) & (corr_df["zone"] == z)
                                       & (corr_df["outcome"] == oc)]
                         if len(sel):
-                            r, p = sel["r"].iloc[0], sel["p"].iloc[0]
-                            rrow.append(r); trow.append(f"{r:+.2f}{'*' if p < 0.05 else ''}")
+                            r, q = sel["r"].iloc[0], sel["q"].iloc[0]
+                            rrow.append(r)
+                            trow.append(f"{r:+.2f}{_sig_stars(q) if pd.notna(q) else ''}")
                         else:
                             rrow.append(np.nan); trow.append("")
                     rmat.append(rrow); tmat.append(trow)
@@ -3139,10 +3407,22 @@ with tab_zone:
                                   coloraxis_showscale=False)
                 col.plotly_chart(fig, use_container_width=False)
             with st.expander("Correlation table (r, p, n)"):
-                st.dataframe(
-                    corr_df.assign(metric=corr_df["metric"].map(METRIC_LABEL),
-                                   zone=corr_df["zone"].map(ZONE_LABEL))
-                           .round({"r": 3, "p": 4}))
+                _zt = corr_df.assign(metric=corr_df["metric"].map(METRIC_LABEL),
+                                     zone=corr_df["zone"].map(ZONE_LABEL))
+                if zc_wy:
+                    # r_wy = the same cell recomputed on the family's single complete-case
+                    # row set; it should equal r exactly unless a zone/outcome column drops
+                    # rows the per-cell version keeps.
+                    _zt["r_wy"] = [_wy_at.get((zc_key, m, z, oc), (np.nan,) * 3)[0]
+                                   for m, z, oc in zip(corr_df["metric"], corr_df["zone"],
+                                                       corr_df["outcome"])]
+                    _zt = _zt.rename(columns={"q": "p_WY"}).sort_values("p_WY")
+                elif zc_applied == "BH":
+                    _zt = _zt.rename(columns={"q": "q_BH"}).sort_values("q_BH")
+                else:
+                    _zt = _zt.drop(columns="q").sort_values("p")
+                st.dataframe(_zt.round(
+                    {"r": 3, "r_wy": 3, "p": 4, "p_perm": 4, "p_WY": 4, "q_BH": 4}))
 
             with st.expander("Volume diagnostic — why 'control passes' behaves differently per zone"):
                 vd1, vd2 = st.columns(2)
@@ -3339,47 +3619,78 @@ with tab_zone:
 
             # ── Merged correlation table: rows = metric × zone, cols = control × outcome ──
             st.subheader("Style proportion × outcome correlation (team level)")
-            tbl_kind = st.selectbox("raw / valued", ["raw", "valued"], key="style_tbl_kind")
+            _sy1, _sy2 = st.columns([1, 2])
+            tbl_kind = _sy1.selectbox("raw / valued", ["raw", "valued"],
+                                      key="style_tbl_kind")
+            st_meth = _sy2.selectbox(
+                "Correction",
+                ["Westfall–Young (family-wise, whole sweep)",
+                 "BH-FDR (this table only)", "Uncorrected"],
+                index=0, key="style_corr_meth")
+            st_wy = None
+            if st_meth.startswith("Westfall"):
+                st_np = st.slider("Permutations (WY)", 1000, 20000, 5000, 1000,
+                                  key="style_wy_np")
+                st_wy = style_corr_wy_family(zone_raw, zone_scheme, outcomes,
+                                             fifa=fifa_team_rating, nperm=st_np)
             ts_t = build_team_style(zone_raw, zone_scheme, outcomes, kind=tbl_kind)
             if fifa_team_rating is not None:
                 ts_t["fifa_rating"] = ts_t.index.map(fifa_team_rating)
-            _controls = [("raw", None), ("ctrl total-pass", "passes_against"),
-                         ("ctrl zone-pass", "zone")]
+            _controls = list(STYLE_CONTROLS)
             if fifa_team_rating is not None:
-                _controls.append(("ctrl FIFA", "fifa_rating"))
-            _rows_def = [(f"{pre}{z}_share", f"{ml} · {zl}", z)
-                         for pre, ml in [("", "inv"), ("con_", "con"), ("fault_", "fault")]
+                _controls.append(STYLE_FIFA_CTRL)
+            _rows_def = [(f"{pre}{z}_share", f"{ml} · {zl}", z, ml)
+                         for pre, ml in STYLE_PREFIX
                          for z, zl in [("high_press", "high"), ("mid", "mid"), ("own", "own")]]
 
-            def _fmt(rr, pp):
-                return "—" if np.isnan(rr) else \
-                    f"{rr:+.2f}{'**' if pp < 0.01 else '*' if pp < 0.05 else ''}"
+            def _fmt(rr, qq):
+                return "—" if pd.isna(rr) else \
+                    f"{rr:+.2f}{_sig_stars(qq) if pd.notna(qq) else ''}"
 
-            data, data_num, rlabels = {}, {}, []
-            for key, lab, z in _rows_def:
+            recs, rlabels = [], []
+            for key, lab, z, ml in _rows_def:
                 if key not in ts_t.columns:
                     continue
                 rlabels.append(lab)
                 for clab, ctrl in _controls:
-                    cc = f"npass_{z}" if ctrl == "zone" else ctrl
                     for oc in OUTCOME_COLS:
-                        ocl = oc.replace("_against", " ag.")
                         if ctrl is None:
                             s = ts_t[[key, oc]].dropna()
                             rr, pp = pearsonr(s[key], s[oc]) if len(s) > 3 else (np.nan, np.nan)
                         else:
-                            s = ts_t[[key, oc, cc]].dropna()
+                            s = ts_t[[key, oc, ctrl]].dropna()
                             if len(s) > 3:
-                                a = _resid(s[key].values, s[cc].values)
-                                b = _resid(s[oc].values, s[cc].values)
+                                a = _resid(s[key].values, s[ctrl].values)
+                                b = _resid(s[oc].values, s[ctrl].values)
                                 mk = ~(np.isnan(a) | np.isnan(b))
                                 rr, pp = pearsonr(a[mk], b[mk]) if mk.sum() > 3 else (np.nan, np.nan)
                             else:
                                 rr, pp = np.nan, np.nan
-                        data.setdefault((clab, ocl), []).append(_fmt(rr, pp))
-                        data_num.setdefault((clab, ocl), []).append(rr)
-            txt = pd.DataFrame(data, index=rlabels)
-            num = pd.DataFrame(data_num, index=rlabels)
+                        recs.append(dict(row=lab, clab=clab, outcome=oc, ml=ml, zone=z,
+                                         r=rr, p=pp))
+            rec = pd.DataFrame(recs)
+            if st_wy:
+                _sw = {c: (rr, pp, qq) for c, rr, pp, qq in
+                       zip(st_wy["cells"], st_wy["r"], st_wy["p_perm"], st_wy["p_WY"])}
+                rec["q"] = [_sw.get((cl, tbl_kind, ml, z, oc), (np.nan,) * 3)[2]
+                            for cl, ml, z, oc in zip(rec["clab"], rec["ml"], rec["zone"],
+                                                     rec["outcome"])]
+            elif not st_meth.startswith("Uncorrected"):
+                if st_meth.startswith("Westfall"):
+                    st.warning("Not enough complete cases for the Westfall–Young family — "
+                               "falling back to BH-FDR across this table.")
+                rec["q"] = _bh_fdr(rec["p"].values)
+            else:
+                rec["q"] = rec["p"]
+            rec["cell"] = [_fmt(a, b) for a, b in zip(rec["r"], rec["q"])]
+            rec["col"] = list(zip(rec["clab"],
+                                  rec["outcome"].str.replace("_against", " ag.", regex=False)))
+            _corder = [(cl, oc.replace("_against", " ag."))
+                       for cl, _ in _controls for oc in OUTCOME_COLS]
+            txt = (rec.pivot(index="row", columns="col", values="cell")
+                      .reindex(index=rlabels, columns=_corder))
+            num = (rec.pivot(index="row", columns="col", values="r")
+                      .reindex(index=rlabels, columns=_corder))
             txt.columns = pd.MultiIndex.from_tuples(txt.columns)
             num.columns = pd.MultiIndex.from_tuples(num.columns)
 
@@ -3395,25 +3706,53 @@ with tab_zone:
 
             css = num.apply(lambda c: c.map(_bg))
             st.caption(
-                f"N={len(ts_t)}, {tbl_kind}. Pearson r between each zone proportion (rows: "
-                "inv/con/fault × high/mid/own) and each outcome, under no control (raw) and "
-                "three partial controls (total opponent passes / that zone's passes / FIFA "
-                "rating). Colour: 0 = white, red = positive (concedes more), blue = negative. "
-                "`*` p<0.05, `**` p<0.01."
+                f"N={len(ts_t)} teams, {tbl_kind}. Pearson r between each zone proportion "
+                "(rows: inv/con/fault × high/mid/own) and each outcome, unadjusted and "
+                "partialling out **FIFA rating** (exogenous squad strength) — the only "
+                "covariate this analysis checks: a zone share is already scale-free, so "
+                "pass volume is not the confound it is for the match-level zone-sum sweep "
+                "above. Colour: 0 = white, red = positive (concedes more), "
+                "blue = negative. "
+                + {"Westfall–Young (family-wise, whole sweep)":
+                       f"Stars = **Westfall–Young** family-wise adjusted p over the whole "
+                       f"style sweep — {len(_controls)} control column(s) × raw *and* valued × "
+                       f"{len(rec) // (len(_controls) * len(OUTCOME_COLS))} proportions × "
+                       f"{len(OUTCOME_COLS)} outcomes = "
+                       f"{len(st_wy['cells']) if st_wy else 2 * len(rec)} cells in one "
+                       "shared-permutation family, so neither the raw/valued selector nor the "
+                       "control column can buy significance. This is a **separate** family "
+                       "from the match-level zone-sum sweep above (different unit, different "
+                       "predictor).",
+                   "BH-FDR (this table only)":
+                       f"Stars = **BH-FDR** q across the {len(rec)} cells of this table only "
+                       "(the other raw/valued half is not in the family).",
+                   "Uncorrected":
+                       "Stars = raw p, **no multiplicity correction** — diagnostic only; the "
+                       "nine proportions are compositional (each metric's three zones sum "
+                       "to 1), so these p-values are badly non-independent."}[st_meth]
+                + " `*` p<.05, `**` p<.01, `***` p<.001."
             )
-            st.table(txt.style.apply(lambda _: css, axis=None))
+            if st_wy:
+                st.caption(
+                    f"WY: {st_wy['nperm']:,} shared permutations · {len(st_wy['cells'])} cells · "
+                    f"N={st_wy['n_obs']} teams · α_FWER={st_wy['alpha_fwer']:.4f} "
+                    f"(Šidák-equivalent m_eff≈{st_wy['m_eff']:.1f} of {len(st_wy['cells'])}). "
+                    "With only ~32 teams the smallest attainable p_WY sits well above the "
+                    f"1/(B+1)={1 / (st_wy['nperm'] + 1):.5f} resampling floor: the cells are "
+                    "so dependent that the null max|r| is itself large."
+                )
+            st.table(txt.fillna("—").style.apply(lambda _: css, axis=None))
             st.caption(
-                "Robustness: controlling **FIFA rating** (exogenous strength) barely changes "
-                "the raw values (own-third +0.72→+0.67, high-press −0.62→−0.54) — the "
-                "style↔conceding link is not just 'stronger teams'. **Zone-pass** control "
-                "also barely moves it. **Total-pass** control shrinks it sharply, but that "
-                "over-corrects (passes_against is partly a consequence of a deep style)."
+                "Robustness: controlling **FIFA rating** barely changes the unadjusted "
+                "values (own-third +0.72→+0.67, high-press −0.62→−0.54) — the "
+                "style↔conceding link is not just 'stronger teams'. Only shots conceded "
+                "survives the family-wise correction; goals and xG conceded do not."
             )
 
             st.markdown("**Style proportion by stage** — median (knockout vs group-only) + "
                         "Mann–Whitney U p.")
             rowsB = []
-            for key, lab, z in _rows_def:
+            for key, lab, z, _ml in _rows_def:
                 if key not in ts_t.columns:
                     continue
                 a = ts_t[ts_t["reached_knockout"]][key].dropna()
