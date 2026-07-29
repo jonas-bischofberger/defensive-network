@@ -1905,6 +1905,47 @@ ZONE_CORR_METRICS = ["raw_involvement", "valued_involvement",
 METRIC_LABEL = {"raw_involvement": "raw inv",  "valued_involvement": "val inv",
                 "raw_contribution": "raw con", "valued_contribution": "val con",
                 "raw_fault": "raw fault",      "valued_fault": "val fault"}
+
+# The two predictor bases of the zone × outcome sweep. Both answer "does defending a
+# lot in this third relate to what you concede", but from different objects:
+#   sum      — Σ of the node-level metric over the passes defended in that zone
+#              (defensive VOLUME; a solo defender counts)
+#   strength — Σ of the co-defending edge weights of that zone's network
+#              (SHARED defending only; a pass defended by one player adds nothing)
+# They are close but not interchangeable — e.g. high-press valued contribution vs
+# shots is −0.27 on sums and +0.10 on strength, because the press is where solo
+# pressing is most common. Kept as two separate WY families on purpose: they are
+# different constructs, not two looks at one predictor, and merging them would
+# change the p-values of the sum analysis the paper reports.
+ZONE_BASIS_LABEL = {"sum": "Metric sums (defensive volume)",
+                    "strength": "Network strength (Σ co-defending edge weights)"}
+
+
+@st.cache_data(show_spinner="Building per-zone network strength…")
+def build_zone_strength_df(topo_df, zone_df, scheme):
+    """Per-zone total network strength, shaped like `zone_df` so the zone-sweep
+    functions (`build_zone_corr`, `zone_corr_wy_family`) can read it unchanged.
+
+    `<metric>` in the zone topology file IS the total network strength (Σ edge
+    weights of that zone's co-defending graph, see 2026-06-19_zone_topology.py), so
+    the column is simply renamed to `<metric>_sum` — same statistic, different
+    predictor. `n_passes` (the per-zone control) has no network counterpart and is
+    carried over from `zone_df`, which is also where the complete row grid comes
+    from: a match-team with no co-defending edges in a zone has strength 0, not a
+    missing row, and dropping it would silently change the sample. The topology file
+    covers the *thirds* scheme only; returns None for any other scheme."""
+    if topo_df is None or zone_df is None or scheme != "thirds":
+        return None
+    grid = zone_df[zone_df["scheme"] == scheme][["match_team_id", "zone", "n_passes"]].copy()
+    keep = [m for m in ZONE_CORR_METRICS if m in topo_df.columns]
+    if not keep or grid.empty:
+        return None
+    s = (topo_df[["match_team_id", "zone"] + keep]
+         .rename(columns={m: f"{m}_sum" for m in keep}))
+    out = grid.merge(s, on=["match_team_id", "zone"], how="left")
+    out[[f"{m}_sum" for m in keep]] = out[[f"{m}_sum" for m in keep]].fillna(0.0)
+    out["scheme"] = scheme
+    return out
 def build_zone_corr(zone_df, scheme, outcomes_df, outcome_cols,
                     partial=False, control="total"):
     """Correlation between each (zone, metric) SUM and each outcome, match-team level.
@@ -1956,25 +1997,32 @@ ZONE_MODE_LABEL = {"raw": "raw", "total": "partial · total passes",
 
 
 @st.cache_data(show_spinner="Westfall–Young resampling (zone × outcome correlations)…")
-def zone_corr_wy_family(zone_df, scheme, outcomes_df, nperm=2000, seed=20260727):
-    """Westfall–Young step-down min-p over the whole zone × outcome correlation sweep.
+def zone_corr_wy_family(zone_df, scheme, outcomes_df, nperm=2000, seed=20260727,
+                        modes=ZONE_CORR_MODES):
+    """Westfall–Young step-down min-p over the zone × outcome correlation sweep.
 
-    Family = mode × metric × zone × outcome, i.e. 3 × 6 × 3 × 3 = 162 cells with the
-    thirds scheme. The mode axis (raw / partial on total passes_against / partial on
-    that zone's own faced-pass count) is **inside** the family on purpose: the three
-    modes are three looks at the same 54 correlations, and the radio in the UI lets
-    you take all three. Correcting only within the displayed mode would let the mode
-    switch buy significance for free, so the adjusted p of a cell here does not change
-    when you flick the radio.
+    Family = `modes` × metric × zone × outcome. With one mode that is 6 × 3 × 3 = 54
+    cells (the default in the UI, and what the paper table reports); with all three
+    modes it is 162.
+
+    Which scope is right depends on how the mode is read. The three modes (raw /
+    partial on total passes_against / partial on that zone's own faced-pass count) are
+    three *different* estimands, not three looks at one: controlling a zone's own
+    exposure removes the pinned-back mechanism that the raw correlation is partly
+    measuring, so raw and zone-partial answer different questions and each is reported
+    on its own terms. Correcting them jointly charges every cell for tests belonging
+    to a question it does not ask. The cost of splitting is that the mode radio is no
+    longer free — flicking it re-corrects — so the mode has to be a fixed choice per
+    claim, not something to shop through. Pass all three modes to get the conservative
+    joint family back.
 
     Statistic = |r|. Null: the metric carries no information about what the team
     concedes, so the outcome rows are exchangeable. **One** permutation of the row
-    order is applied to every cell at once — all metrics, all zones, all outcomes, all
-    three modes — so the correction absorbs the family's real dependence rather than
-    paying for 162 independent tests. The dependence is heavy on four axes: raw and
-    valued versions of a metric (r≈0.9), involvement vs contribution/fault (they share
-    the same actions), the three outcomes (shots/xG r≈0.7–0.9), and above all the three
-    modes, which are near-duplicates of each other.
+    order is applied to every cell of the family at once, so the correction absorbs
+    the family's real dependence rather than paying for independent tests. The
+    dependence is heavy on three axes even within a single mode: raw and valued
+    versions of a metric (r≈0.9), involvement vs contribution/fault (they share the
+    same actions), and the three outcomes (shots/xG r≈0.7–0.9).
 
     Partial modes residualise both sides once, Freedman–Lane style, and the permutation
     then acts on the residuals. For `zone` the covariate differs per zone (that zone's
@@ -1982,9 +2030,10 @@ def zone_corr_wy_family(zone_df, scheme, outcomes_df, nperm=2000, seed=20260727)
     separately within each zone.
 
     Complete cases over every metric × zone, every outcome, passes_against and every
-    zone's n_passes, so one permutation is meaningful in all 162 cells. `cells` is a
-    list of (mode, metric, zone, outcome) tuples in the same order as the returned
-    arrays. Returns None if unusable."""
+    zone's n_passes — the same row set whichever modes are requested, so a cell's r is
+    identical across scopes and only its adjusted p moves. `cells` is a list of
+    (mode, metric, zone, outcome) tuples in the same order as the returned arrays.
+    Returns None if unusable."""
     d = zone_df[zone_df["scheme"] == scheme]
     o = outcomes_df.set_index("match_team_id")
     ocs = [c for c in OUTCOME_COLS if c in o.columns]
@@ -2018,6 +2067,9 @@ def zone_corr_wy_family(zone_df, scheme, outcomes_df, nperm=2000, seed=20260727)
     Y     = frame[ocs].to_numpy(float)
     zt    = frame["passes_against"].to_numpy(float)
 
+    modes = [md for md in ZONE_CORR_MODES if md in set(modes)]   # canonical order
+    if not modes:
+        return None
     Xs,  Ys  = _std_cols(X), _std_cols(Y)
     Xts, Yts = _std_cols(_resid_cols(X, zt)), _std_cols(_resid_cols(Y, zt))
     zblocks = []                                  # per-zone control: own covariate
@@ -2031,27 +2083,30 @@ def zone_corr_wy_family(zone_df, scheme, outcomes_df, nperm=2000, seed=20260727)
     p, k = len(pairs), len(ocs)
 
     def _r(perm):
-        """(3, p, k) correlation array — axis 0 follows ZONE_CORR_MODES."""
-        out = np.empty((3, p, k))
-        out[0] = Xs.T  @ Ys[perm]  / n
-        out[1] = Xts.T @ Yts[perm] / n
-        for idx, Xb, Yb in zblocks:
-            out[2, idx] = Xb.T @ Yb[perm] / n
+        """(len(modes), p, k) correlation array — axis 0 follows `modes`."""
+        out = np.empty((len(modes), p, k))
+        for mi, md in enumerate(modes):
+            if md == "raw":
+                out[mi] = Xs.T  @ Ys[perm]  / n
+            elif md == "total":
+                out[mi] = Xts.T @ Yts[perm] / n
+            else:                                 # "zone": covariate differs per zone
+                for idx, Xb, Yb in zblocks:
+                    out[mi, idx] = Xb.T @ Yb[perm] / n
         return out
 
     r_obs = _r(np.arange(n))
     obs   = np.abs(r_obs).reshape(-1)              # order: mode, (metric, zone), outcome
     rng   = np.random.default_rng(seed)
-    null  = np.empty((nperm, 3 * p * k))
+    null  = np.empty((nperm, len(modes) * p * k))
     for b in range(nperm):
         null[b] = np.abs(_r(rng.permutation(n))).reshape(-1)
 
     p_raw, p_adj, alpha, m_eff = _wy_stepdown(obs, null)
-    cells = [(mode, m, z, oc) for mode in ZONE_CORR_MODES for (m, z) in pairs
-             for oc in ocs]
+    cells = [(mode, m, z, oc) for mode in modes for (m, z) in pairs for oc in ocs]
     return {"cells": cells, "r": r_obs.reshape(-1), "p_perm": p_raw, "p_WY": p_adj,
             "alpha_fwer": alpha, "m_eff": m_eff, "n_obs": n, "nperm": nperm,
-            "zones": zones, "modes": list(ZONE_CORR_MODES)}
+            "zones": zones, "modes": modes}
 
 
 def build_zone_ratio_corr(zone_df, scheme, outcomes_df, outcome_cols,
@@ -3321,7 +3376,26 @@ with tab_zone:
             _zc_modes = {"Raw": (False, "total", "raw"),
                          "Partial — control total passes against": (True, "total", "total"),
                          "Partial — control this zone's passes faced": (True, "zone", "zone")}
-            _zm1, _zm2 = st.columns([2, 1])
+            _zc_strength = build_zone_strength_df(
+                zone_topo_dfs[method] if zone_topo_dfs else None, zone_raw, zone_scheme)
+            _zm0, _zm1, _zm2 = st.columns([1.1, 1.6, 1])
+            with _zm0:
+                zc_basis = st.radio(
+                    "Predictor", list(ZONE_BASIS_LABEL),
+                    format_func=ZONE_BASIS_LABEL.__getitem__,
+                    key="zone_corr_basis",
+                    disabled=_zc_strength is None,
+                    help="Metric sums = node-level volume defended in the zone. Network "
+                         "strength = Σ co-defending edge weights of that zone's network, "
+                         "so solo defending drops out. Separate WY families.")
+            if _zc_strength is None and zc_basis == "strength":
+                st.info(
+                    "Per-zone network strength needs the zone topology files "
+                    "(`2026-06-19_zone_topology(<method>).csv`) and the *thirds* scheme — "
+                    "falling back to metric sums."
+                )
+                zc_basis = "sum"
+            zc_df = zone_raw if zc_basis == "sum" else _zc_strength
             with _zm1:
                 zc_mode = st.radio("Correlation", list(_zc_modes), horizontal=True,
                                    key="zone_corr_partial")
@@ -3329,15 +3403,22 @@ with tab_zone:
             with _zm2:
                 zc_meth = st.selectbox(
                     "Correction",
-                    ["Westfall–Young (family-wise, whole sweep)",
+                    ["Westfall–Young (this correlation mode)",
+                     "Westfall–Young (family-wise, whole sweep)",
                      "BH-FDR (this view only)", "Uncorrected"],
                     index=0, key="zone_corr_meth")
             zc_wy = None
             if zc_meth.startswith("Westfall"):
                 zc_np = st.slider("Permutations (WY)", 1000, 20000, 5000, 1000,
                                   key="zone_corr_wy_np")
-                zc_wy = zone_corr_wy_family(zone_raw, zone_scheme, outcomes, nperm=zc_np)
-            corr_df = build_zone_corr(zone_raw, zone_scheme, outcomes, OUTCOME_COLS,
+                # One family per basis (never both at once), and by default one family
+                # per correlation mode: the modes are different estimands, so a cell is
+                # not charged for tests belonging to a question it does not ask.
+                zc_wy = zone_corr_wy_family(
+                    zc_df, zone_scheme, outcomes, nperm=zc_np,
+                    modes=(zc_key,) if "this correlation mode" in zc_meth
+                          else ZONE_CORR_MODES)
+            corr_df = build_zone_corr(zc_df, zone_scheme, outcomes, OUTCOME_COLS,
                                       partial=zc_partial, control=zc_control)
             _nv = len(corr_df)                                  # cells in this view
             _nf = len(zc_wy["cells"]) if zc_wy else _nv * len(_zc_modes)   # whole sweep
@@ -3358,21 +3439,40 @@ with tab_zone:
                 corr_df["q"] = _bh_fdr(corr_df["p"].values)
             else:
                 corr_df["q"] = corr_df["p"]
-            zc_applied = "WY" if zc_wy else ("none" if zc_meth.startswith("Uncorrected")
-                                             else "BH")
+            zc_applied = ("none" if zc_meth.startswith("Uncorrected") else
+                          "BH" if not zc_wy else
+                          "WY1" if len(zc_wy["modes"]) == 1 else "WY")
             st.caption(
-                "Correlation between each zone metric **sum** (rows: raw/val × inv/con/fault) "
-                "and each outcome (cols), at **match-team level** (one point per team per "
+                ("Correlation between each zone metric **sum** (rows: raw/val × inv/con/fault) "
+                 if zc_basis == "sum" else
+                 "Correlation between each zone's **total network strength** (Σ co-defending "
+                 "edge weights, rows: raw/val × inv/con/fault) ")
+                + "and each outcome (cols), at **match-team level** (one point per team per "
                 "match). One heatmap per zone. Red = positive (more ↔ conceding more, worse); "
                 "blue = negative (↔ conceding less). "
+                + ("" if zc_basis == "sum" else
+                   "Strength counts **shared** defending only — a pass defended by a single "
+                   f"player adds nothing — and uses the {method} edge aggregation. This is a "
+                   "**separate** family from the metric-sum basis, so the two bases' stars are "
+                   "not corrected against each other; treat the basis as a fixed choice, not "
+                   "a selector to shop in. ")
                 + ({"total": "Partial = residualised on the match's **total** passes_against. ",
                     "zone": "Partial = residualised on **this zone's** faced-pass count "
                             "(n_passes). "}[zc_control] if zc_partial else "")
-                + {"WY":
+                + {"WY1":
+                       f"Stars = **Westfall–Young** family-wise adjusted p over the {_nf} cells "
+                       "of **this correlation mode** (6 edge weights × 3 zones × 3 outcomes) in "
+                       "one shared-permutation family. The three modes are different estimands "
+                       "— controlling a zone's own exposure removes the pinned-back mechanism "
+                       "the raw correlation partly measures — so each is corrected on its own "
+                       "terms. The flip side: the mode radio now re-corrects, so fix the mode "
+                       "per claim instead of shopping through it (or take the whole sweep).",
+                   "WY":
                        f"Stars = **Westfall–Young** family-wise adjusted p over the *entire* "
                        f"sweep — all {len(_zc_modes)} correlation modes × {_nv} cells = {_nf} "
                        "cells in one shared-permutation family, so switching the mode radio "
-                       "cannot buy significance.",
+                       "cannot buy significance. Conservative: every cell also pays for the "
+                       "other two modes' tests.",
                    "BH":
                        f"Stars = **BH-FDR** q across the {_nv} cells shown for *this* mode. "
                        "Weaker than WY (controls the false-discovery rate, not the family-wise "
