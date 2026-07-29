@@ -2167,7 +2167,7 @@ STYLE_FIFA_CTRL = ("ctrl FIFA", "fifa_rating")
 
 @st.cache_data(show_spinner="Westfall–Young resampling (style proportion × outcome)…")
 def style_corr_wy_family(zone_df, scheme, outcomes_df, fifa=None, nperm=2000,
-                         seed=20260727):
+                         seed=20260727, kinds=STYLE_KINDS, metrics=STYLE_PREFIX):
     """Westfall–Young step-down min-p over the team-level style-proportion sweep.
 
     A **separate** family from `zone_corr_wy_family`: different unit of analysis
@@ -2181,6 +2181,17 @@ def style_corr_wy_family(zone_df, scheme, outcomes_df, fifa=None, nperm=2000,
     raw/valued radio and the unadjusted/FIFA control columns — sit *inside* the family,
     for the same reason as in the zone sweep: they are repeated looks at the same nine
     proportions, so the adjusted p must not depend on which one you are looking at.
+
+    `kinds` / `metrics` narrow the kind and metric axes (subsets of STYLE_KINDS /
+    STYLE_PREFIX). That is what the "reduced" correction option in the Zones tab
+    uses: the paper table prints only one edge weight's involvement shares, so its
+    family is control × zone × outcome = 2 × 3 × 3 = 18 cells, and correcting over
+    the other 90 cells it never shows is needlessly conservative. Legitimate only if
+    the narrowed axes were fixed in advance — if the valued or con/fault cells were
+    inspected first and then dropped, the honest family is still the full sweep.
+    Narrowing does not change the complete-case row set here (the shares and outcomes
+    are present for all 32 teams), so the reduced family is a strict sub-family of
+    the full one: same r, same raw permutation p, only the max-statistic differs.
 
     Statistic = |r| over teams. Null: a team's style proportions say nothing about
     what it concedes, so the team rows of the outcome matrix are exchangeable; **one**
@@ -2197,15 +2208,15 @@ def style_corr_wy_family(zone_df, scheme, outcomes_df, fifa=None, nperm=2000,
     (control_label, kind, metric, zone, outcome) tuples in the order of the returned
     arrays. Returns None if unusable."""
     frames = {k: build_team_style(zone_df, scheme, outcomes_df, kind=k)
-              for k in STYLE_KINDS}
-    base  = frames[STYLE_KINDS[0]]
+              for k in kinds}
+    base  = frames[kinds[0]]
     zones = [z for z in ZONE_ORDER if f"{z}_share" in base.columns]
     ocs   = [c for c in OUTCOME_COLS if c in base.columns]
     if not zones or not ocs:
         return None
     pairs, cols = [], {}
-    for kind in STYLE_KINDS:
-        for pre, ml in STYLE_PREFIX:
+    for kind in kinds:
+        for pre, ml in metrics:
             for z in zones:
                 key = f"{pre}{z}_share"
                 if key in frames[kind].columns:
@@ -2258,7 +2269,8 @@ def style_corr_wy_family(zone_df, scheme, outcomes_df, fifa=None, nperm=2000,
              for (kind, ml, z) in pairs for oc in ocs]
     return {"cells": cells, "r": r_obs.reshape(-1), "p_perm": p_raw, "p_WY": p_adj,
             "alpha_fwer": alpha, "m_eff": m_eff, "n_obs": n, "nperm": nperm,
-            "controls": [c for c, _ in controls], "zones": zones}
+            "controls": [c for c, _ in controls], "zones": zones,
+            "kinds": list(kinds), "metrics": [ml for _, ml in metrics]}
 
 
 def build_team_zone_ratio(zone_df, scheme, kind, mode):
@@ -3625,14 +3637,23 @@ with tab_zone:
             st_meth = _sy2.selectbox(
                 "Correction",
                 ["Westfall–Young (family-wise, whole sweep)",
+                 "Westfall–Young (reduced: this weight × involvement)",
                  "BH-FDR (this table only)", "Uncorrected"],
-                index=0, key="style_corr_meth")
+                index=1, key="style_corr_meth")
+            # The reduced family is the paper table's own family — one edge weight's
+            # involvement shares only (2 controls × 3 zones × 3 outcomes = 18 cells).
+            # It therefore also drops the con/fault rows from the table below: showing
+            # a row whose cells are not in the family would put stars and blanks in the
+            # same column and invite reading the blanks as null results.
+            _reduced = "reduced" in st_meth
             st_wy = None
             if st_meth.startswith("Westfall"):
                 st_np = st.slider("Permutations (WY)", 1000, 20000, 5000, 1000,
                                   key="style_wy_np")
-                st_wy = style_corr_wy_family(zone_raw, zone_scheme, outcomes,
-                                             fifa=fifa_team_rating, nperm=st_np)
+                st_wy = style_corr_wy_family(
+                    zone_raw, zone_scheme, outcomes, fifa=fifa_team_rating, nperm=st_np,
+                    kinds=(tbl_kind,) if _reduced else STYLE_KINDS,
+                    metrics=(STYLE_PREFIX[0],) if _reduced else STYLE_PREFIX)
             ts_t = build_team_style(zone_raw, zone_scheme, outcomes, kind=tbl_kind)
             if fifa_team_rating is not None:
                 ts_t["fifa_rating"] = ts_t.index.map(fifa_team_rating)
@@ -3647,8 +3668,10 @@ with tab_zone:
                 return "—" if pd.isna(rr) else \
                     f"{rr:+.2f}{_sig_stars(qq) if pd.notna(qq) else ''}"
 
+            _rows_tbl = [r for r in _rows_def if r[3] == "inv"] if _reduced else _rows_def
+
             recs, rlabels = [], []
-            for key, lab, z, ml in _rows_def:
+            for key, lab, z, ml in _rows_tbl:
                 if key not in ts_t.columns:
                     continue
                 rlabels.append(lab)
@@ -3707,7 +3730,9 @@ with tab_zone:
             css = num.apply(lambda c: c.map(_bg))
             st.caption(
                 f"N={len(ts_t)} teams, {tbl_kind}. Pearson r between each zone proportion "
-                "(rows: inv/con/fault × high/mid/own) and each outcome, unadjusted and "
+                + ("(rows: inv × high/mid/own) " if _reduced else
+                   "(rows: inv/con/fault × high/mid/own) ")
+                + "and each outcome, unadjusted and "
                 "partialling out **FIFA rating** (exogenous squad strength) — the only "
                 "covariate this analysis checks: a zone share is already scale-free, so "
                 "pass volume is not the confound it is for the match-level zone-sum sweep "
@@ -3723,6 +3748,18 @@ with tab_zone:
                        "control column can buy significance. This is a **separate** family "
                        "from the match-level zone-sum sweep above (different unit, different "
                        "predictor).",
+                   "Westfall–Young (reduced: this weight × involvement)":
+                       f"Stars = **Westfall–Young** family-wise adjusted p over the "
+                       f"**reduced** family — {tbl_kind} involvement only, "
+                       f"{len(_controls)} control column(s) × {len(rlabels)} proportions × "
+                       f"{len(OUTCOME_COLS)} outcomes = "
+                       f"{len(st_wy['cells']) if st_wy else len(rec)} cells, i.e. exactly "
+                       "the cells printed here (this is the paper table's family). The "
+                       "con/fault rows and the other edge weight are **out** of the family, "
+                       "so they are not shown: with them displayed, blank cells would read "
+                       "as null results they were never tested for. Less conservative than "
+                       "the whole-sweep option above, and only defensible if this narrowing "
+                       "was fixed a priori rather than chosen after seeing the other cells.",
                    "BH-FDR (this table only)":
                        f"Stars = **BH-FDR** q across the {len(rec)} cells of this table only "
                        "(the other raw/valued half is not in the family).",
