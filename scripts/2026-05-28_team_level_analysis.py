@@ -26,6 +26,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 from scipy.stats import pearsonr, spearmanr, kruskal, mannwhitneyu, t as t_dist, f as f_dist
 
@@ -2309,6 +2310,91 @@ def build_team_zone_volume_ratio(zone_df, scheme, outcomes_df, kind):
     return g
 
 
+def ols_fit_band(x, y, npts=120, alpha=0.05):
+    """Simple-regression fit line plus its (1-alpha) mean-response confidence band.
+
+    Closed-form OLS so no statsmodels dependency. Fitted on every point handed in —
+    used by the highlight scatter, where only *marker colour* is subset, never the fit.
+    Returns (xs, yhat, lo, hi); band is nan if n < 3.
+    """
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    ok = np.isfinite(x) & np.isfinite(y)
+    x, y = x[ok], y[ok]
+    n = len(x)
+    xs = np.linspace(x.min(), x.max(), npts) if n else np.array([])
+    if n < 2:
+        return xs, np.full_like(xs, np.nan), np.full_like(xs, np.nan), np.full_like(xs, np.nan)
+    xbar = x.mean()
+    sxx = ((x - xbar) ** 2).sum()
+    b = ((x - xbar) * (y - y.mean())).sum() / sxx if sxx else 0.0
+    a = y.mean() - b * xbar
+    yhat = a + b * xs
+    if n < 3 or not sxx:
+        return xs, yhat, np.full_like(xs, np.nan), np.full_like(xs, np.nan)
+    s = np.sqrt(((y - (a + b * x)) ** 2).sum() / (n - 2))          # residual SE
+    se = s * np.sqrt(1.0 / n + (xs - xbar) ** 2 / sxx)             # SE of the mean response
+    crit = t_dist.ppf(1 - alpha / 2, n - 2)
+    return xs, yhat, yhat - crit * se, yhat + crit * se
+
+
+def zone_highlight_scatter(g, title, hl_pal, hl_order, xlab, ylab, xcol="inv_pm",
+                           ycol="ratio", namecol="defending_team_name", show_band=True,
+                           bg_size=9, bg_color="#c3c7cc", bg_opacity=0.6,
+                           bg_line_color="white", bg_line_width=0.8, hl_size=14,
+                           ref_line=True):
+    """Context + highlight scatter: every row is plotted, only `hl_pal` teams get a
+    colour and a label. The OLS line and its 95% band come from *all* rows in `g`,
+    so subsetting the colours never moves the fit. Marker styling of the grey
+    context points is parameterised so several styled variants can share this code.
+    `ref_line=False` drops the C/F = 1 rule, which also lets the y axis shrink to the
+    data — worth it in the high-press panel, where no team gets anywhere near 1.
+    """
+    xs, yhat, lo, hi = ols_fit_band(g[xcol], g[ycol])
+    fig = go.Figure()
+    if show_band and len(lo) and np.isfinite(lo).all():
+        fig.add_trace(go.Scatter(
+            x=np.concatenate([xs, xs[::-1]]), y=np.concatenate([hi, lo[::-1]]),
+            fill="toself", fillcolor="rgba(0,0,0,0.08)", line=dict(width=0),
+            hoverinfo="skip", showlegend=False, name="95% CI"))
+    bg = g[~g[namecol].isin(hl_pal)]
+    fig.add_trace(go.Scatter(
+        x=bg[xcol], y=bg[ycol], mode="markers",
+        marker=dict(size=bg_size, color=bg_color, opacity=bg_opacity,
+                    line=dict(width=bg_line_width, color=bg_line_color)),
+        text=bg[namecol],
+        hovertemplate="%{text}<br>x=%{x:.2f}, C/F=%{y:.2f}<extra></extra>",
+        name="Other teams"))
+    fig.add_trace(go.Scatter(x=xs, y=yhat, mode="lines", line=dict(color="black", width=2),
+                             hoverinfo="skip", name="OLS (all teams)"))
+    # label above the marker, unless another highlighted point sits just above it in
+    # the same x neighbourhood (Germany / Saudi Arabia in the high-press panel)
+    hg = g[g[namecol].isin(hl_pal)]
+    xr = (g[xcol].max() - g[xcol].min()) or 1.0
+    yr = (g[ycol].max() - g[ycol].min()) or 1.0
+    tpos = {}
+    for row in hg.itertuples():
+        rx, ry = getattr(row, xcol), getattr(row, ycol)
+        near = hg[(abs(hg[xcol] - rx) < 0.06 * xr) & (hg[ycol] > ry)
+                  & (hg[ycol] - ry < 0.30 * yr)]
+        tpos[getattr(row, namecol)] = "bottom center" if len(near) else "top center"
+    for t in hl_order:                                   # drawn on top of the fit line
+        h = g[g[namecol] == t]
+        if h.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=h[xcol], y=h[ycol], mode="markers+text",
+            marker=dict(size=hl_size, color=hl_pal[t], line=dict(width=1.4, color="white")),
+            text=[t], textposition=tpos.get(t, "top center"),
+            textfont=dict(size=12, color=hl_pal[t]),
+            hovertemplate=f"{t}<br>x=%{{x:.2f}}, C/F=%{{y:.2f}}<extra></extra>", name=t))
+    if ref_line:
+        fig.add_hline(y=1.0, line_dash="dash", line_color="grey", opacity=0.6)
+    fig.update_layout(height=500, margin=dict(l=8, r=8, t=50, b=8), showlegend=False,
+                      template="plotly_white", title=title,
+                      xaxis_title=xlab, yaxis_title=ylab)
+    return fig
+
+
 def build_zone_split(zone_df, scheme, weight):
     """Team × zone × {contribution, fault} long table, pooled across a team's matches.
 
@@ -3072,6 +3158,36 @@ with tab_conc:
                 _add_quadrant_lines(_fig_free, df_q_free, qx, qy)
                 st.plotly_chart(_fig_free, use_container_width=True)
 
+                # ── paper-style version: team labels, colour = furthest stage,
+                #    size = outcome, square frame ─────────────────────────────
+                st.markdown("**Paper figure — team-labelled, coloured by furthest stage**")
+                def _axl(c):
+                    return {"valued_involvement": "Valued involvement",
+                            "raw_involvement": "Raw involvement",
+                            "block_x_spread": "Block depth",
+                            "block_y_spread": "Block width"}.get(c, _qa_lbl(c))
+
+                _dfree_lab = (df_q_free.dropna(subset=[qx, qy])
+                              .merge(_furthest_stage(df_corr), on="team_name", how="left"))
+                _fig_free_lab = px.scatter(
+                    _dfree_lab, x=qx, y=qy, text="team_name",
+                    color="furthest_stage", size=outcome_col,
+                    color_discrete_map=STAGE_PALETTE,
+                    category_orders={"furthest_stage": STAGE_CATEGORY_ORDER},
+                    hover_name="team_name", hover_data=[outcome_col],
+                    title=f"{_axl(qx)} vs {_axl(qy)} — {_q_level.lower()}",
+                    labels={qx: _axl(qx), qy: _axl(qy), "furthest_stage": "Furthest Stage"})
+                _fig_free_lab.update_traces(textposition="bottom center", textfont_size=8)
+                _add_quadrant_lines(_fig_free_lab, df_q_free, qx, qy)
+                _fig_free_lab.update_layout(width=720, height=720,
+                                            legend_title_text="Furthest Stage")
+                st.plotly_chart(_fig_free_lab, use_container_width=False)
+                st.caption(
+                    "Colour = **furthest stage reached** (original palette) — no longer duplicates "
+                    f"node size (size = {outcome_col}). Labels sit just below each node. Note: "
+                    "Plotly cannot auto-repel overlapping labels, so a few still touch; the final "
+                    "static figure will use a label-repel algorithm to separate them fully.")
+
                 _, _sm_f, _kw_f, _mw_f, _ = quadrant_analysis(df_q_free, qx, qy)
                 st.markdown("**Outcome means per quadrant**")
                 st.dataframe(_sm_f, use_container_width=True)
@@ -3279,7 +3395,7 @@ with tab_zone:
             zone_color = {_comp_label[z]: ZONE_COLOR[z] for z in zones}
             team_order = (zsplit[zsplit["zone"] == zones[-1]]
                           .groupby("defending_team_name")["share"].sum()
-                          .sort_values(ascending=False).index.tolist())
+                          .sort_values(ascending=True).index.tolist())
             fig_share = px.bar(
                 zsplit, x="share", y="defending_team_name",
                 color="Zone", pattern_shape="type",
@@ -3290,13 +3406,16 @@ with tab_zone:
                                  "type": ["contribution", "fault"],
                                  "defending_team_name": team_order},
                 labels={"share": f"Proportion of team's total {_wlabel.lower()}"},
-                title=f"Zone composition of {_wlabel} ({SCHEME_LABEL[zone_scheme]})")
+                title=None)
             # denser hatching for the fault segments
             fig_share.update_traces(marker_pattern_size=3, marker_pattern_solidity=0.35)
             fig_share.update_layout(height=max(420, 24 * len(team_order)),
-                                    yaxis=dict(autorange="reversed", title=None),
-                                    xaxis=dict(tickformat=".0%"),
-                                    legend_title_text="Zone / con-fault")
+                                    yaxis=dict(autorange="reversed", title=None,
+                                               tickfont=dict(size=14)),
+                                    xaxis=dict(tickformat=".0%", tickfont=dict(size=13),
+                                               title_font_size=15),
+                                    legend_title_text="Defensive phase and involvement type",
+                                    legend=dict(title_font_size=15, font_size=14))
             st.plotly_chart(fig_share, use_container_width=True)
             with st.expander("Composition table (proportion)"):
                 tbl = (zsplit.assign(seg=zsplit["Zone"] + " · " + zsplit["type"])
@@ -3502,6 +3621,101 @@ with tab_zone:
                 fig_ve.update_layout(height=500, margin=dict(l=8, r=8, t=50, b=8),
                                      coloraxis_showscale=(z == ve_zones[-1]))
                 col.plotly_chart(fig_ve, use_container_width=True)
+
+            # ── Same scatter, paper version (fixed valued / per-match / shots) ────
+            st.subheader("Volume vs efficiency, per zone — paper version")
+            st.caption(
+                "Same data as above but hard-wired to **valued**, **per-match** X and "
+                "**shots_against** colour, with team labels removed (names on hover only) "
+                "and the axis titles written out. Left untouched above so the interactive "
+                "version still works."
+            )
+            VE2_KIND, VE2_XCOL, VE2_COLOR = "valued", "inv_pm", "shots_against"
+            VE2_XLAB = "Mean valued involvement per match"
+            VE2_YLAB = "Valued contribution-to-fault ratio"
+            ve2_df = build_team_zone_volume_ratio(zone_raw, zone_scheme, outcomes, VE2_KIND)
+            ve2_zones = [z for z in ZONE_ORDER if z in set(ve2_df["zone"])]
+            cmax2 = ve2_df[VE2_COLOR].max()
+            for col, z in zip(st.columns(len(ve2_zones)), ve2_zones):
+                g = ve2_df[ve2_df["zone"] == z].dropna(subset=[VE2_XCOL, "ratio"])
+                r, p = pearsonr(g[VE2_XCOL], g["ratio"]) if len(g) > 2 else (np.nan, np.nan)
+                fig_ve2 = px.scatter(g, x=VE2_XCOL, y="ratio",
+                                     color=VE2_COLOR, color_continuous_scale="Reds",
+                                     range_color=(0, cmax2), trendline="ols",
+                                     trendline_scope="overall",
+                                     trendline_color_override="black",
+                                     hover_name="defending_team_name",
+                                     labels={VE2_XCOL: VE2_XLAB, "ratio": VE2_YLAB,
+                                             VE2_COLOR: "shots against per match"},
+                                     title=f"{ZONE_LABEL[z]}  (r={r:+.2f}, p={p:.3f})")
+                fig_ve2.update_traces(
+                    marker=dict(size=10, line=dict(width=1, color="white")),
+                    selector=dict(mode="markers"))
+                fig_ve2.add_hline(y=1.0, line_dash="dash", line_color="grey", opacity=0.6)
+                fig_ve2.update_layout(height=500, margin=dict(l=8, r=8, t=50, b=8),
+                                      showlegend=False,   # drops "Overall Trendline"
+                                      coloraxis_showscale=(z == ve2_zones[-1]))
+                col.plotly_chart(fig_ve2, use_container_width=True)
+
+            # ── Same scatter, context + highlight version ─────────────────────────
+            st.subheader("Volume vs efficiency, per zone — context + highlight")
+            st.caption(
+                "Same valued / per-match / all-32-teams data. Every team stays in the plot "
+                "as grey context so the distribution and the fit are unchanged; only the "
+                "teams discussed in the text get a colour and a label. **The OLS line, the "
+                "95% band and the r/p in each title are computed on all 32 teams**, not on "
+                "the highlighted ones. The shots-against colour scale is dropped here — it "
+                "would clash with the highlight colours."
+            )
+            HL_COLORS = {"Germany": "#1f4e79", "Japan": "#d62728",
+                         "Saudi Arabia": "#ff7f0e"}
+            HL_EXTRA = ["#7b3294", "#008b8b", "#b15928", "#4d4d4d"]   # for ad-hoc picks
+            VE3_XLAB = "Mean valued involvement per match"
+            VE3_YLAB = "Valued contribution-to-fault ratio"
+            ve3_df = build_team_zone_volume_ratio(zone_raw, zone_scheme, outcomes, "valued")
+            ve3_zones = [z for z in ZONE_ORDER if z in set(ve3_df["zone"])]
+            hl_teams = st.multiselect(
+                "Highlighted teams", sorted(ve3_df["defending_team_name"].unique()),
+                default=[t for t in HL_COLORS if t in set(ve3_df["defending_team_name"])],
+                key="ve3_teams")
+            hl_show_band = st.checkbox("Show 95% confidence band", value=True, key="ve3_band")
+            hl_pal = {t: HL_COLORS.get(t, HL_EXTRA[i % len(HL_EXTRA)])
+                      for i, t in enumerate(hl_teams)}
+            for col, z in zip(st.columns(len(ve3_zones)), ve3_zones):
+                g = ve3_df[ve3_df["zone"] == z].dropna(subset=["inv_pm", "ratio"])
+                r, p = pearsonr(g["inv_pm"], g["ratio"]) if len(g) > 2 else (np.nan, np.nan)
+                col.plotly_chart(
+                    zone_highlight_scatter(
+                        g, f"{ZONE_LABEL[z]}  (r={r:+.2f}, p={p:.3f}, n={len(g)})",
+                        hl_pal, hl_teams, VE3_XLAB, VE3_YLAB, show_band=hl_show_band),
+                    use_container_width=True)
+
+            # ── Same again, matched marker size + outlined context points ─────────
+            st.subheader("Volume vs efficiency, per zone — context + highlight, matched markers")
+            st.caption(
+                "Identical to the panel above except for marker styling: the grey context "
+                "teams are drawn at a **uniform size** and carry an outline, with the "
+                "highlighted teams one notch bigger so they read as foreground without the "
+                "size difference doing the encoding on its own. Data, OLS fit, 95% band and "
+                "r/p are unchanged (all 32 teams)."
+            )
+            v4a, v4b, v4c, v4d = st.columns(4)
+            v4_outline = v4a.radio("Context outline", ["white", "dark grey"],
+                                   horizontal=True, key="ve4_outline")
+            v4_size = v4b.slider("Context marker size", 8, 20, 14, key="ve4_size")
+            v4_bump = v4c.slider("Highlight size bump", 0, 8, 4, key="ve4_bump")
+            v4_fill = v4d.slider("Context fill opacity", 0.2, 1.0, 0.65, 0.05, key="ve4_op")
+            v4_line = {"white": "white", "dark grey": "#6b7075"}[v4_outline]
+            for col, z in zip(st.columns(len(ve3_zones)), ve3_zones):
+                g = ve3_df[ve3_df["zone"] == z].dropna(subset=["inv_pm", "ratio"])
+                r, p = pearsonr(g["inv_pm"], g["ratio"]) if len(g) > 2 else (np.nan, np.nan)
+                col.plotly_chart(
+                    zone_highlight_scatter(
+                        g, f"{ZONE_LABEL[z]}  (r={r:+.2f}, p={p:.3f}, n={len(g)})",
+                        hl_pal, hl_teams, VE3_XLAB, VE3_YLAB, show_band=hl_show_band,
+                        bg_size=v4_size, hl_size=v4_size + v4_bump, bg_opacity=v4_fill,
+                        bg_line_color=v4_line, bg_line_width=1.4),
+                    use_container_width=True)
 
             # ── con/fault RATIO × outcome correlation (match level, table) ────────
             st.subheader("Contribution / Fault ratio × outcome correlation")
